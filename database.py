@@ -12,7 +12,7 @@ def conectar_base_datos():
         host = os.environ.get('MYSQLHOST', 'localhost')
         user = os.environ.get('MYSQLUSER', 'root')
         password = os.environ.get('MYSQLPASSWORD', '')
-        database = os.environ.get('MYSQLDATABASE', 'databaseapp')
+        database = os.environ.get('MYSQLDATABASE', 'railway')  # ¡CAMBIADO A 'railway'!
         port = int(os.environ.get('MYSQLPORT', '3306'))
 
         print(f"[DEBUG] Conectando a MySQL: {host}:{port}")
@@ -38,47 +38,42 @@ def cerrar_conexion(conexion):
     if conexion and conexion.is_connected():
         conexion.close()
 
-# Mantén el resto de tus funciones (crear tablas) igual
-# ---------------- INICIALIZACIÓN OPTIMIZADA ----------------
-def inicializar_base_datos(parent=None):
-    conexion = conectar_base_datos(parent)
+# ---------------- INICIALIZACIÓN SIMPLIFICADA ----------------
+def inicializar_base_datos():
+    """Versión simplificada sin PyQt5 para Railway"""
+    conexion = conectar_base_datos()
     if not conexion:
         print("[ERROR] No se pudo conectar a la base de datos.")
-        return
-
-    pasos = [
-        ("Creando tabla usuarios...", crear_tabla_usuarios),
-        ("Creando tabla configuraciones...", crear_tabla_configuraciones),
-        ("Creando tabla secciones...", crear_tabla_secciones),
-        ("Creando tabla sub_secciones...", crear_tabla_sub_secciones),
-        ("Creando tabla licencia...", crear_tabla_licencia),
-        ("Insertando usuarios iniciales...", insert_initial_users),
-    ]
-
-    progreso = QProgressDialog("Inicializando base de datos...", "Cancelar", 0, len(pasos), parent)
-    progreso.setWindowTitle("Inicialización")
-    progreso.setMinimumDuration(2000)
-    progreso.setValue(0)
-    progreso.setAutoClose(True)
-    progreso.setAutoReset(True)
+        return False
 
     try:
-        for i, (mensaje, funcion) in enumerate(pasos, start=1):
-            if progreso.wasCanceled():
-                break
-            progreso.setLabelText(mensaje)
-            QApplication.processEvents()
+        print("Inicializando base de datos...")
+        
+        # Solo las tablas esenciales
+        funciones = [
+            crear_tabla_configuraciones,
+            crear_tabla_regiones_zona, 
+            crear_tabla_secciones,
+            crear_tabla_sub_secciones,
+            insert_initial_users
+        ]
+        
+        for funcion in funciones:
             try:
                 funcion(conexion)
+                print(f"[OK] {funcion.__name__} completada")
             except Exception as e:
-                print(f"[ERROR] {mensaje}: {e}")
-            progreso.setValue(i)
-            QApplication.processEvents()
-            time.sleep(0.2)
+                print(f"[ERROR] en {funcion.__name__}: {e}")
+        
+        return True
+        
+    except Exception as e:
+        print(f"[ERROR] Error durante inicialización: {e}")
+        return False
     finally:
         cerrar_conexion(conexion)
 
-# ---------------- TABLAS ----------------
+# ---------------- TABLAS (MANTENER IGUAL) ----------------
 def crear_tabla_usuarios(conexion):
     cursor = conexion.cursor()
     try:
@@ -130,6 +125,7 @@ def crear_tabla_configuraciones(conexion):
             )ENGINE=InnoDB;
         """)
         conexion.commit()
+        print("[OK] Tabla configuracion_app creada/verificada")
     except Exception as e:
         print(f"Error al crear la tabla 'configuracion_app': {e}")
     finally:
@@ -148,6 +144,7 @@ def crear_tabla_regiones_zona(conexion):
         ) ENGINE=InnoDB;
         """)
         conexion.commit()
+        print("[OK] Tabla regiones_zonas creada/verificada")
     except Exception as e:
         print(f"Error al crear la tabla 'regiones_zona': {e}")
     finally:
@@ -166,6 +163,7 @@ def crear_tabla_secciones(conexion):
             ) ENGINE=InnoDB;
         """)
         conexion.commit()
+        print("[OK] Tabla secciones creada/verificada")
     except Exception as e:
         print(f"Error al crear la tabla 'secciones': {e}")
     finally:
@@ -207,6 +205,7 @@ def crear_tabla_sub_secciones(conexion):
             ) ENGINE=InnoDB;
         """)
         conexion.commit()
+        print("[OK] Tabla sub_secciones creada/verificada")
     except Exception as e:
         print(f"Error al crear la tabla 'sub_secciones': {e}")
     finally:
@@ -226,6 +225,7 @@ def crear_tabla_licencia(conexion):
             ) ENGINE=InnoDB;
         """)
         conexion.commit()
+        print("[OK] Tabla licencia creada/verificada")
     except Exception as e:
         print(f"Error al crear la tabla 'licencia': {e}")
     finally:
@@ -246,4 +246,5 @@ def insert_initial_users(conexion):
             ("Usuario Prueba", "visor", "usuario@turismo.com", "usuario123", "visor", 1),
         ])
         conexion.commit()
+        print("[OK] Usuarios iniciales insertados")
     cursor.close()
