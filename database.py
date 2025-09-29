@@ -1,113 +1,44 @@
-# -*- coding: utf-8 -*-
+# database.py - VERSIÓN PARA RAILWAY
 import os
-import sys
-import time
 import mysql.connector
 from mysql.connector import Error
-from PyQt5.QtWidgets import QMessageBox, QApplication, QProgressDialog, QInputDialog
-import socket
-import configparser
 
-# Detecta la ruta correcta incluso dentro del .exe
-def resource_path(relative_path):
-    if hasattr(sys, "_MEIPASS"):
-        return os.path.join(sys._MEIPASS, relative_path)
-    return os.path.join(os.path.abspath("."), relative_path)
-
-CONFIG_FILE = resource_path("config.ini")
-
-# ---------------- CONFIGURACIÓN ----------------
-def cargar_config():
-    config = configparser.ConfigParser()
-    if os.path.exists(CONFIG_FILE):
-        config.read(CONFIG_FILE)
-        if "mysql" in config:
-            return config["mysql"]
-    return None
-
-def guardar_config(host, user, password, database, port=3306):
-    config = configparser.ConfigParser()
-    config["mysql"] = {
-        "host": host,
-        "user": user,
-        "password": password,
-        "database": database,
-        "port": str(port)
-    }
-    with open(CONFIG_FILE, "w") as f:
-        config.write(f)
-
-# ---------------- CONEXIÓN ----------------
-def conectar_base_datos(parent=None):
+def conectar_base_datos():
+    """
+    Conexión simplificada para Railway - usa variables de entorno
+    """
     try:
-        datos = cargar_config()
-        if datos:
-            host = datos.get("host", "localhost")
-            user = datos.get("user", "root")
-            password = datos.get("password", "")
-            database = datos.get("database", "databaseapp")
-            port = int(datos.get("port", 3306))
-        else:
-            port = 3306
-            database = "databaseapp"
-            server_user = "root"
-            server_password = "Perroponce@4472801"
-            client_user = "usuario_remoto"
-            client_password = "usuario123"
+        # Railway provee estas variables automáticamente
+        host = os.environ.get('MYSQLHOST', 'localhost')
+        user = os.environ.get('MYSQLUSER', 'root')
+        password = os.environ.get('MYSQLPASSWORD', '')
+        database = os.environ.get('MYSQLDATABASE', 'databaseapp')
+        port = int(os.environ.get('MYSQLPORT', '3306'))
 
-            host = "localhost"
-            user = server_user
-            password = server_password
-
-            if socket.gethostname().lower() != "notebook":
-                host = "192.168.0.104"
-                user = client_user
-                password = client_password
-
+        print(f"[DEBUG] Conectando a MySQL: {host}:{port}")
+        
         conexion = mysql.connector.connect(
             host=host,
             user=user,
             password=password,
             database=database,
-            port=port
+            port=port,
+            connect_timeout=30
         )
-        if conexion.is_connected() and not datos:
-            guardar_config(host, user, password, database, port)
-        return conexion
+        
+        if conexion.is_connected():
+            print("[SUCCESS] Conexión a MySQL exitosa")
+            return conexion
+            
+    except Error as e:
+        print(f"[ERROR] No se pudo conectar a MySQL: {e}")
+        return None
 
-    except Error:
-        # Solicitar datos manuales si falla la conexión automática
-        if parent is None:
-            parent = QApplication.activeWindow()
-        QMessageBox.warning(parent, "Conexión Fallida",
-                            "No se pudo conectar automáticamente. Se solicitarán los datos manualmente.")
-
-        host, ok1 = QInputDialog.getText(parent, "Host", "Ingrese host de MySQL:", text="localhost")
-        if not ok1: return None
-        user, ok2 = QInputDialog.getText(parent, "Usuario", "Ingrese usuario:", text="root")
-        if not ok2: return None
-        password, ok3 = QInputDialog.getText(parent, "Contraseña", "Ingrese contraseña:", text="")
-        if not ok3: return None
-        database, ok4 = QInputDialog.getText(parent, "Base de datos", "Ingrese nombre de la base de datos:", text="databaseapp")
-        if not ok4: return None
-
-        try:
-            conexion = mysql.connector.connect(
-                host=host, user=user, password=password, database=database, port=3306
-            )
-            if conexion.is_connected():
-                guardar_config(host, user, password, database, 3306)
-                return conexion
-        except Error as e2:
-            QMessageBox.critical(parent, "Error de Conexión",
-                                 f"No se pudo conectar a la base de datos con los datos ingresados:\n{e2}")
-            return None
-
-# ---------------- CERRAR ----------------
 def cerrar_conexion(conexion):
     if conexion and conexion.is_connected():
         conexion.close()
 
+# Mantén el resto de tus funciones (crear tablas) igual
 # ---------------- INICIALIZACIÓN OPTIMIZADA ----------------
 def inicializar_base_datos(parent=None):
     conexion = conectar_base_datos(parent)
