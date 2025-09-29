@@ -1,0 +1,395 @@
+def seleccionar_config_activa(self, fila, columna):
+    import os
+
+    def obtener_texto(f, c):
+        item = self.Tabla_configuracion_activa.item(f, c)
+        return item.text() if item else ""
+
+    # --- Helper: convertir rutas relativas tipo /assets/... a absolutas ---
+    def ruta_absoluta(ruta_relativa: str):
+        if not ruta_relativa:
+            return ""
+        # Si ya es absoluta y existe, devolverla
+        if os.path.isabs(ruta_relativa) and os.path.exists(ruta_relativa):
+            return ruta_relativa
+        # Caso contrario, armar la ruta absoluta desde la carpeta del proyecto
+        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+        abs_path = os.path.join(base_dir, ruta_relativa.lstrip("/\\"))
+        return abs_path if os.path.exists(abs_path) else ""
+
+    # --- Guardar valores en lineEdits ---
+    self.config_seleccionada_id = obtener_texto(fila, 0)
+    self.lineEdit_titulo_app.setText(obtener_texto(fila, 1))
+    self.lineEdit_logo_app.setText(obtener_texto(fila, 2))
+    self.lineEdit_icono_abrir.setText(obtener_texto(fila, 3))
+    self.lineEdit_icono_cerrar.setText(obtener_texto(fila, 4))
+    self.lineEdit_hero_titulo.setText(obtener_texto(fila, 5))
+    self.lineEdit_hero_imagen.setText(obtener_texto(fila, 6))
+    self.lineEdit_footer_texto.setText(obtener_texto(fila, 7))
+
+    # --- Mostrar LOGO ---
+    ruta_logo = ruta_absoluta(obtener_texto(fila, 2))
+    if ruta_logo:
+        pixmap_logo = self.redondear_imagen(ruta_logo, size=50)
+        self.label_logo_app.setPixmap(pixmap_logo)
+    else:
+        self.label_logo_app.clear()
+        self.label_logo_app.setText("Sin logo")
+
+    # --- Mostrar ICONO Abrir ---
+    ruta_icono_abrir = ruta_absoluta(obtener_texto(fila, 3))
+    if ruta_icono_abrir:
+        pixmap_icono1 = self.redondear_imagen(ruta_icono_abrir, size=50)
+        self.label_icono_abrir.setPixmap(pixmap_icono1)
+    else:
+        self.label_icono_abrir.clear()
+        self.label_icono_abrir.setText("Sin icono")
+
+    # --- Mostrar ICONO Cerrar ---
+    ruta_icono_cerrar = ruta_absoluta(obtener_texto(fila, 4))
+    if ruta_icono_cerrar:
+        pixmap_icono2 = self.redondear_imagen(ruta_icono_cerrar, size=50)
+        self.label_icono_cerrar.setPixmap(pixmap_icono2)
+    else:
+        self.label_icono_cerrar.clear()
+        self.label_icono_cerrar.setText("Sin icono")
+
+    # --- Mostrar HERO IMAGEN ---
+    ruta_hero = ruta_absoluta(obtener_texto(fila, 6))
+    if ruta_hero:
+        pixmap_hero = self.redondear_imagen(ruta_hero, size=100)
+        self.label_imagen_central.setPixmap(pixmap_hero)
+    else:
+        self.label_imagen_central.clear()
+        self.label_imagen_central.setText("Sin foto")
+
+    # --- Botones ---
+    self.btnAgregarConfig.setEnabled(False)
+    self.btnModificarConfig.setEnabled(True)
+    self.btnDesactivarConfig.setEnabled(True)
+    self.btnReactivarConfiguracion.setEnabled(False)
+
+    # --- Ajustar tamaño fijo de labels (para que no se deformen) ---
+    self.label_logo_app.setFixedSize(50, 50)
+    self.label_icono_abrir.setFixedSize(50, 50)
+    self.label_icono_cerrar.setFixedSize(50, 50)
+    self.label_imagen_central.setFixedSize(100, 100)
+
+
+
+
+
+def seleccionar_foto_usuario(self):
+        import shutil
+        import hashlib
+
+        ruta_origen, _ = QFileDialog.getOpenFileName(
+            self, "Seleccionar foto de usuario", "", "Imágenes (*.png *.jpg *.jpeg *.bmp *.gif)"
+        )
+
+        if not ruta_origen:
+            self.lineEdit_ruta_foto.clear()
+            self.label_foto_usuario.clear()
+            self.label_foto_usuario.setText("Sin foto")
+            return
+
+        # 📌 Carpeta destino en public/assets
+        carpeta_destino = os.path.join(os.getcwd(), 'frontend', 'public', 'assets', 'fotos_usuarios')
+        os.makedirs(carpeta_destino, exist_ok=True)
+
+        nombre_archivo = os.path.basename(ruta_origen)
+        nombre_base, extension = os.path.splitext(nombre_archivo)
+        ruta_destino = os.path.join(carpeta_destino, nombre_archivo)
+
+        def hash_archivo(path):
+            hasher = hashlib.md5()
+            with open(path, 'rb') as f:
+                while chunk := f.read(8192):
+                    hasher.update(chunk)
+            return hasher.hexdigest()
+
+        # Si ya existe, verificamos contenido
+        if os.path.exists(ruta_destino):
+            if hash_archivo(ruta_destino) != hash_archivo(ruta_origen):
+                contador = 1
+                while True:
+                    nuevo_nombre = f"{nombre_base}_{contador}{extension}"
+                    nueva_ruta = os.path.join(carpeta_destino, nuevo_nombre)
+                    if not os.path.exists(nueva_ruta):
+                        ruta_destino = nueva_ruta
+                        break
+                    contador += 1
+
+        # Copiar archivo al destino final
+        try:
+            shutil.copy(ruta_origen, ruta_destino)
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"No se pudo copiar la imagen:\n{e}")
+            return
+
+        # 📌 Ruta relativa pública que irá a la BD
+        ruta_relativa = f"/assets/fotos_usuarios/{os.path.basename(ruta_destino)}"
+
+        # Validar si la foto ya está en uso
+        id_actual = self.usuario_seleccionado_id if hasattr(self, 'usuario_seleccionado_id') else None
+        if self.existe_foto_en_uso(ruta_relativa, id_actual):
+            QMessageBox.warning(self, "Imagen en uso", "Esta imagen ya está asignada a otro usuario.")
+            return
+
+        # Guardar en el lineEdit y mostrar en QLabel
+        self.lineEdit_ruta_foto.setText(ruta_relativa)
+        pixmap = self.redondear_imagen(ruta_destino, 100)
+        self.label_foto_usuario.setPixmap(pixmap)
+        self.label_foto_usuario.setText("")
+
+
+
+
+
+
+CLIENTES
+
+def seleccionar_foto_usuario(self):
+    import shutil
+    import hashlib
+
+    ruta_origen, _ = QFileDialog.getOpenFileName(
+        self, "Seleccionar foto de usuario", "", "Imágenes (*.png *.jpg *.jpeg *.bmp *.gif)"
+    )
+
+    if not ruta_origen:
+        self.lineEdit_ruta_foto.clear()
+        self.label_foto_usuario.clear()
+        self.label_foto_usuario.setText("Sin foto")
+        return
+
+    # 📌 Carpeta destino en public/assets
+    carpeta_destino = os.path.join(os.getcwd(), 'frontend', 'public', 'assets', 'fotos_usuarios')
+    os.makedirs(carpeta_destino, exist_ok=True)
+
+    nombre_archivo = os.path.basename(ruta_origen)
+    nombre_base, extension = os.path.splitext(nombre_archivo)
+    ruta_destino = os.path.join(carpeta_destino, nombre_archivo)
+
+    def hash_archivo(path):
+        import hashlib
+        hasher = hashlib.md5()
+        with open(path, 'rb') as f:
+            while chunk := f.read(8192):
+                hasher.update(chunk)
+        return hasher.hexdigest()
+
+    # Si ya existe, verificamos contenido
+    if os.path.exists(ruta_destino):
+        if hash_archivo(ruta_destino) != hash_archivo(ruta_origen):
+            contador = 1
+            while True:
+                nuevo_nombre = f"{nombre_base}_{contador}{extension}"
+                nueva_ruta = os.path.join(carpeta_destino, nuevo_nombre)
+                if not os.path.exists(nueva_ruta):
+                    ruta_destino = nueva_ruta
+                    break
+                contador += 1
+
+    # Copiar archivo al destino final
+    try:
+        shutil.copy(ruta_origen, ruta_destino)
+    except Exception as e:
+        QMessageBox.warning(self, "Error", f"No se pudo copiar la imagen:\n{e}")
+        return
+
+    # 📌 Ruta relativa para guardar en la BD
+    ruta_relativa = f"/assets/fotos_usuarios/{os.path.basename(ruta_destino)}"
+
+    # Validar si la foto ya está en uso
+    id_actual = getattr(self, 'usuario_seleccionado_id', None)
+    if self.existe_foto_en_uso(ruta_relativa, id_actual):
+        QMessageBox.warning(self, "Imagen en uso", "Esta imagen ya está asignada a otro usuario.")
+        return
+
+    # Guardar en el lineEdit
+    self.lineEdit_ruta_foto.setText(ruta_relativa)
+
+    # 📌 Mostrar en QLabel usando la ruta ABSOLUTA
+    pixmap = self.redondear_imagen(ruta_destino, size=100)
+    self.label_foto_usuario.setPixmap(pixmap)
+    self.label_foto_usuario.setText("")
+
+    # 📌 Asegurar tamaño fijo del QLabel
+    self.label_foto_usuario.setFixedSize(100, 100)
+
+
+SECXCIONES Funcion seleccionar_icono
+
+def seleccionar_icono(self):
+    import shutil
+    import hashlib
+
+    ruta_origen, _ = QFileDialog.getOpenFileName(
+        self, "Seleccionar icono de sección", "", "Imágenes (*.png *.jpg *.jpeg *.bmp *.gif)"
+    )
+
+    if not ruta_origen:
+        self.lineEdit_icono_seccion.clear()
+        self.label_icono_seccion.clear()
+        self.label_icono_seccion.setText("Sin icono")
+        return
+
+    # 📌 Carpeta destino dentro de frontend/public
+    carpeta_destino = os.path.join(os.getcwd(), "frontend", "public", "assets", "iconos_secciones")
+    os.makedirs(carpeta_destino, exist_ok=True)
+
+    nombre_archivo = os.path.basename(ruta_origen)
+    nombre_base, extension = os.path.splitext(nombre_archivo)
+    ruta_destino = os.path.join(carpeta_destino, nombre_archivo)
+
+    def hash_archivo(path):
+        hasher = hashlib.md5()
+        with open(path, "rb") as f:
+            while chunk := f.read(8192):
+                hasher.update(chunk)
+        return hasher.hexdigest()
+
+    # Si ya existe el archivo, verificamos duplicados
+    if os.path.exists(ruta_destino):
+        if hash_archivo(ruta_destino) != hash_archivo(ruta_origen):
+            contador = 1
+            while True:
+                nuevo_nombre = f"{nombre_base}_{contador}{extension}"
+                nueva_ruta = os.path.join(carpeta_destino, nuevo_nombre)
+                if not os.path.exists(nueva_ruta):
+                    ruta_destino = nueva_ruta
+                    break
+                contador += 1
+
+    try:
+        shutil.copy(ruta_origen, ruta_destino)
+    except Exception as e:
+        QMessageBox.warning(self, "Error", f"No se pudo copiar el icono:\n{e}")
+        return
+
+    # 📌 Guardamos la ruta relativa que se usará en la BD y frontend
+    ruta_relativa = f"/assets/iconos_secciones/{os.path.basename(ruta_destino)}"
+
+    self.lineEdit_icono_seccion.setText(ruta_relativa)
+    pixmap_icono = self.redondear_imagen(ruta_destino, self.label_icono_seccion, circular=True)
+    self.label_icono_seccion.setPixmap(pixmap_icono)
+    self.label_icono_seccion.setText("")
+
+
+
+
+SUB_SECCIONES funcion seleccionar imagemn y icono
+
+def seleccionar_imagen(self):
+    import shutil
+    import hashlib
+
+    ruta_origen, _ = QFileDialog.getOpenFileName(
+        self, "Seleccionar imagen", "", "Imágenes (*.png *.jpg *.jpeg *.bmp *.gif)"
+    )
+
+    if not ruta_origen:
+        self.lineEdit_imagen.clear()
+        self.label_imagen.clear()
+        self.label_imagen.setText("Sin imagen")
+        return
+
+    # 📌 Carpeta destino dentro de frontend/public
+    carpeta_destino = os.path.join(os.getcwd(), "frontend", "public", "assets", "imagenes_subsecciones")
+    os.makedirs(carpeta_destino, exist_ok=True)
+
+    nombre_archivo = os.path.basename(ruta_origen)
+    nombre_base, extension = os.path.splitext(nombre_archivo)
+    ruta_destino = os.path.join(carpeta_destino, nombre_archivo)
+
+    def hash_archivo(path):
+        hasher = hashlib.md5()
+        with open(path, "rb") as f:
+            while chunk := f.read(8192):
+                hasher.update(chunk)
+        return hasher.hexdigest()
+
+    if os.path.exists(ruta_destino):
+        if hash_archivo(ruta_destino) != hash_archivo(ruta_origen):
+            contador = 1
+            while True:
+                nuevo_nombre = f"{nombre_base}_{contador}{extension}"
+                nueva_ruta = os.path.join(carpeta_destino, nuevo_nombre)
+                if not os.path.exists(nueva_ruta):
+                    ruta_destino = nueva_ruta
+                    break
+                contador += 1
+
+    try:
+        shutil.copy(ruta_origen, ruta_destino)
+    except Exception as e:
+        QMessageBox.warning(self, "Error", f"No se pudo copiar la imagen:\n{e}")
+        return
+
+    # 📌 Ruta relativa
+    ruta_relativa = f"/assets/imagenes_subsecciones/{os.path.basename(ruta_destino)}"
+
+    self.lineEdit_imagen.setText(ruta_relativa)
+    pixmap = QPixmap(ruta_destino).scaled(200, 150, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+    self.label_imagen.setPixmap(pixmap)
+    self.label_imagen.setText("")
+
+
+def seleccionar_icono(self):
+    import shutil
+    import hashlib
+
+    ruta_origen, _ = QFileDialog.getOpenFileName(
+        self, "Seleccionar icono", "", "Imágenes (*.png *.jpg *.jpeg *.bmp *.gif)"
+    )
+
+    if not ruta_origen:
+        self.lineEdit_icono.clear()
+        self.label_icono.clear()
+        self.label_icono.setText("Sin icono")
+        return
+
+    # 📌 Carpeta destino dentro de frontend/public
+    carpeta_destino = os.path.join(os.getcwd(), "frontend", "public", "assets", "iconos_subsecciones")
+    os.makedirs(carpeta_destino, exist_ok=True)
+
+    nombre_archivo = os.path.basename(ruta_origen)
+    nombre_base, extension = os.path.splitext(nombre_archivo)
+    ruta_destino = os.path.join(carpeta_destino, nombre_archivo)
+
+    def hash_archivo(path):
+        hasher = hashlib.md5()
+        with open(path, "rb") as f:
+            while chunk := f.read(8192):
+                hasher.update(chunk)
+        return hasher.hexdigest()
+
+    if os.path.exists(ruta_destino):
+        if hash_archivo(ruta_destino) != hash_archivo(ruta_origen):
+            contador = 1
+            while True:
+                nuevo_nombre = f"{nombre_base}_{contador}{extension}"
+                nueva_ruta = os.path.join(carpeta_destino, nuevo_nombre)
+                if not os.path.exists(nueva_ruta):
+                    ruta_destino = nueva_ruta
+                    break
+                contador += 1
+
+    try:
+        shutil.copy(ruta_origen, ruta_destino)
+    except Exception as e:
+        QMessageBox.warning(self, "Error", f"No se pudo copiar el icono:\n{e}")
+        return
+
+    # 📌 Ruta relativa
+    ruta_relativa = f"/assets/iconos_subsecciones/{os.path.basename(ruta_destino)}"
+
+    self.lineEdit_icono.setText(ruta_relativa)
+    pixmap_icono = QPixmap(ruta_destino).scaled(48, 48, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+    self.label_icono.setPixmap(pixmap_icono)
+    self.label_icono.setText("")
+
+
+
+

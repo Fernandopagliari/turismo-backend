@@ -1,0 +1,334 @@
+# ventana_principal.py
+import os
+import sys
+from PyQt5.QtWidgets import QMainWindow, QApplication, QMessageBox
+from PyQt5 import uic
+from PyQt5.QtGui import QIcon, QPixmap, QPainter, QBrush, QPen, QColor
+from PyQt5.QtCore import Qt, QPropertyAnimation, QEasingCurve, QPoint, QSize
+
+from datetime import datetime 
+
+from database import conectar_base_de_datos
+from usuarios import VentanaUsuarios  
+from secciones import VentanaSecciones
+from sub_secciones import VentanaSub_Secciones
+from configuraciones import VentanaCircuitos
+
+from ventana_licencia import VentanaLicencia
+from licencia import LicenciaManager
+
+
+class VentanaPrincipal(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        # Ruta absoluta y robusta al archivo .ui
+        ruta_ui = os.path.join(
+            os.path.dirname(__file__),   # carpeta actual: src/backend
+            "interfaz",                  # subcarpeta
+            "ventana_principal.ui"        # archivo .ui
+        )
+
+        if not os.path.exists(ruta_ui):
+            raise FileNotFoundError(f"No se encontró el archivo UI en: {ruta_ui}")
+
+        uic.loadUi(ruta_ui, self)
+
+        # Oculta el menú lateral al inicio (lo mueve fuera de pantalla)
+        self.frame_menu_lateral.move(-self.frame_menu_lateral.width(), self.btnMenu.height())
+
+        # Maximiza la ventana principal
+        self.showMaximized()
+
+        # Cargar imagen central al iniciar
+        #self.cargar_imagen_central()
+
+        # Configuración inicial de la interfaz
+        self.configurar_interfaz()
+
+    def configurar_interfaz(self):
+        # Icono inicial del botón menú hamburguesa
+        self.btnMenu.setIcon(QIcon("assets/iconos/menu.png"))
+        self.btnMenu.setIconSize(QSize(40, 40))
+
+        # Ocultar los botones hijos del menú lateral al inicio
+        self.btnUsuarios.setVisible(False)
+        self.btnSecciones.setVisible(False)
+        self.btnSubSecciones.setVisible(False)
+        self.btnConfiguracion.setVisible(False)
+
+        # Ocultar los botones principales del menú al inicio
+        self.btnGestionCargas.setVisible(False)
+
+        # Conectar los botones
+        self.btnMenu.clicked.connect(self.alternar_menu_lateral)
+        self.btnLoginAceptar.clicked.connect(self.iniciar_sesion)
+        self.btnCerrarSesion.clicked.connect(self.cerrar_sesion)
+        self.btnSalir.clicked.connect(self.close)
+        self.btnGestionCargas.clicked.connect(self.alternar_submenu_datos)
+        
+        # Conexiones a módulos CRUD
+        self.btnUsuarios.clicked.connect(self.abrir_gestion_usuarios)
+        self.btnSecciones.clicked.connect(self.abrir_gestion_secciones)
+        self.btnSubSecciones.clicked.connect(self.abrir_gestion_sub_secciones)
+        self.btnConfiguracion.clicked.connect(self.abrir_gestion_configuracion)
+
+
+        # Estado inicial
+        self.usuario_actual = None
+        self.label_estado_login.setText("No hay sesión iniciada.")
+        self.bloquear_funcionalidades()
+
+    def cargar_imagen_central(self):
+        """Carga y muestra la imagen central en el QLabel designado"""
+        try:
+            # Obtener el directorio base del proyecto
+            if getattr(sys, 'frozen', False):
+                # Si la aplicación está empaquetada (ej. con PyInstaller)
+                base_dir = os.path.dirname(sys.executable)
+            else:
+                # Si se ejecuta desde el código fuente
+                base_dir = os.path.dirname(os.path.abspath(__file__))
+            
+            # Construir la ruta a la imagen
+            ruta_imagen = os.path.normpath(os.path.join(base_dir, 'crs', 'backend', 'assets', 'imagenes', 'imagen_app.jpg'))
+            
+            print(f"Intentando cargar imagen desde: {ruta_imagen}")  # Para depuración
+            
+            if os.path.exists(ruta_imagen):
+                pixmap = QPixmap(ruta_imagen)
+                
+                if not pixmap.isNull():
+                    # Escalar la imagen manteniendo el aspect ratio
+                    scaled_pixmap = pixmap.scaled(
+                        self.label_imagen_central.size(), 
+                        Qt.KeepAspectRatio, 
+                        Qt.SmoothTransformation
+                    )
+                    
+                    self.label_imagen_central.setPixmap(scaled_pixmap)
+                    self.label_imagen_central.setAlignment(Qt.AlignCenter)
+                else:
+                    print("Error: La imagen no se pudo cargar correctamente.")
+                    self.mostrar_imagen_alternativa()
+            else:
+                print(f"Error: No se encontró la imagen en {ruta_imagen}")
+                self.mostrar_imagen_alternativa()
+        except Exception as e:
+            print(f"Error al cargar imagen central: {str(e)}")
+            self.mostrar_imagen_alternativa()
+
+    def mostrar_imagen_alternativa(self):
+        """Muestra un texto alternativo o imagen por defecto"""
+        self.label_imagen_central.setText("Imagen no disponible")
+        self.label_imagen_central.setStyleSheet("""
+            QLabel {
+                font-size: 16px;
+                color: #666;
+                qproperty-alignment: AlignCenter;
+            }
+        """)
+    def resizeEvent(self, event):
+        """Redimensiona la imagen cuando cambia el tamaño de la ventana"""
+        super().resizeEvent(event)
+        self.ajustar_imagen()
+
+    def ajustar_imagen(self):
+        """Ajusta el tamaño de la imagen al cambiar el tamaño del QLabel"""
+        if hasattr(self, 'label_imagen_central') and self.label_imagen_central.pixmap():
+            pixmap = self.label_imagen_central.pixmap()
+            scaled = pixmap.scaled(
+                self.label_imagen_central.size(), 
+                Qt.KeepAspectRatio, 
+                Qt.SmoothTransformation
+            )
+            self.label_imagen_central.setPixmap(scaled)
+
+    def mostrar_menu_lateral(self):
+        self.animar_drawer(mostrar=True)
+        self.btnMenu.setIcon(QIcon("assets/iconos/cerrar.png"))
+        self.btnMenu.setIconSize(QSize(40, 40))
+
+    def alternar_menu_lateral(self):
+        """Alterna la visibilidad del menú lateral con animación"""
+        esta_oculto = self.frame_menu_lateral.x() < 0
+        self.animar_drawer(esta_oculto)
+
+        icono = "src/assets/iconos/cerrar.png" if esta_oculto else "src/assets/iconos/menu.png"
+        self.btnMenu.setIcon(QIcon(icono))
+        self.btnMenu.setIconSize(QSize(40, 40))
+
+    def animar_drawer(self, mostrar=True):
+        """Anima el desplazamiento del menú lateral, dejando libre la zona del botón menú"""
+        ancho = self.frame_menu_lateral.width()
+        x_origen = self.frame_menu_lateral.x()
+        x_destino = 0 if mostrar else -ancho
+
+        y_fijo = self.btnMenu.height()  # el menú se coloca debajo del botón
+
+        animacion = QPropertyAnimation(self.frame_menu_lateral, b"pos")
+        animacion.setDuration(300)
+        animacion.setStartValue(QPoint(x_origen, y_fijo))
+        animacion.setEndValue(QPoint(x_destino, y_fijo))
+        animacion.setEasingCurve(QEasingCurve.InOutQuart)
+        animacion.start()
+
+        self.animacion_drawer = animacion  # Mantener referencia para evitar que se destruya
+
+    def iniciar_sesion(self):
+        usuario = self.lineEdit_usuario.text()
+        clave = self.lineEdit_password.text()
+
+        if not usuario or not clave:
+            QMessageBox.warning(self, "Campos Vacíos", "Por favor ingrese usuario y contraseña.")
+            return
+
+        conexion = conectar()
+        cursor = conexion.cursor()
+        cursor.execute("""
+            SELECT id_usuario, apellido_nombres_usuario, rol_usuario, foto_usuario, password_usuario, activo
+            FROM usuarios
+            WHERE nombre_usuario_acceso = ?
+        """, (usuario,))
+        resultado = cursor.fetchone()
+
+        if resultado:
+            id_usuario, nombre_completo, rol, ruta_foto, password_guardada, activo = resultado
+
+            if not activo:
+                QMessageBox.critical(self, "Usuario inactivo", "Este usuario está inactivo y no puede iniciar sesión.")
+                self.label_estado_login.setText("Usuario inactivo.")
+                self.label_estado_login.setStyleSheet("color: red;")
+                conexion.close()
+                return
+
+            if clave == password_guardada:
+                self.usuario_actual = nombre_completo
+                self.rol_usuario_actual = rol
+
+                self.label_estado_login.setText(f"Sesión activa: {self.usuario_actual} ({self.rol_usuario_actual})")
+                self.label_estado_login.setStyleSheet("color: black;")
+                QMessageBox.information(self, "Bienvenido", f"Bienvenido {self.usuario_actual}")
+
+                if ruta_foto and os.path.exists(ruta_foto):
+                    pixmap_redondo = self.redondear_imagen(ruta_foto, 100)
+                    self.label_foto_usuario.setPixmap(pixmap_redondo)
+                    self.label_foto_usuario.setText("")
+                else:
+                    self.label_foto_usuario.clear()
+                    self.label_foto_usuario.setText("Sin foto usuario")
+                
+                self.lineEdit_usuario.setEnabled(False)
+                self.lineEdit_password.setEnabled(False)
+                self.btnLoginAceptar.setEnabled(False)
+                self.btnCerrarSesion.setEnabled(True)
+
+                self.habilitar_funcionalidades()
+            else:
+                QMessageBox.warning(self, "Contraseña incorrecta", "La contraseña ingresada es incorrecta.")
+                self.label_estado_login.setText("Contraseña incorrecta.")
+                self.label_estado_login.setStyleSheet("color: red;")
+        else:
+            QMessageBox.warning(self, "Usuario no encontrado", "El usuario ingresado no existe.")
+            self.label_estado_login.setText("Usuario no encontrado.")
+            self.label_estado_login.setStyleSheet("color: red;")
+
+        conexion.close()
+
+
+        
+    def redondear_imagen(self, imagen_path, size=100):
+        if not os.path.exists(imagen_path):
+            return QPixmap(size, size)  # pixmap vacío si no existe la imagen
+
+        pixmap = QPixmap(imagen_path).scaled(size, size, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+        imagen_circular = QPixmap(size, size)
+        imagen_circular.fill(Qt.transparent)
+
+        painter = QPainter(imagen_circular)
+        painter.setRenderHint(QPainter.Antialiasing)
+        brush = QBrush(pixmap)
+        painter.setBrush(brush)
+        painter.setPen(Qt.NoPen)
+        painter.drawEllipse(0, 0, size, size)
+        painter.end()
+
+        return imagen_circular
+
+
+    def cerrar_sesion(self):
+        self.usuario_actual = None
+        self.lineEdit_usuario.clear()
+        self.lineEdit_password.clear()
+        self.label_estado_login.setText("Sesión cerrada.")
+        self.label_foto_usuario.clear()
+        self.lineEdit_usuario.setEnabled(True)
+        self.lineEdit_password.setEnabled(True)
+        self.btnLoginAceptar.setEnabled(True)
+        self.btnCerrarSesion.setEnabled(False)
+        self.bloquear_funcionalidades()
+
+
+    def habilitar_funcionalidades(self):
+        self.btnCargarResultados.setVisible(True)
+        self.btnVerEstadisticas.setVisible(True)
+
+        if self.rol_usuario_actual == "admin":
+            self.btnGestionDatos.setVisible(True)
+        else:
+            self.btnGestionDatos.setVisible(False)
+
+    def bloquear_funcionalidades(self):
+        try:
+            self.btnGestionCArgas.setVisible(False)
+
+            self.btnUsuarios.setVisible(False)
+            self.btnSecciones.setVisible(False)
+            self.btnSubSecciones.setVisible(False)
+            self.btnConfiguracion.setVisible(False)
+        except AttributeError:
+            pass
+
+    
+    def alternar_submenu_datos(self):
+        mostrar = not self.btnUsuarios.isVisible()
+
+        self.btnUsuarios.setVisible(mostrar)
+        self.btnSecciones.setVisible(mostrar)
+        self.btnSubSecciones.setVisible(mostrar)
+        self.btnConfiguracion.setVisible(mostrar)
+
+    def cerrar_menu_lateral(self):
+        """Oculta el menú lateral si está visible"""
+        if self.frame_menu_lateral.x() == 0:
+            self.animar_drawer(mostrar=False)
+            self.btnMenu.setIcon(QIcon("src/assets/iconos/menu.png"))
+            self.btnMenu.setIconSize(QSize(40, 40))
+
+    def abrir_gestion_usuarios(self):
+        self.cerrar_menu_lateral()
+        self.ventana_usuarios = VentanaUsuarios(parent=self)
+        self.ventana_usuarios.show()
+            
+    def abrir_gestion_secciones(self):
+        self.cerrar_menu_lateral()
+        self.ventana_secciones = VentanaSecciones(parent=self)
+        self.ventana_secciones.show()
+        
+    def abrir_gestion_sub_secciones(self):
+        self.cerrar_menu_lateral()
+        self.ventana_sub_secciones = VentanaSubSecciones(parent=self)
+        self.ventana_sub_secciones.show()
+        
+    def abrir_gestion_configuracion(self):
+        self.cerrar_menu_lateral()
+        self.ventana_configuracion = VentanaConfiguracion(parent=self)
+        self.ventana_configuracion.show()
+
+# Solo si querés probar esta ventana directamente
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    ventana = VentanaPrincipal()
+    ventana.show()
+    sys.exit(app.exec())
+
+    

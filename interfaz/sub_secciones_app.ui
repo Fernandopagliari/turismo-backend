@@ -1,0 +1,1025 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>Form</class>
+ <widget class="QWidget" name="Form">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1073</width>
+    <height>646</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Sub Secciones</string>
+  </property>
+  <layout class="QGridLayout" name="gridLayout">
+   <item row="0" column="0">
+    <widget class="QTabWidget" name="tabWidget">
+     <property name="currentIndex">
+      <number>0</number>
+     </property>
+     <widget class="QWidget" name="tab">
+      <attribute name="title">
+       <string>Sub-Secciones Activas</string>
+      </attribute>
+      <widget class="QGroupBox" name="groupBox_seccion">
+       <property name="geometry">
+        <rect>
+         <x>10</x>
+         <y>0</y>
+         <width>731</width>
+         <height>81</height>
+        </rect>
+       </property>
+       <property name="title">
+        <string>Región/Zona - Sección</string>
+       </property>
+       <widget class="QLabel" name="label_2">
+        <property name="geometry">
+         <rect>
+          <x>35</x>
+          <y>50</y>
+          <width>40</width>
+          <height>20</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>Sección:</string>
+        </property>
+       </widget>
+       <widget class="QComboBox" name="comboBox_seccion">
+        <property name="geometry">
+         <rect>
+          <x>90</x>
+          <y>50</y>
+          <width>310</width>
+          <height>20</height>
+         </rect>
+        </property>
+       </widget>
+       <widget class="QPushButton" name="btnCerrar">
+        <property name="enabled">
+         <bool>false</bool>
+        </property>
+        <property name="geometry">
+         <rect>
+          <x>690</x>
+          <y>10</y>
+          <width>31</width>
+          <height>31</height>
+         </rect>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">border : none;</string>
+        </property>
+        <property name="text">
+         <string/>
+        </property>
+        <property name="icon">
+         <iconset>
+          <normaloff>../../../CopiaSeguridadTurismoApp/turismo-app/backend/assets/iconos/cerrar.png</normaloff>../../../CopiaSeguridadTurismoApp/turismo-app/backend/assets/iconos/cerrar.png</iconset>
+        </property>
+        <property name="iconSize">
+         <size>
+          <width>32</width>
+          <height>32</height>
+         </size>
+        </property>
+       </widget>
+       <widget class="QComboBox" name="comboBox_region_zona">
+        <property name="geometry">
+         <rect>
+          <x>90</x>
+          <y>20</y>
+          <width>310</width>
+          <height>20</height>
+         </rect>
+        </property>
+       </widget>
+       <widget class="QLabel" name="label_5">
+        <property name="geometry">
+         <rect>
+          <x>10</x>
+          <y>20</y>
+          <width>70</width>
+          <height>20</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>Región/Zona:</string>
+        </property>
+       </widget>
+       <widget class="QLabel" name="label_icono">
+        <property name="geometry">
+         <rect>
+          <x>550</x>
+          <y>20</y>
+          <width>54</width>
+          <height>54</height>
+         </rect>
+        </property>
+        <property name="minimumSize">
+         <size>
+          <width>54</width>
+          <height>54</height>
+         </size>
+        </property>
+        <property name="maximumSize">
+         <size>
+          <width>34</width>
+          <height>34</height>
+         </size>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">border: 2px solid gray;
+border-radius: 50px;
+min-width: 50px;
+min-height: 50px;
+</string>
+        </property>
+        <property name="text">
+         <string/>
+        </property>
+       </widget>
+       <widget class="QLabel" name="label_imagen_region_zona">
+        <property name="geometry">
+         <rect>
+          <x>450</x>
+          <y>20</y>
+          <width>54</width>
+          <height>54</height>
+         </rect>
+        </property>
+        <property name="minimumSize">
+         <size>
+          <width>54</width>
+          <height>54</height>
+         </size>
+        </property>
+        <property name="maximumSize">
+         <size>
+          <width>34</width>
+          <height>34</height>
+         </size>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">border: 2px solid gray;
+border-radius: 50px;
+min-width: 50px;
+min-height: 50px;
+</string>
+        </property>
+        <property name="text">
+         <string/>
+        </property>
+       </widget>
+      </widget>
+      <widget class="QGroupBox" name="groupBox_elementos">
+       <property name="geometry">
+        <rect>
+         <x>0</x>
+         <y>90</y>
+         <width>740</width>
+         <height>300</height>
+        </rect>
+       </property>
+       <property name="title">
+        <string>Sub-Secciones</string>
+       </property>
+       <widget class="QLabel" name="label_8">
+        <property name="geometry">
+         <rect>
+          <x>10</x>
+          <y>105</y>
+          <width>40</width>
+          <height>13</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>Imagen:</string>
+        </property>
+       </widget>
+       <widget class="QLineEdit" name="lineEdit_imagen">
+        <property name="enabled">
+         <bool>false</bool>
+        </property>
+        <property name="geometry">
+         <rect>
+          <x>130</x>
+          <y>100</y>
+          <width>220</width>
+          <height>20</height>
+         </rect>
+        </property>
+       </widget>
+       <widget class="QLabel" name="label_9">
+        <property name="geometry">
+         <rect>
+          <x>10</x>
+          <y>45</y>
+          <width>50</width>
+          <height>13</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>Domicilio:</string>
+        </property>
+       </widget>
+       <widget class="QLineEdit" name="lineEdit_domicilio">
+        <property name="enabled">
+         <bool>true</bool>
+        </property>
+        <property name="geometry">
+         <rect>
+          <x>60</x>
+          <y>40</y>
+          <width>290</width>
+          <height>20</height>
+         </rect>
+        </property>
+       </widget>
+       <widget class="QLabel" name="label_10">
+        <property name="geometry">
+         <rect>
+          <x>10</x>
+          <y>230</y>
+          <width>120</width>
+          <height>13</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>Descripción - Itinerario:</string>
+        </property>
+       </widget>
+       <widget class="QLineEdit" name="lineEdit_itinerario">
+        <property name="enabled">
+         <bool>true</bool>
+        </property>
+        <property name="geometry">
+         <rect>
+          <x>10</x>
+          <y>245</y>
+          <width>710</width>
+          <height>20</height>
+         </rect>
+        </property>
+       </widget>
+       <widget class="QLabel" name="label_13">
+        <property name="geometry">
+         <rect>
+          <x>365</x>
+          <y>77</y>
+          <width>50</width>
+          <height>13</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>Distancia:</string>
+        </property>
+       </widget>
+       <widget class="QLineEdit" name="lineEdit_distancia">
+        <property name="enabled">
+         <bool>true</bool>
+        </property>
+        <property name="geometry">
+         <rect>
+          <x>415</x>
+          <y>70</y>
+          <width>80</width>
+          <height>20</height>
+         </rect>
+        </property>
+       </widget>
+       <widget class="QLabel" name="label_14">
+        <property name="geometry">
+         <rect>
+          <x>370</x>
+          <y>45</y>
+          <width>60</width>
+          <height>13</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>Nº Teléfono:</string>
+        </property>
+       </widget>
+       <widget class="QLineEdit" name="lineEdit_numero_telefono">
+        <property name="enabled">
+         <bool>true</bool>
+        </property>
+        <property name="geometry">
+         <rect>
+          <x>440</x>
+          <y>40</y>
+          <width>150</width>
+          <height>20</height>
+         </rect>
+        </property>
+       </widget>
+       <widget class="QLabel" name="label_16">
+        <property name="geometry">
+         <rect>
+          <x>185</x>
+          <y>75</y>
+          <width>50</width>
+          <height>13</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>Longitud:</string>
+        </property>
+       </widget>
+       <widget class="QLabel" name="label_19">
+        <property name="geometry">
+         <rect>
+          <x>15</x>
+          <y>75</y>
+          <width>40</width>
+          <height>13</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>Latitud:</string>
+        </property>
+       </widget>
+       <widget class="QLineEdit" name="lineEdit_latitud">
+        <property name="enabled">
+         <bool>true</bool>
+        </property>
+        <property name="geometry">
+         <rect>
+          <x>55</x>
+          <y>70</y>
+          <width>120</width>
+          <height>20</height>
+         </rect>
+        </property>
+       </widget>
+       <widget class="QLabel" name="label_3">
+        <property name="geometry">
+         <rect>
+          <x>15</x>
+          <y>15</y>
+          <width>80</width>
+          <height>20</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>Título Elemento:</string>
+        </property>
+       </widget>
+       <widget class="QLineEdit" name="lineEdit_nombre_subSeccion">
+        <property name="enabled">
+         <bool>true</bool>
+        </property>
+        <property name="geometry">
+         <rect>
+          <x>95</x>
+          <y>15</y>
+          <width>260</width>
+          <height>20</height>
+         </rect>
+        </property>
+       </widget>
+       <widget class="QLineEdit" name="lineEdit_longitud">
+        <property name="enabled">
+         <bool>true</bool>
+        </property>
+        <property name="geometry">
+         <rect>
+          <x>235</x>
+          <y>70</y>
+          <width>120</width>
+          <height>20</height>
+         </rect>
+        </property>
+       </widget>
+       <widget class="QPushButton" name="btnBuscarImagen">
+        <property name="enabled">
+         <bool>true</bool>
+        </property>
+        <property name="geometry">
+         <rect>
+          <x>50</x>
+          <y>100</y>
+          <width>70</width>
+          <height>20</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>Buscar</string>
+        </property>
+       </widget>
+       <widget class="QLineEdit" name="lineEdit_icono">
+        <property name="enabled">
+         <bool>false</bool>
+        </property>
+        <property name="geometry">
+         <rect>
+          <x>455</x>
+          <y>100</y>
+          <width>270</width>
+          <height>20</height>
+         </rect>
+        </property>
+       </widget>
+       <widget class="QLabel" name="label_15">
+        <property name="geometry">
+         <rect>
+          <x>355</x>
+          <y>105</y>
+          <width>100</width>
+          <height>13</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>Ruta Icono Seccion:</string>
+        </property>
+       </widget>
+       <widget class="QLabel" name="label_imagen">
+        <property name="geometry">
+         <rect>
+          <x>140</x>
+          <y>125</y>
+          <width>204</width>
+          <height>104</height>
+         </rect>
+        </property>
+        <property name="minimumSize">
+         <size>
+          <width>0</width>
+          <height>0</height>
+         </size>
+        </property>
+        <property name="maximumSize">
+         <size>
+          <width>16777215</width>
+          <height>110</height>
+         </size>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">border: 2px solid gray;
+
+</string>
+        </property>
+        <property name="text">
+         <string/>
+        </property>
+       </widget>
+       <widget class="QSpinBox" name="spinBox_orden">
+        <property name="geometry">
+         <rect>
+          <x>620</x>
+          <y>70</y>
+          <width>42</width>
+          <height>22</height>
+         </rect>
+        </property>
+        <property name="value">
+         <number>1</number>
+        </property>
+       </widget>
+       <widget class="QLabel" name="label_17">
+        <property name="geometry">
+         <rect>
+          <x>515</x>
+          <y>75</y>
+          <width>100</width>
+          <height>13</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>Orden Sub-sección:</string>
+        </property>
+       </widget>
+       <widget class="QLabel" name="label_18">
+        <property name="geometry">
+         <rect>
+          <x>365</x>
+          <y>20</y>
+          <width>110</width>
+          <height>13</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>Fecha Desactivación:</string>
+        </property>
+       </widget>
+       <widget class="QDateEdit" name="dateEdit_fecha_desactivacion">
+        <property name="geometry">
+         <rect>
+          <x>470</x>
+          <y>15</y>
+          <width>90</width>
+          <height>22</height>
+         </rect>
+        </property>
+        <property name="specialValueText">
+         <string/>
+        </property>
+        <property name="dateTime">
+         <datetime>
+          <hour>0</hour>
+          <minute>0</minute>
+          <second>0</second>
+          <year>2000</year>
+          <month>1</month>
+          <day>1</day>
+         </datetime>
+        </property>
+        <property name="calendarPopup">
+         <bool>true</bool>
+        </property>
+       </widget>
+       <widget class="QPushButton" name="btnLimpiarFormulario">
+        <property name="geometry">
+         <rect>
+          <x>420</x>
+          <y>270</y>
+          <width>80</width>
+          <height>23</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>Limpiar</string>
+        </property>
+       </widget>
+       <widget class="QPushButton" name="btnAgregar">
+        <property name="geometry">
+         <rect>
+          <x>20</x>
+          <y>270</y>
+          <width>80</width>
+          <height>23</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>Agregar</string>
+        </property>
+       </widget>
+       <widget class="QPushButton" name="btnEliminar">
+        <property name="enabled">
+         <bool>false</bool>
+        </property>
+        <property name="geometry">
+         <rect>
+          <x>220</x>
+          <y>270</y>
+          <width>80</width>
+          <height>23</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>Eliminar</string>
+        </property>
+       </widget>
+       <widget class="QPushButton" name="btnModificar">
+        <property name="enabled">
+         <bool>false</bool>
+        </property>
+        <property name="geometry">
+         <rect>
+          <x>120</x>
+          <y>270</y>
+          <width>80</width>
+          <height>23</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>Modificar</string>
+        </property>
+       </widget>
+       <widget class="QPushButton" name="btnDesactivar">
+        <property name="enabled">
+         <bool>false</bool>
+        </property>
+        <property name="geometry">
+         <rect>
+          <x>330</x>
+          <y>270</y>
+          <width>80</width>
+          <height>23</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>Desactivar</string>
+        </property>
+       </widget>
+       <widget class="QCheckBox" name="checkBox_destacado">
+        <property name="geometry">
+         <rect>
+          <x>610</x>
+          <y>10</y>
+          <width>70</width>
+          <height>30</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>Destacada</string>
+        </property>
+       </widget>
+      </widget>
+      <widget class="QScrollArea" name="scrollArea">
+       <property name="geometry">
+        <rect>
+         <x>10</x>
+         <y>390</y>
+         <width>731</width>
+         <height>210</height>
+        </rect>
+       </property>
+       <property name="widgetResizable">
+        <bool>true</bool>
+       </property>
+       <widget class="QWidget" name="contenedor_elementos_activos">
+        <property name="geometry">
+         <rect>
+          <x>0</x>
+          <y>0</y>
+          <width>729</width>
+          <height>208</height>
+         </rect>
+        </property>
+       </widget>
+      </widget>
+      <widget class="QLabel" name="label_foto_4">
+       <property name="geometry">
+        <rect>
+         <x>760</x>
+         <y>490</y>
+         <width>204</width>
+         <height>104</height>
+        </rect>
+       </property>
+       <property name="minimumSize">
+        <size>
+         <width>0</width>
+         <height>0</height>
+        </size>
+       </property>
+       <property name="maximumSize">
+        <size>
+         <width>16777215</width>
+         <height>110</height>
+        </size>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">border: 2px solid gray;
+</string>
+       </property>
+       <property name="text">
+        <string/>
+       </property>
+      </widget>
+      <widget class="QPushButton" name="btnBuscarFoto4">
+       <property name="enabled">
+        <bool>true</bool>
+       </property>
+       <property name="geometry">
+        <rect>
+         <x>800</x>
+         <y>460</y>
+         <width>40</width>
+         <height>20</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>Buscar</string>
+       </property>
+      </widget>
+      <widget class="QLabel" name="label_21">
+       <property name="geometry">
+        <rect>
+         <x>760</x>
+         <y>465</y>
+         <width>40</width>
+         <height>13</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>Foto 4:</string>
+       </property>
+      </widget>
+      <widget class="QLineEdit" name="lineEdit_foto_4">
+       <property name="enabled">
+        <bool>false</bool>
+       </property>
+       <property name="geometry">
+        <rect>
+         <x>845</x>
+         <y>460</y>
+         <width>190</width>
+         <height>20</height>
+        </rect>
+       </property>
+      </widget>
+      <widget class="QLabel" name="label_foto_3">
+       <property name="geometry">
+        <rect>
+         <x>760</x>
+         <y>335</y>
+         <width>204</width>
+         <height>104</height>
+        </rect>
+       </property>
+       <property name="minimumSize">
+        <size>
+         <width>0</width>
+         <height>0</height>
+        </size>
+       </property>
+       <property name="maximumSize">
+        <size>
+         <width>16777215</width>
+         <height>110</height>
+        </size>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">border: 2px solid gray;
+
+</string>
+       </property>
+       <property name="text">
+        <string/>
+       </property>
+      </widget>
+      <widget class="QLineEdit" name="lineEdit_foto_3">
+       <property name="enabled">
+        <bool>false</bool>
+       </property>
+       <property name="geometry">
+        <rect>
+         <x>845</x>
+         <y>310</y>
+         <width>190</width>
+         <height>20</height>
+        </rect>
+       </property>
+      </widget>
+      <widget class="QPushButton" name="btnBuscarFoto3">
+       <property name="enabled">
+        <bool>true</bool>
+       </property>
+       <property name="geometry">
+        <rect>
+         <x>800</x>
+         <y>310</y>
+         <width>40</width>
+         <height>20</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>Buscar</string>
+       </property>
+      </widget>
+      <widget class="QLineEdit" name="lineEdit_foto_1">
+       <property name="enabled">
+        <bool>false</bool>
+       </property>
+       <property name="geometry">
+        <rect>
+         <x>845</x>
+         <y>5</y>
+         <width>190</width>
+         <height>20</height>
+        </rect>
+       </property>
+      </widget>
+      <widget class="QPushButton" name="btnBuscarFoto1">
+       <property name="enabled">
+        <bool>true</bool>
+       </property>
+       <property name="geometry">
+        <rect>
+         <x>800</x>
+         <y>5</y>
+         <width>40</width>
+         <height>20</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>Buscar</string>
+       </property>
+      </widget>
+      <widget class="QLabel" name="label_11">
+       <property name="geometry">
+        <rect>
+         <x>760</x>
+         <y>10</y>
+         <width>40</width>
+         <height>13</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>Foto 1:</string>
+       </property>
+      </widget>
+      <widget class="QLineEdit" name="lineEdit_foto_2">
+       <property name="enabled">
+        <bool>false</bool>
+       </property>
+       <property name="geometry">
+        <rect>
+         <x>845</x>
+         <y>160</y>
+         <width>190</width>
+         <height>20</height>
+        </rect>
+       </property>
+      </widget>
+      <widget class="QPushButton" name="btnBuscarFoto2">
+       <property name="enabled">
+        <bool>true</bool>
+       </property>
+       <property name="geometry">
+        <rect>
+         <x>800</x>
+         <y>160</y>
+         <width>40</width>
+         <height>20</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>Buscar</string>
+       </property>
+      </widget>
+      <widget class="QLabel" name="label_12">
+       <property name="geometry">
+        <rect>
+         <x>760</x>
+         <y>165</y>
+         <width>40</width>
+         <height>13</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>Foto 2:</string>
+       </property>
+      </widget>
+      <widget class="QLabel" name="label_foto_2">
+       <property name="geometry">
+        <rect>
+         <x>760</x>
+         <y>185</y>
+         <width>204</width>
+         <height>104</height>
+        </rect>
+       </property>
+       <property name="minimumSize">
+        <size>
+         <width>0</width>
+         <height>0</height>
+        </size>
+       </property>
+       <property name="maximumSize">
+        <size>
+         <width>16777215</width>
+         <height>110</height>
+        </size>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">border: 2px solid gray;
+
+</string>
+       </property>
+       <property name="text">
+        <string/>
+       </property>
+      </widget>
+      <widget class="QLabel" name="label_20">
+       <property name="geometry">
+        <rect>
+         <x>760</x>
+         <y>315</y>
+         <width>40</width>
+         <height>13</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>Foto 3:</string>
+       </property>
+      </widget>
+      <widget class="QLabel" name="label_foto_1">
+       <property name="geometry">
+        <rect>
+         <x>760</x>
+         <y>30</y>
+         <width>204</width>
+         <height>104</height>
+        </rect>
+       </property>
+       <property name="minimumSize">
+        <size>
+         <width>0</width>
+         <height>0</height>
+        </size>
+       </property>
+       <property name="maximumSize">
+        <size>
+         <width>16777215</width>
+         <height>110</height>
+        </size>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">border: 2px solid gray;
+</string>
+       </property>
+       <property name="text">
+        <string/>
+       </property>
+      </widget>
+     </widget>
+     <widget class="QWidget" name="tab_2">
+      <attribute name="title">
+       <string>Sub-Secciones Inactivas</string>
+      </attribute>
+      <widget class="QScrollArea" name="scrollArea_2">
+       <property name="geometry">
+        <rect>
+         <x>20</x>
+         <y>40</y>
+         <width>1010</width>
+         <height>501</height>
+        </rect>
+       </property>
+       <property name="widgetResizable">
+        <bool>true</bool>
+       </property>
+       <widget class="QWidget" name="contenedor_elementos_inactivos">
+        <property name="geometry">
+         <rect>
+          <x>0</x>
+          <y>0</y>
+          <width>1008</width>
+          <height>499</height>
+         </rect>
+        </property>
+       </widget>
+      </widget>
+      <widget class="QLabel" name="label_4">
+       <property name="geometry">
+        <rect>
+         <x>20</x>
+         <y>10</y>
+         <width>40</width>
+         <height>20</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>Sección:</string>
+       </property>
+      </widget>
+      <widget class="QComboBox" name="comboBox_seccion1">
+       <property name="geometry">
+        <rect>
+         <x>60</x>
+         <y>10</y>
+         <width>420</width>
+         <height>20</height>
+        </rect>
+       </property>
+      </widget>
+     </widget>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <tabstops>
+  <tabstop>tabWidget</tabstop>
+  <tabstop>comboBox_region_zona</tabstop>
+  <tabstop>comboBox_seccion</tabstop>
+  <tabstop>lineEdit_nombre_subSeccion</tabstop>
+  <tabstop>dateEdit_fecha_desactivacion</tabstop>
+  <tabstop>checkBox_destacado</tabstop>
+  <tabstop>lineEdit_domicilio</tabstop>
+  <tabstop>lineEdit_numero_telefono</tabstop>
+  <tabstop>lineEdit_latitud</tabstop>
+  <tabstop>lineEdit_longitud</tabstop>
+  <tabstop>lineEdit_distancia</tabstop>
+  <tabstop>spinBox_orden</tabstop>
+  <tabstop>btnBuscarImagen</tabstop>
+  <tabstop>lineEdit_imagen</tabstop>
+  <tabstop>lineEdit_icono</tabstop>
+  <tabstop>btnBuscarFoto1</tabstop>
+  <tabstop>lineEdit_foto_1</tabstop>
+  <tabstop>btnBuscarFoto2</tabstop>
+  <tabstop>lineEdit_foto_2</tabstop>
+  <tabstop>btnBuscarFoto3</tabstop>
+  <tabstop>lineEdit_foto_3</tabstop>
+  <tabstop>btnBuscarFoto4</tabstop>
+  <tabstop>lineEdit_foto_4</tabstop>
+  <tabstop>lineEdit_itinerario</tabstop>
+  <tabstop>btnAgregar</tabstop>
+  <tabstop>btnEliminar</tabstop>
+  <tabstop>scrollArea</tabstop>
+  <tabstop>scrollArea_2</tabstop>
+  <tabstop>comboBox_seccion1</tabstop>
+  <tabstop>btnLimpiarFormulario</tabstop>
+  <tabstop>btnModificar</tabstop>
+  <tabstop>btnDesactivar</tabstop>
+  <tabstop>btnCerrar</tabstop>
+ </tabstops>
+ <resources/>
+ <connections/>
+</ui>
