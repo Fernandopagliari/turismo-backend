@@ -1,11 +1,28 @@
 # api.py
 from flask import Flask, jsonify, send_from_directory
 from flask_cors import CORS
-from database import conectar_base_datos
+from database import conectar_base_datos, inicializar_base_datos
 import os
 
 app = Flask(__name__)
 CORS(app)
+
+# =========================
+# INICIALIZACIÓN AUTOMÁTICA DE BASE DE DATOS
+# =========================
+print("=== INICIALIZANDO APLICACIÓN ===")
+print("[INIT] Verificando base de datos...")
+
+# Intentar conectar y crear tablas si no existen
+try:
+    if inicializar_base_datos():
+        print("[SUCCESS] Base de datos inicializada correctamente")
+    else:
+        print("[WARNING] No se pudo inicializar la base de datos")
+except Exception as e:
+    print(f"[ERROR] Error durante inicialización: {e}")
+
+print("=== APLICACIÓN INICIADA ===")
 
 # =========================
 # Configuración de directorio de assets - MODIFICADO
@@ -39,7 +56,7 @@ def url_completa(ruta_relativa: str) -> str:
     # Determinar la URL base según el entorno
     if os.environ.get('RAILWAY_ENVIRONMENT'):
         # En producción - usa tu dominio de Railway
-        base_url = os.environ.get('RAILWAY_STATIC_URL', 'https://tu-app.railway.app')
+        base_url = os.environ.get('RAILWAY_STATIC_URL', 'https://web-production-5456.up.railway.app')
     else:
         # En local
         base_url = 'http://localhost:5000'
@@ -84,6 +101,9 @@ def limpiar_columnas_absolutas(row: dict) -> dict:
 @app.route("/configuracion", methods=["GET"])
 def get_configuracion():
     conn = conectar_base_datos()
+    if not conn:
+        return jsonify({"error": "No se pudo conectar a la base de datos"}), 500
+        
     cursor = conn.cursor(dictionary=True)
     cursor.execute("""
         SELECT id_config, titulo_app, logo_app_ruta_relativa,
@@ -104,6 +124,9 @@ def get_configuracion():
 @app.route("/api/regiones_zonas", methods=["GET"])
 def get_regiones_zonas():
     conn = conectar_base_datos()
+    if not conn:
+        return jsonify({"error": "No se pudo conectar a la base de datos"}), 500
+        
     cursor = conn.cursor(dictionary=True)
     cursor.execute("""
         SELECT id_region_zona, nombre_region_zona, 
@@ -113,11 +136,17 @@ def get_regiones_zonas():
     """)
     regiones = cursor.fetchall()
     conn.close()
+    
+    # Aplicar limpieza de rutas
+    regiones = [limpiar_columnas_absolutas(region) for region in regiones]
     return jsonify(regiones)
 
 @app.route("/api/secciones", methods=["GET"])
 def get_secciones():
     conn = conectar_base_datos()
+    if not conn:
+        return jsonify({"error": "No se pudo conectar a la base de datos"}), 500
+        
     cursor = conn.cursor(dictionary=True)
     cursor.execute("""
         SELECT id_seccion, nombre_seccion,
@@ -169,6 +198,29 @@ def serve_assets(filename):
         return jsonify({"error": "Archivo no encontrado"}), 404
 
 # =========================
+# Endpoint para inicializar BD manualmente
+# =========================
+@app.route("/api/inicializar-bd", methods=["GET"])
+def inicializar_bd_manual():
+    """Endpoint para inicializar la base de datos manualmente"""
+    try:
+        if inicializar_base_datos():
+            return jsonify({
+                "status": "success", 
+                "message": "Base de datos inicializada correctamente"
+            })
+        else:
+            return jsonify({
+                "status": "error", 
+                "message": "Error al inicializar la base de datos"
+            }), 500
+    except Exception as e:
+        return jsonify({
+            "status": "error", 
+            "message": f"Error: {str(e)}"
+        }), 500
+
+# =========================
 # Health check para Railway - NUEVO
 # =========================
 @app.route("/")
@@ -176,7 +228,8 @@ def health_check():
     return jsonify({
         "status": "OK", 
         "message": "API funcionando correctamente",
-        "environment": "production" if os.environ.get('RAILWAY_ENVIRONMENT') else "development"
+        "environment": "production" if os.environ.get('RAILWAY_ENVIRONMENT') else "development",
+        "base_url": url_completa("") if os.environ.get('RAILWAY_ENVIRONMENT') else "http://localhost:5000"
     })
 
 # =========================
