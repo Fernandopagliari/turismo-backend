@@ -1,4 +1,4 @@
-# build_deploy.py
+# build_deploy.py - CON INTEGRACIÓN FLASK REACT
 import os
 import subprocess
 import sys
@@ -17,7 +17,7 @@ except ImportError:
     BD_DISPONIBLE = False
 
 class BuildDeployThread(QThread):
-    """Hilo para ejecutar build y deploy sin bloquear la UI"""
+    """Hilo para ejecutar build y deploy sin bloquear la UI - CON FLASK INTEGRADO"""
     log_signal = pyqtSignal(str)
     progress_signal = pyqtSignal(int)
     finished_signal = pyqtSignal(bool, str)
@@ -37,10 +37,37 @@ class BuildDeployThread(QThread):
         self.project_root = self.encontrar_project_root()
         self.dist_path = os.path.join(self.project_root, "dist") if self.project_root else None
         
+        # ✅ Ruta del backend Flask para integración
+        self.backend_path = self.encontrar_backend_path()
+        self.react_build_dest = os.path.join(self.backend_path, "react-build") if self.backend_path else None
+        
         # ✅ Encontrar npm y node
         self.npm_path = self.encontrar_npm()
         self.node_path = self.encontrar_node()
         
+    def encontrar_backend_path(self):
+        """Encontrar la ruta del backend Flask"""
+        # Buscar en diferentes ubicaciones posibles
+        posibles_backends = [
+            r"E:\Sistemas de app para androide\turismo-backend",
+            os.path.join(os.path.dirname(self.project_path), "turismo-backend"),
+            os.path.join(os.path.dirname(os.path.dirname(self.project_path)), "turismo-backend"),
+            os.path.join(os.path.expanduser("~"), "turismo-backend"),
+        ]
+        
+        for backend_path in posibles_backends:
+            if os.path.exists(backend_path):
+                # Verificar que tiene api.py (backend Flask)
+                api_py = os.path.join(backend_path, "api.py")
+                if os.path.exists(api_py):
+                    print(f"✅ Backend Flask encontrado en: {backend_path}")
+                    return backend_path
+                else:
+                    print(f"⚠️  Carpeta encontrada pero sin api.py: {backend_path}")
+        
+        print("❌ Backend Flask no encontrado")
+        return None
+    
     def encontrar_npm(self):
         """Encontrar la ruta de npm"""
         # Buscar npm en diferentes ubicaciones
@@ -99,7 +126,7 @@ class BuildDeployThread(QThread):
         
     def run(self):
         try:
-            self.log_signal.emit("🚀 INICIANDO PROCESO DE BUILD & DEPLOY")
+            self.log_signal.emit("🚀 INICIANDO PROCESO DE BUILD & DEPLOY CON FLASK")
             self.log_signal.emit("=" * 50)
             
             # Paso 1: Verificar que encontramos el proyecto
@@ -124,16 +151,22 @@ class BuildDeployThread(QThread):
                 
             self.log_signal.emit(f"✅ Node.js encontrado: {self.node_path}")
             self.log_signal.emit(f"✅ npm encontrado: {self.npm_path}")
+            
+            # Paso 3: Verificar backend Flask
+            if self.backend_path:
+                self.log_signal.emit(f"✅ Backend Flask encontrado: {self.backend_path}")
+            else:
+                self.log_signal.emit("⚠️  Backend Flask no encontrado - Solo generando build")
                 
-            # Paso 3: Navegar al directorio del proyecto
+            # Paso 4: Navegar al directorio del proyecto
             os.chdir(self.project_root)
             self.log_signal.emit(f"📁 Directorio de trabajo: {self.project_root}")
             
-            # Paso 4: Mostrar configuración de deploy
+            # Paso 5: Mostrar configuración de deploy
             if self.deploy_config:
                 self.log_signal.emit(f"🌐 Configuración de deploy: {self.deploy_config.get('base_url', 'No configurado')}")
             
-            # Paso 5: Instalar dependencias si es necesario
+            # Paso 6: Instalar dependencias si es necesario
             self.log_signal.emit("📦 Verificando dependencias...")
             self.progress_signal.emit(10)
             
@@ -145,7 +178,7 @@ class BuildDeployThread(QThread):
             
             self.progress_signal.emit(30)
             
-            # Paso 6: Ejecutar build
+            # Paso 7: Ejecutar build
             self.log_signal.emit("🔨 Ejecutando build...")
             if not self.ejecutar_build():
                 self.finished_signal.emit(False, "Error en el build")
@@ -153,7 +186,20 @@ class BuildDeployThread(QThread):
                 
             self.progress_signal.emit(70)
             
-            # Paso 7: Deploy (solo si hay configuración)
+            # ✅ PASO NUEVO: Copiar build a Flask
+            if self.backend_path and self.dist_path and os.path.exists(self.dist_path):
+                self.log_signal.emit("📦 Integrando con Flask...")
+                if self.copiar_build_a_flask():
+                    self.log_signal.emit("🎯 Frontend React integrado con backend Flask")
+                    self.progress_signal.emit(80)
+                else:
+                    self.log_signal.emit("⚠️  Build generado pero no integrado con Flask")
+                    self.progress_signal.emit(75)
+            else:
+                self.log_signal.emit("ℹ️  Build generado (sin integración Flask)")
+                self.progress_signal.emit(75)
+            
+            # Paso 8: Deploy (solo si hay configuración)
             if self.deploy_config and self.deploy_config.get('base_url'):
                 self.log_signal.emit("☁️ Realizando deploy...")
                 if not self.ejecutar_deploy():
@@ -163,10 +209,59 @@ class BuildDeployThread(QThread):
                 self.log_signal.emit("ℹ️  Solo build - No hay configuración de deploy")
                 
             self.progress_signal.emit(100)
-            self.finished_signal.emit(True, "✅ Build & Deploy completado exitosamente!")
+            
+            # Mensaje final según integración
+            if self.backend_path and os.path.exists(self.react_build_dest):
+                mensaje_final = "✅ Build & Deploy completado + Flask integrado!"
+            else:
+                mensaje_final = "✅ Build & Deploy completado!"
+                
+            self.finished_signal.emit(True, mensaje_final)
             
         except Exception as e:
             self.finished_signal.emit(False, f"❌ Error: {str(e)}")
+    
+    def copiar_build_a_flask(self):
+        """Copiar el build de React a la carpeta del backend Flask"""
+        try:
+            self.log_signal.emit(f"📦 Copiando build a Flask...")
+            self.log_signal.emit(f"📍 Origen: {self.dist_path}")
+            self.log_signal.emit(f"📍 Destino: {self.react_build_dest}")
+            
+            # Verificar que existe el build
+            if not os.path.exists(self.dist_path):
+                self.log_signal.emit("❌ No se encontró la carpeta dist del build")
+                return False
+            
+            # Limpiar destino anterior
+            if os.path.exists(self.react_build_dest):
+                shutil.rmtree(self.react_build_dest)
+                self.log_signal.emit("🗑️ Build anterior eliminado")
+            
+            # Copiar nuevo build
+            shutil.copytree(self.dist_path, self.react_build_dest)
+            self.log_signal.emit(f"✅ Build copiado a Flask")
+            
+            # Mostrar información del build copiado
+            if os.path.exists(self.react_build_dest):
+                tamaño = self.get_folder_size(self.react_build_dest)
+                self.log_signal.emit(f"📊 Tamaño del build en Flask: {tamaño}")
+                
+                # Verificar archivos críticos
+                archivos_criticos = ['index.html', 'assets/', 'static/']
+                archivos_existentes = os.listdir(self.react_build_dest)
+                
+                for critico in archivos_criticos:
+                    if critico.replace('/', '') in archivos_existentes:
+                        self.log_signal.emit(f"✅ {critico} encontrado")
+                    else:
+                        self.log_signal.emit(f"⚠️  {critico} no encontrado")
+            
+            return True
+            
+        except Exception as e:
+            self.log_signal.emit(f"❌ Error copiando build a Flask: {str(e)}")
+            return False
     
     def verificar_dependencias(self):
         """Verificar si node_modules existe"""
@@ -369,7 +464,7 @@ class BuildDeployThread(QThread):
             return ["Error listando archivos"]
 
 class DialogoBuildDeploy(QDialog):
-    """Diálogo para build y deploy automático"""
+    """Diálogo para build y deploy automático - CON FLASK INTEGRADO"""
     
     def __init__(self, parent=None, project_path=None):
         super().__init__(parent)
@@ -380,13 +475,13 @@ class DialogoBuildDeploy(QDialog):
         self.cargar_configuracion_desde_bd()
         
     def setup_ui(self):
-        self.setWindowTitle("🚀 Build & Deploy Automático")
+        self.setWindowTitle("🚀 Build & Deploy Automático + Flask")
         self.setFixedSize(700, 600)
         
         layout = QVBoxLayout()
         
         # Título
-        titulo = QLabel("Sistema Automático de Build & Deploy")
+        titulo = QLabel("Sistema Automático de Build & Deploy + Flask")
         titulo.setStyleSheet("font-size: 16px; font-weight: bold; color: #2c3e50; margin: 10px;")
         layout.addWidget(titulo)
         
@@ -397,10 +492,12 @@ class DialogoBuildDeploy(QDialog):
         self.lbl_proyecto = QLabel(f"📁 Proyecto: {self.project_path}")
         self.lbl_deploy = QLabel("🌐 Deploy: Cargando configuración...")
         self.lbl_url = QLabel("🔗 URL: Cargando...")
+        self.lbl_flask = QLabel("🐍 Flask: Verificando...")
         
         info_layout.addWidget(self.lbl_proyecto)
         info_layout.addWidget(self.lbl_deploy)
         info_layout.addWidget(self.lbl_url)
+        info_layout.addWidget(self.lbl_flask)
         
         info_group.setLayout(info_layout)
         layout.addWidget(info_group)
@@ -473,6 +570,28 @@ class DialogoBuildDeploy(QDialog):
         
         # Thread
         self.build_thread = None
+        
+        # Verificar Flask inicialmente
+        self.verificar_flask_inicial()
+    
+    def verificar_flask_inicial(self):
+        """Verificar estado de Flask al iniciar"""
+        try:
+            # Simular la búsqueda de Flask como lo hace el thread
+            posibles_backends = [
+                r"E:\Sistemas de app para androide\turismo-backend",
+                os.path.join(os.path.dirname(self.project_path), "turismo-backend"),
+            ]
+            
+            for backend_path in posibles_backends:
+                if os.path.exists(backend_path) and os.path.exists(os.path.join(backend_path, "api.py")):
+                    self.lbl_flask.setText(f"🐍 Flask: ✅ CONECTADO - {os.path.basename(backend_path)}")
+                    return
+            
+            self.lbl_flask.setText("🐍 Flask: ❌ NO ENCONTRADO")
+            
+        except Exception as e:
+            self.lbl_flask.setText(f"🐍 Flask: ⚠️ ERROR - {str(e)}")
     
     def cargar_configuracion_desde_bd(self):
         """Cargar configuración de deploy desde la base de datos"""
@@ -547,6 +666,9 @@ class DialogoBuildDeploy(QDialog):
         
         # Mostrar mensaje final
         self.log(mensaje)
+        
+        # Actualizar estado de Flask
+        self.verificar_flask_inicial()
         
         if exito:
             QMessageBox.information(self, "✅ Éxito", mensaje)

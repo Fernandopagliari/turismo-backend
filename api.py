@@ -1,12 +1,24 @@
-# api.py - VERSIÓN COMPLETAMENTE DINÁMICA PARA CUALQUIER SERVIDOR - CORREGIDO
+# api.py - VERSIÓN CON FRONTEND REACT INTEGRADO
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 import mysql.connector
 from mysql.connector import Error
 import os
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder=None)  # Deshabilitar static folder por defecto
 CORS(app)
+
+# =========================
+# Configuración FRONTEND REACT
+# =========================
+REACT_BUILD_PATH = os.path.join(os.path.dirname(__file__), 'react-build')
+
+def verificar_frontend_react():
+    """Verificar si el frontend React está disponible"""
+    index_path = os.path.join(REACT_BUILD_PATH, 'index.html')
+    existe = os.path.exists(index_path)
+    print(f"🔍 Frontend React: {'✅ DISPONIBLE' if existe else '❌ NO ENCONTRADO'}")
+    return existe
 
 # =========================
 # Configuración DINÁMICA
@@ -46,16 +58,24 @@ INICIALIZADO = False
 # Funciones utilitarias
 # =========================
 def inicializar_servidor():
-    """Inicializa el servidor - VERSIÓN DINÁMICA"""
+    """Inicializa el servidor - VERSIÓN CON REACT"""
     global INICIALIZADO
     
     if INICIALIZADO:
         return
     
-    print("🚀 INICIANDO SERVIDOR API - VERSIÓN UNIVERSAL")
+    print("🚀 INICIANDO SERVIDOR API - CON FRONTEND REACT")
     print(f"🌐 Host BD: {os.environ.get('MYSQLHOST', 'No configurado')}")
     print(f"👤 Usuario BD: {os.environ.get('MYSQLUSER', 'No configurado')}")
     print(f"🗄️  Base de datos: {os.environ.get('MYSQLDATABASE', 'No configurado')}")
+    
+    # Verificar frontend React
+    frontend_activo = verificar_frontend_react()
+    if frontend_activo:
+        print("🎯 Frontend React integrado y listo")
+    else:
+        print("⚠️  Frontend React no encontrado - Solo APIs disponibles")
+    
     INICIALIZADO = True
 
 def conectar_base_datos():
@@ -157,34 +177,53 @@ def antes_de_peticion():
         inicializar_servidor()
 
 # =========================
+# SERVIR FRONTEND REACT
+# =========================
+@app.route("/")
+def servir_frontend():
+    """Servir el frontend React principal"""
+    try:
+        return send_from_directory(REACT_BUILD_PATH, 'index.html')
+    except Exception as e:
+        # Si no hay frontend, mostrar info de APIs
+        return jsonify({
+            "mensaje": "Backend API funcionando - Frontend no configurado",
+            "status": "api_activa",
+            "endpoints_disponibles": [
+                "/api/info-servidor",
+                "/api/configuracion", 
+                "/api/regiones",
+                "/api/usuarios",
+                "/api/secciones",
+                "/api/subsecciones"
+            ],
+            "frontend": "no_encontrado"
+        })
+
+@app.route("/<path:path>")
+def servir_react(path):
+    """Servir archivos estáticos del React build"""
+    try:
+        # Si es un archivo que existe en el build, servirlo
+        if os.path.exists(os.path.join(REACT_BUILD_PATH, path)):
+            return send_from_directory(REACT_BUILD_PATH, path)
+        else:
+            # Para React Router - siempre servir index.html
+            return send_from_directory(REACT_BUILD_PATH, 'index.html')
+    except Exception:
+        # Fallback a index.html
+        return send_from_directory(REACT_BUILD_PATH, 'index.html')
+
+# =========================
 # Endpoints PRINCIPALES
 # =========================
-@app.route("/", methods=["GET"])
-def health_check():
-    """Endpoint principal de verificación"""
-    base_url = obtener_base_url()
-    return jsonify({
-        "status": "ok",
-        "mensaje": "Servidor API funcionando correctamente",
-        "base_url": base_url,
-        "entorno": "producción",
-        "servidor": "universal",
-        "endpoints_disponibles": [
-            "/api/info-servidor",
-            "/api/configuracion", 
-            "/api/regiones",
-            "/api/usuarios",
-            "/api/secciones",
-            "/api/subsecciones"
-        ]
-    })
-
 @app.route("/api/info-servidor", methods=["GET"])
 def get_info_servidor():
     """Información completa del servidor"""
     try:
         base_url = obtener_base_url()
         estado_conexion = verificar_conexion_remota()
+        frontend_activo = verificar_frontend_react()
         
         return jsonify({
             "base_url": base_url,
@@ -192,6 +231,7 @@ def get_info_servidor():
             "mensaje": "API funcionando correctamente",
             "entorno": "producción",
             "conexion_bd": bool(estado_conexion),
+            "frontend_react": frontend_activo,
             "detalles_tablas": estado_conexion,
             "configuracion_bd": {
                 "host": os.environ.get('MYSQLHOST', 'No configurado'),
@@ -206,7 +246,7 @@ def get_info_servidor():
         }), 500
 
 # =========================
-# Endpoints de DATOS
+# Endpoints de DATOS (se mantienen igual)
 # =========================
 @app.route("/api/configuracion", methods=["GET"])
 def get_configuracion():
@@ -324,19 +364,26 @@ def serve_assets(filename):
 # =========================
 @app.errorhandler(404)
 def not_found(error):
-    return jsonify({
-        "error": "Endpoint no encontrado",
-        "mensaje": "La ruta solicitada no existe",
-        "endpoints_disponibles": [
-            "/",
-            "/api/info-servidor",
-            "/api/configuracion", 
-            "/api/regiones",
-            "/api/usuarios",
-            "/api/secciones",
-            "/api/subsecciones"
-        ]
-    }), 404
+    # Si es una ruta de API, mostrar error JSON
+    if request.path.startswith('/api/'):
+        return jsonify({
+            "error": "Endpoint no encontrado",
+            "mensaje": "La ruta API solicitada no existe",
+            "endpoints_disponibles": [
+                "/api/info-servidor",
+                "/api/configuracion", 
+                "/api/regiones",
+                "/api/usuarios",
+                "/api/secciones",
+                "/api/subsecciones"
+            ]
+        }), 404
+    else:
+        # Para rutas del frontend, servir index.html (React Router)
+        try:
+            return send_from_directory(REACT_BUILD_PATH, 'index.html')
+        except:
+            return jsonify({"error": "Frontend no disponible"}), 404
 
 @app.errorhandler(500)
 def internal_error(error):
