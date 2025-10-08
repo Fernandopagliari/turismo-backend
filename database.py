@@ -1,79 +1,153 @@
-# database.py - VERSIÓN PARA RAILWAY
+# -*- coding: utf-8 -*-
 import os
+import sys
+import time
 import mysql.connector
 from mysql.connector import Error
+from PyQt5.QtWidgets import QMessageBox, QApplication, QProgressDialog, QInputDialog
+import socket
+import configparser
 
-def conectar_base_datos():
-    """
-    Conexión simplificada para Railway - usa variables de entorno
-    """
+# Detecta la ruta correcta incluso dentro del .exe
+def resource_path(relative_path):
+    if hasattr(sys, "_MEIPASS"):
+        return os.path.join(sys._MEIPASS, relative_path)
+    return os.path.join(os.path.abspath("."), relative_path)
+
+CONFIG_FILE = resource_path("config.ini")
+
+# ---------------- CONFIGURACIÓN ----------------
+def cargar_config():
+    config = configparser.ConfigParser()
+    if os.path.exists(CONFIG_FILE):
+        config.read(CONFIG_FILE)
+        if "mysql" in config:
+            return config["mysql"]
+    return None
+
+def guardar_config(host, user, password, database, port=3306):
+    config = configparser.ConfigParser()
+    config["mysql"] = {
+        "host": host,
+        "user": user,
+        "password": password,
+        "database": database,
+        "port": str(port)
+    }
+    with open(CONFIG_FILE, "w") as f:
+        config.write(f)
+
+# ---------------- CONEXIÓN ----------------
+def conectar_base_datos(parent=None):
     try:
-        # Railway provee estas variables automáticamente
-        host = os.environ.get('MYSQLHOST', 'localhost')
-        user = os.environ.get('MYSQLUSER', 'root')
-        password = os.environ.get('MYSQLPASSWORD', '')
-        database = os.environ.get('MYSQLDATABASE', 'railway')  # ¡CAMBIADO A 'railway'!
-        port = int(os.environ.get('MYSQLPORT', '3306'))
+        datos = cargar_config()
+        if datos:
+            host = datos.get("host", "localhost")
+            user = datos.get("user", "root")
+            password = datos.get("password", "")
+            database = datos.get("database", "databaseapp")
+            port = int(datos.get("port", 3306))
+        else:
+            port = 3306
+            database = "databaseapp"
+            server_user = "root"
+            server_password = "Perroponce@4472801"
+            client_user = "usuario_remoto"
+            client_password = "usuario123"
 
-        print(f"[DEBUG] Conectando a MySQL: {host}:{port}")
-        
+            host = "localhost"
+            user = server_user
+            password = server_password
+
+            if socket.gethostname().lower() != "notebook":
+                host = "192.168.0.104"
+                user = client_user
+                password = client_password
+
         conexion = mysql.connector.connect(
             host=host,
             user=user,
             password=password,
             database=database,
-            port=port,
-            connect_timeout=30
+            port=port
         )
-        
-        if conexion.is_connected():
-            print("[SUCCESS] Conexión a MySQL exitosa")
-            return conexion
-            
-    except Error as e:
-        print(f"[ERROR] No se pudo conectar a MySQL: {e}")
-        return None
+        if conexion.is_connected() and not datos:
+            guardar_config(host, user, password, database, port)
+        return conexion
 
+    except Error:
+        # Solicitar datos manuales si falla la conexión automática
+        if parent is None:
+            parent = QApplication.activeWindow()
+        QMessageBox.warning(parent, "Conexión Fallida",
+                            "No se pudo conectar automáticamente. Se solicitarán los datos manualmente.")
+
+        host, ok1 = QInputDialog.getText(parent, "Host", "Ingrese host de MySQL:", text="localhost")
+        if not ok1: return None
+        user, ok2 = QInputDialog.getText(parent, "Usuario", "Ingrese usuario:", text="root")
+        if not ok2: return None
+        password, ok3 = QInputDialog.getText(parent, "Contraseña", "Ingrese contraseña:", text="")
+        if not ok3: return None
+        database, ok4 = QInputDialog.getText(parent, "Base de datos", "Ingrese nombre de la base de datos:", text="databaseapp")
+        if not ok4: return None
+
+        try:
+            conexion = mysql.connector.connect(
+                host=host, user=user, password=password, database=database, port=3306
+            )
+            if conexion.is_connected():
+                guardar_config(host, user, password, database, 3306)
+                return conexion
+        except Error as e2:
+            QMessageBox.critical(parent, "Error de Conexión",
+                                 f"No se pudo conectar a la base de datos con los datos ingresados:\n{e2}")
+            return None
+
+# ---------------- CERRAR ----------------
 def cerrar_conexion(conexion):
     if conexion and conexion.is_connected():
         conexion.close()
 
-# ---------------- INICIALIZACIÓN SIMPLIFICADA ----------------
-def inicializar_base_datos():
-    """Versión simplificada sin PyQt5 para Railway"""
-    conexion = conectar_base_datos()
+# ---------------- INICIALIZACIÓN OPTIMIZADA ----------------
+def inicializar_base_datos(parent=None):
+    conexion = conectar_base_datos(parent)
     if not conexion:
         print("[ERROR] No se pudo conectar a la base de datos.")
-        return False
+        return
+
+    pasos = [
+        ("Creando tabla usuarios...", crear_tabla_usuarios),
+        ("Creando tabla configuraciones...", crear_tabla_configuraciones),
+        ("Creando tabla secciones...", crear_tabla_secciones),
+        ("Creando tabla sub_secciones...", crear_tabla_sub_secciones),
+        ("Creando tabla licencia...", crear_tabla_licencia),
+        ("Insertando usuarios iniciales...", insert_initial_users),
+    ]
+
+    progreso = QProgressDialog("Inicializando base de datos...", "Cancelar", 0, len(pasos), parent)
+    progreso.setWindowTitle("Inicialización")
+    progreso.setMinimumDuration(2000)
+    progreso.setValue(0)
+    progreso.setAutoClose(True)
+    progreso.setAutoReset(True)
 
     try:
-        print("Inicializando base de datos...")
-        
-        # Solo las tablas esenciales
-        funciones = [
-            crear_tabla_configuraciones,
-            crear_tabla_regiones_zona, 
-            crear_tabla_secciones,
-            crear_tabla_sub_secciones,
-            insert_initial_users
-        ]
-        
-        for funcion in funciones:
+        for i, (mensaje, funcion) in enumerate(pasos, start=1):
+            if progreso.wasCanceled():
+                break
+            progreso.setLabelText(mensaje)
+            QApplication.processEvents()
             try:
                 funcion(conexion)
-                print(f"[OK] {funcion.__name__} completada")
             except Exception as e:
-                print(f"[ERROR] en {funcion.__name__}: {e}")
-        
-        return True
-        
-    except Exception as e:
-        print(f"[ERROR] Error durante inicialización: {e}")
-        return False
+                print(f"[ERROR] {mensaje}: {e}")
+            progreso.setValue(i)
+            QApplication.processEvents()
+            time.sleep(0.2)
     finally:
         cerrar_conexion(conexion)
 
-# ---------------- TABLAS (MANTENER IGUAL) ----------------
+# ---------------- TABLAS ----------------
 def crear_tabla_usuarios(conexion):
     cursor = conexion.cursor()
     try:
@@ -125,7 +199,6 @@ def crear_tabla_configuraciones(conexion):
             )ENGINE=InnoDB;
         """)
         conexion.commit()
-        print("[OK] Tabla configuracion_app creada/verificada")
     except Exception as e:
         print(f"Error al crear la tabla 'configuracion_app': {e}")
     finally:
@@ -144,7 +217,6 @@ def crear_tabla_regiones_zona(conexion):
         ) ENGINE=InnoDB;
         """)
         conexion.commit()
-        print("[OK] Tabla regiones_zonas creada/verificada")
     except Exception as e:
         print(f"Error al crear la tabla 'regiones_zona': {e}")
     finally:
@@ -163,7 +235,6 @@ def crear_tabla_secciones(conexion):
             ) ENGINE=InnoDB;
         """)
         conexion.commit()
-        print("[OK] Tabla secciones creada/verificada")
     except Exception as e:
         print(f"Error al crear la tabla 'secciones': {e}")
     finally:
@@ -205,7 +276,6 @@ def crear_tabla_sub_secciones(conexion):
             ) ENGINE=InnoDB;
         """)
         conexion.commit()
-        print("[OK] Tabla sub_secciones creada/verificada")
     except Exception as e:
         print(f"Error al crear la tabla 'sub_secciones': {e}")
     finally:
@@ -225,7 +295,6 @@ def crear_tabla_licencia(conexion):
             ) ENGINE=InnoDB;
         """)
         conexion.commit()
-        print("[OK] Tabla licencia creada/verificada")
     except Exception as e:
         print(f"Error al crear la tabla 'licencia': {e}")
     finally:
@@ -246,5 +315,4 @@ def insert_initial_users(conexion):
             ("Usuario Prueba", "visor", "usuario@turismo.com", "usuario123", "visor", 1),
         ])
         conexion.commit()
-        print("[OK] Usuarios iniciales insertados")
     cursor.close()

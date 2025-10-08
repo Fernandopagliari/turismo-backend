@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # src/backend/licencia.py
 from datetime import datetime, timedelta
-from database import conectar_base_datos
+from database_local import conectar_local  # ← CAMBIADO: usar conexión local
 from hardware_id import obtener_hardware_id
 from seguridad import fernet  # ✅ usamos el fernet central
 import bcrypt
@@ -14,7 +14,7 @@ class LicenciaManager:
         self.crear_tabla()
 
     def crear_tabla(self):
-        cn = conectar_base_datos()
+        cn = conectar_local()  # ← CAMBIADO: conectar a DB local
         if not cn:
             return
         cur = cn.cursor()
@@ -33,9 +33,9 @@ class LicenciaManager:
         cn.close()
 
     def activar_licencia(self, serial, clave=None, fecha_exp_manual=None, dias_validez=365, hardware_id=None):
-        cn = conectar_base_datos()
+        cn = conectar_local()  # ← CAMBIADO: conectar a DB local
         if not cn:
-            return False, "No se pudo conectar a la base de datos."
+            return False, "No se pudo conectar a la base de datos local."
 
         cur = cn.cursor()
         fecha_activacion = datetime.now().strftime("%Y-%m-%d")
@@ -69,9 +69,9 @@ class LicenciaManager:
         return True, f"Licencia activada hasta {fecha_exp}"
 
     def validar_licencia(self):
-        cn = conectar_base_datos()
+        cn = conectar_local()  # ← CAMBIADO: conectar a DB local
         if not cn:
-            return False, "No se pudo conectar a la base de datos."
+            return False, "No se pudo conectar a la base de datos local."
 
         cur = cn.cursor()
         cur.execute("SELECT serial, clave, fecha_expiracion, hardware_id FROM licencia LIMIT 1")
@@ -115,9 +115,9 @@ class LicenciaManager:
         if fecha_dt <= datetime.now().date():
             return False, "La nueva fecha debe ser posterior a hoy."
 
-        cn = conectar_base_datos()
+        cn = conectar_local()  # ← CAMBIADO: conectar a DB local
         if not cn:
-            return False, "No se pudo conectar a la base de datos."
+            return False, "No se pudo conectar a la base de datos local."
 
         cur = cn.cursor()
         cur.execute("SELECT hardware_id FROM licencia WHERE serial=%s", (serial,))

@@ -1,11 +1,23 @@
 # -*- coding: utf-8 -*-
+import base64
+import os
 from PyQt5 import uic
-from database import conectar_base_datos
+from database_hosting import conectar_hosting as conectar_base_datos
 from PyQt5.QtWidgets import QFileDialog, QTableWidgetItem, QApplication, QWidget, QMessageBox, QLabel
 from PyQt5.QtGui import QIcon, QPixmap, QPainter, QBrush, QPen, QColor, QPainterPath
 from PyQt5.QtCore import Qt
 import os
 
+def imagen_a_base64(ruta_imagen):
+    """Convierte imagen a Base64 para guardar en BD"""
+    try:
+        with open(ruta_imagen, "rb") as file:
+            image_data = file.read()
+            base64_encoded = base64.b64encode(image_data).decode('utf-8')
+            return f"data:image/jpeg;base64,{base64_encoded}"
+    except Exception as e:
+        print(f"Error procesando imagen: {e}")
+        return None
 
 
 class VentanaConfiguracion(QWidget):
@@ -257,35 +269,40 @@ class VentanaConfiguracion(QWidget):
         youtube = self.lineEdit_direccion_youtube.text().strip()
         correo = self.lineEdit_direccion_correo.text().strip()
 
-
         if not titulo or not logo or not icono_abrir or not icono_cerrar or not hero_titulo or not footer:
             QMessageBox.warning(self, "Campos obligatorios", "Debes completar todos los campos requeridos.")
             return
 
-        # --- Crear rutas relativas dinámicas ---
+        # --- CONVERTIR IMÁGENES A BASE64 ---
+        logo_base64 = imagen_a_base64(logo) if logo and os.path.exists(logo) else None
+        icono_abrir_base64 = imagen_a_base64(icono_abrir) if icono_abrir and os.path.exists(icono_abrir) else None
+        icono_cerrar_base64 = imagen_a_base64(icono_cerrar) if icono_cerrar and os.path.exists(icono_cerrar) else None
+        hero_img_base64 = imagen_a_base64(hero_img) if hero_img and os.path.exists(hero_img) else None
+
+        # --- Rutas relativas (mantener por compatibilidad) ---
         ruta_base = os.path.abspath(os.path.join(os.getcwd(), "public"))
-        logo_rel = "/" + os.path.relpath(logo, ruta_base).replace("\\", "/")
-        icono_abrir_rel = "/" + os.path.relpath(icono_abrir, ruta_base).replace("\\", "/")
-        icono_cerrar_rel = "/" + os.path.relpath(icono_cerrar, ruta_base).replace("\\", "/")
-        hero_img_rel = "/" + os.path.relpath(hero_img, ruta_base).replace("\\", "/")
+        logo_rel = "/" + os.path.relpath(logo, ruta_base).replace("\\", "/") if logo else ""
+        icono_abrir_rel = "/" + os.path.relpath(icono_abrir, ruta_base).replace("\\", "/") if icono_abrir else ""
+        icono_cerrar_rel = "/" + os.path.relpath(icono_cerrar, ruta_base).replace("\\", "/") if icono_cerrar else ""
+        hero_img_rel = "/" + os.path.relpath(hero_img, ruta_base).replace("\\", "/") if hero_img else ""
 
         try:
             conexion = conectar_base_datos()
             cursor = conexion.cursor()
             cursor.execute("""
                 INSERT INTO configuracion_app 
-                (titulo_app, logo_app, logo_app_ruta_relativa,
-                icono_hamburguesa, icono_hamburguesa_ruta_relativa,
-                icono_cerrar, icono_cerrar_ruta_relativa,
-                hero_titulo, hero_imagen, hero_imagen_ruta_relativa,
+                (titulo_app, logo_app, logo_app_ruta_relativa, logo_base64,
+                icono_hamburguesa, icono_hamburguesa_ruta_relativa, icono_hamburguesa_base64,
+                icono_cerrar, icono_cerrar_ruta_relativa, icono_cerrar_base64,
+                hero_titulo, hero_imagen, hero_imagen_ruta_relativa, hero_imagen_base64,
                 footer_texto, direccion_facebook, direccion_instagram,
                 direccion_twitter, direccion_youtube, correo_electronico, habilitar)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1)
             """, (
-                titulo, logo, logo_rel,
-                icono_abrir, icono_abrir_rel,
-                icono_cerrar, icono_cerrar_rel,
-                hero_titulo, hero_img, hero_img_rel,
+                titulo, logo, logo_rel, logo_base64,
+                icono_abrir, icono_abrir_rel, icono_abrir_base64,
+                icono_cerrar, icono_cerrar_rel, icono_cerrar_base64,
+                hero_titulo, hero_img, hero_img_rel, hero_img_base64,
                 footer, facebook, instagram, twitter, youtube, correo
             ))
             conexion.commit()
@@ -298,18 +315,28 @@ class VentanaConfiguracion(QWidget):
         except Exception as e:
             QMessageBox.critical(self, "Error", f"No se pudo agregar configuración:\n{str(e)}")
 
-
     def modificar_configuracion(self):
         if not hasattr(self, 'config_seleccionada_id') or not self.config_seleccionada_id:
             QMessageBox.warning(self, "Modificar", "Seleccione una configuración para modificar.")
             return
 
+        # --- CONVERTIR IMÁGENES A BASE64 ---
+        logo = self.lineEdit_logo_app.text().strip()
+        icono_abrir = self.lineEdit_icono_abrir.text().strip()
+        icono_cerrar = self.lineEdit_icono_cerrar.text().strip()
+        hero_img = self.lineEdit_hero_imagen.text().strip()
+        
+        logo_base64 = imagen_a_base64(logo) if logo and os.path.exists(logo) else None
+        icono_abrir_base64 = imagen_a_base64(icono_abrir) if icono_abrir and os.path.exists(icono_abrir) else None
+        icono_cerrar_base64 = imagen_a_base64(icono_cerrar) if icono_cerrar and os.path.exists(icono_cerrar) else None
+        hero_img_base64 = imagen_a_base64(hero_img) if hero_img and os.path.exists(hero_img) else None
+
         # --- Crear rutas relativas dinámicas desde la carpeta 'public' ---
         ruta_base = os.path.abspath(os.path.join(os.getcwd(), "public"))
-        logo_rel = "/" + os.path.relpath(self.lineEdit_logo_app.text(), ruta_base).replace("\\", "/")
-        icono_abrir_rel = "/" + os.path.relpath(self.lineEdit_icono_abrir.text(), ruta_base).replace("\\", "/")
-        icono_cerrar_rel = "/" + os.path.relpath(self.lineEdit_icono_cerrar.text(), ruta_base).replace("\\", "/")
-        hero_img_rel = "/" + os.path.relpath(self.lineEdit_hero_imagen.text(), ruta_base).replace("\\", "/")
+        logo_rel = "/" + os.path.relpath(logo, ruta_base).replace("\\", "/") if logo else ""
+        icono_abrir_rel = "/" + os.path.relpath(icono_abrir, ruta_base).replace("\\", "/") if icono_abrir else ""
+        icono_cerrar_rel = "/" + os.path.relpath(icono_cerrar, ruta_base).replace("\\", "/") if icono_cerrar else ""
+        hero_img_rel = "/" + os.path.relpath(hero_img, ruta_base).replace("\\", "/") if hero_img else ""
 
         try:
             conexion = conectar_base_datos()
@@ -317,10 +344,10 @@ class VentanaConfiguracion(QWidget):
             cursor.execute("""
                 UPDATE configuracion_app
                 SET titulo_app=%s,
-                    logo_app=%s, logo_app_ruta_relativa=%s,
-                    icono_hamburguesa=%s, icono_hamburguesa_ruta_relativa=%s,
-                    icono_cerrar=%s, icono_cerrar_ruta_relativa=%s,
-                    hero_titulo=%s, hero_imagen=%s, hero_imagen_ruta_relativa=%s,
+                    logo_app=%s, logo_app_ruta_relativa=%s, logo_base64=%s,
+                    icono_hamburguesa=%s, icono_hamburguesa_ruta_relativa=%s, icono_hamburguesa_base64=%s,
+                    icono_cerrar=%s, icono_cerrar_ruta_relativa=%s, icono_cerrar_base64=%s,
+                    hero_titulo=%s, hero_imagen=%s, hero_imagen_ruta_relativa=%s, hero_imagen_base64=%s,
                     footer_texto=%s,
                     direccion_facebook=%s,
                     direccion_instagram=%s,
@@ -330,11 +357,11 @@ class VentanaConfiguracion(QWidget):
                 WHERE id_config=%s
             """, (
                 self.lineEdit_titulo_app.text(),
-                self.lineEdit_logo_app.text(), logo_rel,
-                self.lineEdit_icono_abrir.text(), icono_abrir_rel,
-                self.lineEdit_icono_cerrar.text(), icono_cerrar_rel,
+                logo, logo_rel, logo_base64,
+                icono_abrir, icono_abrir_rel, icono_abrir_base64,
+                icono_cerrar, icono_cerrar_rel, icono_cerrar_base64,
                 self.lineEdit_hero_titulo.text(),
-                self.lineEdit_hero_imagen.text(), hero_img_rel,
+                hero_img, hero_img_rel, hero_img_base64,
                 self.lineEdit_footer_texto.text(),
                 self.lineEdit_direccion_facebook.text(),
                 self.lineEdit_direccion_instagram.text(),
@@ -352,7 +379,6 @@ class VentanaConfiguracion(QWidget):
 
         except Exception as e:
             QMessageBox.critical(self, "Error", f"No se pudo modificar configuración:\n{str(e)}")
-
     def desactivar_configuracion(self):
         if not hasattr(self, 'config_seleccionada_id') or not self.config_seleccionada_id:
             QMessageBox.warning(self, "Desactivar", "Seleccione una configuración para desactivar.")
@@ -453,9 +479,9 @@ class VentanaConfiguracion(QWidget):
             cursor = conexion.cursor()
             cursor.execute("""
                 UPDATE configuracion_app
-                SET logo_app=%s, logo_app_ruta_relativa=%s
+                SET logo_app=%s, logo_app_ruta_relativa=%s, logo_base64=%s
                 WHERE id_config=%s
-            """, (ruta_absoluta, ruta_relativa, self.config_seleccionada_id))
+            """, (ruta_absoluta, ruta_relativa, imagen_a_base64(ruta_absoluta), self.config_seleccionada_id))
             conexion.commit()
             conexion.close()
 
@@ -482,9 +508,9 @@ class VentanaConfiguracion(QWidget):
             cursor = conexion.cursor()
             cursor.execute("""
                 UPDATE configuracion_app
-                SET icono_hamburguesa=%s, icono_hamburguesa_ruta_relativa=%s
+                SET logo_app=%s, logo_app_ruta_relativa=%s, logo_base64=%s
                 WHERE id_config=%s
-            """, (ruta_absoluta, ruta_relativa, self.config_seleccionada_id))
+            """, (ruta_absoluta, ruta_relativa, imagen_a_base64(ruta_absoluta), self.config_seleccionada_id))
             conexion.commit()
             conexion.close()
 

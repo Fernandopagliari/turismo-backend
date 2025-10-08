@@ -6,12 +6,17 @@ from PyQt5 import uic
 from PyQt5.QtGui import QIcon, QPixmap, QPainter, QBrush
 from PyQt5.QtCore import Qt, QPropertyAnimation, QEasingCurve, QPoint, QSize
 
-from database import conectar_base_datos
+# ✅ CAMBIADO: Importar la función correcta
+#from database_local import conectar_local as conectar_base_datos
+from database_hosting import conectar_hosting as conectar_base_datos # ← Para cuando necesites conectar al hosting
+
 from app_usuarios import VentanaUsuarios
 from app_secciones import VentanaSecciones
 from app_sub_secciones import VentanaSubSecciones
 from app_configuracion import VentanaConfiguracion
 from app_regiones_zonas import VentanaRegionesZonas
+from build_deploy import DialogoBuildDeploy
+from backend_deploy import DialogoBackendDeploy
 
 
 class VentanaPrincipal(QMainWindow):
@@ -304,6 +309,8 @@ class VentanaPrincipal(QMainWindow):
             print("Error asignando icono menú:", e)
 
         try:
+            self.btnBackendDeploy.setVisible(False)
+            self.btnBuildDeploy.setVisible(False)
             self.btnConfiguracion.setVisible(False)
             self.btnUsuarios.setVisible(False)
             self.btnRegionesZonas.setVisible(False)            
@@ -325,6 +332,8 @@ class VentanaPrincipal(QMainWindow):
             self.btnSecciones.clicked.connect(self.abrir_gestion_secciones)
             self.btnSubSecciones.clicked.connect(self.abrir_gestion_sub_secciones)
             self.btnConfiguracion.clicked.connect(self.abrir_gestion_configuracion)
+            self.btnBuildDeploy.clicked.connect(self.abrir_gestion_buildDeploy)
+            self.btnBackendDeploy.clicked.connect(self.abrir_gestion_backendDeploy)
         except Exception as e:
             print("Error conectando botones:", e)
 
@@ -615,6 +624,8 @@ class VentanaPrincipal(QMainWindow):
             self.btnGestionCargas.setVisible(False)
             self.btnUsuarios.setVisible(False)
             self.btnConfiguracion.setVisible(False)
+            self.btnBuildDeploy.setVisible(False)
+            self.btnBackendDeploy.setVisible(False)
         except Exception:
             pass
 
@@ -625,6 +636,8 @@ class VentanaPrincipal(QMainWindow):
         self.btnSecciones.setVisible(mostrar)
         self.btnSubSecciones.setVisible(mostrar)
         self.btnConfiguracion.setVisible(mostrar)
+        self.btnBuildDeploy.setVisible(mostrar)
+        self.btnBackendDeploy.setVisible(mostrar)
 
     def cerrar_menu_lateral(self):
         try:
@@ -664,7 +677,16 @@ class VentanaPrincipal(QMainWindow):
         self.ventana_configuracion = VentanaConfiguracion(parent=self)
         self.ventana_configuracion.show()
 
-
+    def abrir_gestion_buildDeploy(self):
+        self.cerrar_menu_lateral()
+        self.ventana_buildDeploy = DialogoBuildDeploy(parent=self)
+        self.ventana_buildDeploy.show()
+        
+    def abrir_gestion_backendDeploy(self):
+        self.cerrar_menu_lateral()
+        self.ventana_backendDeploy = DialogoBackendDeploy(parent=self)
+        self.ventana_backendDeploy.show()
+        
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     ventana = VentanaPrincipal()

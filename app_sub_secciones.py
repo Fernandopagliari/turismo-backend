@@ -8,7 +8,7 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtGui import QIcon, QPixmap, QPainter, QBrush, QPen, QColor, QPainterPath
 from PyQt5.QtCore import Qt, QDate
-from database import conectar_base_datos
+from database_hosting import conectar_hosting as conectar_base_datos
 from datetime import date, datetime
 import os
 

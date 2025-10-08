@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from PyQt5 import uic
-from database import conectar_base_datos, cerrar_conexion
+from database_hosting import conectar_hosting as conectar_base_datos, cerrar_conexion
 from PyQt5.QtWidgets import QFileDialog, QTableWidgetItem, QApplication, QWidget, QMessageBox
 from PyQt5.QtGui import QPixmap, QPainter, QPainterPath
 from PyQt5.QtCore import Qt, QRectF

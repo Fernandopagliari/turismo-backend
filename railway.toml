@@ -1,0 +1,9 @@
+[build]
+builder = "nixpacks"
+
+[deploy]
+startCommand = "python api.py"
+
+[[services]]
+name = "web"
+type = "web"

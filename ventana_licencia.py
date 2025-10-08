@@ -5,7 +5,7 @@ import os
 from datetime import datetime, timedelta
 from licencia import LicenciaManager
 from hardware_id import obtener_hardware_id
-from database import conectar_base_datos   # 🔹 Conexión centralizada a MySQL
+from database_local import conectar_local  # ← CAMBIADO: usar conexión local
 
 
 class VentanaLicencia(QDialog):
@@ -46,9 +46,9 @@ class VentanaLicencia(QDialog):
 
     def configurar_modo(self):
         """Configura la ventana dependiendo si es activación o extensión."""
-        conexion = conectar_base_datos()
+        conexion = conectar_local()  # ← CAMBIADO: conectar a DB local
         if not conexion:
-            QMessageBox.critical(self, "Error", "No se pudo conectar a la base de datos.")
+            QMessageBox.critical(self, "Error", "No se pudo conectar a la base de datos local.")
             self.close()
             return
 
@@ -131,5 +131,3 @@ class VentanaLicencia(QDialog):
             self.accept()   # ✅ en lugar de self.close()
         else:
             QMessageBox.critical(self, "Error", mensaje)
-
-

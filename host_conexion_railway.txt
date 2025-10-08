@@ -1,0 +1,57 @@
+# Conexión modo remoto
+
+         host: "shinkansen.proxy.rlwy.net",
+         usuario: "root", 
+         password:"modwetYgGSblbVwIoVyvOoYQMPacXSjZ",
+         base_datos:"railway",
+          puerto: 44292,
+          base_url: https://turismo-regional.up.railway.app
+          activo:True
+
+# Conexión Modo Local
+
+            host=localhost,
+            port=3306,
+            user=root,
+            password="Perroponce@4472801",
+            database=databaseapp
+            base_url: http://localhost:5000
+
+
+
+
+        conexion = mysql.connector.connect(
+            host=host,
+            user=user,
+            password=password,
+            database=database,
+            port=port,
+            connect_timeout=30
+
+
+# Credenciales
+        port = 3306
+        database = "base_de_datos"
+        server_user = "root"
+        server_password = "Perroponce@4472801"
+        client_user = "usuario_remoto"
+        client_password = "usuario123"
+# Configurar conexión según servidor o cliente
+        host = "localhost"
+        user = server_user
+        password = server_password
+
+
+# Modo cliente
+
+            host = "192.168.0.104"
+            user = client_user
+            password = client_password
+ # Establecer conexión
+            conexion = mysql.connector.connect(
+            host=host,
+            port=port,
+            user=user,
+            password=password,
+            database=database
+        )                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 
