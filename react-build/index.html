@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes" />
+    <meta name="theme-color" content="#111827" />
+    
+    <!-- Tailwind CSS CDN (temporal) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            animation: {
+              'fade-in': 'fadeIn 0.5s ease-in-out',
+            },
+            keyframes: {
+              fadeIn: {
+                from: { opacity: 0, transform: 'translateY(20px)' },
+                to: { opacity: 1, transform: 'translateY(0)' },
+              }
+            }
+          }
+        }
+      }
+    </script>
+    
+    <title>Turismo App</title>
+    <script type="module" crossorigin src="/assets/index-BvF2s9-6.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-Dlh_TGhr.css">
+  </head>
+  <body class="bg-gray-900">
+    <div id="root"></div>
+  </body>
+</html>

@@ -49,10 +49,12 @@ class BuildDeployThread(QThread):
         """Encontrar la ruta del backend Flask"""
         # Buscar en diferentes ubicaciones posibles
         posibles_backends = [
-            r"E:\Sistemas de app para androide\turismo-backend",
+            # ✅ RUTA CORRECTA - Dentro de turismo-app
+            r"E:\Sistemas de app para androide\turismo-app\turismo-backend",
+            # Otras rutas posibles
+            os.path.join(self.project_path, "turismo-backend"),
             os.path.join(os.path.dirname(self.project_path), "turismo-backend"),
-            os.path.join(os.path.dirname(os.path.dirname(self.project_path)), "turismo-backend"),
-            os.path.join(os.path.expanduser("~"), "turismo-backend"),
+            r"E:\Sistemas de app para androide\turismo-backend",  # Vieja ruta
         ]
         
         for backend_path in posibles_backends:
