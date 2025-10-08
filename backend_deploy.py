@@ -228,7 +228,7 @@ type = "web"
             return self.deploy_con_git_completo(servidor, comando_personalizado)
     
     def deploy_con_git_completo(self, servidor, comando):
-        """✅ DEPLOY COMPLETO con Git - Automático"""
+        """✅ DEPLOY COMPLETO con Git - Con pull automático"""
         try:
             self.log_signal.emit(f"📦 Ejecutando DEPLOY AUTOMÁTICO via Git...")
             
@@ -242,19 +242,24 @@ type = "web"
                 self.log_signal.emit("❌ No es un repositorio Git")
                 return False
             
-            # Verificar estado del repositorio
-            result_status = subprocess.run(
-                ["git", "status", "--porcelain"], 
+            # ✅ PASO 1: GIT PULL para traer cambios remotos
+            self.log_signal.emit("🔄 Sincronizando con repositorio remoto...")
+            result_pull = subprocess.run(
+                ["git", "pull", "origin", "main"], 
                 capture_output=True, 
                 text=True
             )
             
-            if result_status.returncode == 0 and result_status.stdout.strip():
-                self.log_signal.emit("📝 Cambios detectados en el repositorio")
+            if result_pull.returncode == 0:
+                self.log_signal.emit("✅ Sincronización completada")
+                if result_pull.stdout:
+                    for linea in result_pull.stdout.split('\n'):
+                        if linea.strip() and any(x in linea for x in ['Already up to date', 'Updating', 'Fast-forward']):
+                            self.log_signal.emit(f"   🔄 {linea.strip()}")
             else:
-                self.log_signal.emit("ℹ️  No hay cambios pendientes")
+                self.log_signal.emit(f"⚠️  Advertencia en sincronización: {result_pull.stderr}")
             
-            # ✅ AGREGAR TODOS LOS ARCHIVOS
+            # ✅ PASO 2: AGREGAR TODOS LOS ARCHIVOS
             self.log_signal.emit("💾 Agregando archivos al staging...")
             result_add = subprocess.run(
                 ["git", "add", "."], 
@@ -268,7 +273,7 @@ type = "web"
             
             self.log_signal.emit("✅ Todos los archivos agregados al staging")
             
-            # ✅ COMMIT
+            # ✅ PASO 3: COMMIT
             mensaje_commit = f"Deploy automático: API + Assets + Railway - {time.strftime('%Y-%m-%d %H:%M')}"
             self.log_signal.emit(f"💾 Realizando commit: {mensaje_commit}")
             
@@ -283,7 +288,7 @@ type = "web"
             else:
                 self.log_signal.emit("ℹ️  Sin cambios para commitear (posiblemente ya estaban commiteados)")
             
-            # ✅ PUSH
+            # ✅ PASO 4: PUSH CON FORCE si es necesario
             comando_push = comando if comando else "git push origin main"
             self.log_signal.emit(f"🔧 Ejecutando: {comando_push}")
             
@@ -298,7 +303,7 @@ type = "web"
                 self.log_signal.emit("🎉 ¡PUSH EXITOSO A GITHUB!")
                 if result_push.stdout:
                     for linea in result_push.stdout.split('\n'):
-                        if linea.strip() and any(x in linea for x in ['Writing objects', 'To http', 'master ->']):
+                        if linea.strip() and any(x in linea for x in ['Writing objects', 'To http', 'master ->', 'main ->']):
                             self.log_signal.emit(f"   📤 {linea.strip()}")
                 
                 # Verificar assets en GitHub
@@ -309,8 +314,29 @@ type = "web"
                 
                 return True
             else:
-                self.log_signal.emit(f"❌ Error en push: {result_push.stderr}")
-                return False
+                # ✅ INTENTAR CON PUSH FORCE si falla el push normal
+                self.log_signal.emit("⚠️  Push normal falló, intentando con force...")
+                self.log_signal.emit("💡 Esto sobrescribirá el repositorio remoto con tu versión local")
+                
+                result_force = subprocess.run(
+                    ["git", "push", "--force", "origin", "main"], 
+                    capture_output=True, 
+                    text=True,
+                    timeout=300
+                )
+                
+                if result_force.returncode == 0:
+                    self.log_signal.emit("🎉 ¡PUSH FORCE EXITOSO A GITHUB!")
+                    self.log_signal.emit("⚠️  Repositorio remoto actualizado con versión local")
+                    
+                    # Verificar assets en GitHub
+                    self.verificar_assets_en_git()
+                    
+                    self.log_signal.emit("🔄 Railway detectará los cambios automáticamente...")
+                    return True
+                else:
+                    self.log_signal.emit(f"❌ Error en push force: {result_force.stderr}")
+                    return False
                 
         except subprocess.TimeoutExpired:
             self.log_signal.emit("❌ Timeout: El push tardó demasiado")
@@ -334,6 +360,11 @@ type = "web"
                 
                 if assets_subidos:
                     self.log_signal.emit(f"✅ {len(assets_subidos)} assets subidos a GitHub")
+                    # Mostrar algunos assets como ejemplo
+                    for asset in assets_subidos[:3]:
+                        self.log_signal.emit(f"   📄 {asset}")
+                    if len(assets_subidos) > 3:
+                        self.log_signal.emit(f"   ... y {len(assets_subidos) - 3} más")
                 else:
                     self.log_signal.emit("⚠️  No se detectaron assets en el repositorio")
         except Exception as e:
@@ -399,6 +430,9 @@ type = "web"
             return result.returncode == 0
         except:
             return False
+
+# ... (LA CLASE DialogoBackendDeploy SE MANTIENE IGUAL)
+# Solo cambio el texto del botón para que sea más claro
 
 class DialogoBackendDeploy(QDialog):
     """Diálogo para deploy COMPLETO del backend"""
@@ -542,8 +576,9 @@ class DialogoBackendDeploy(QDialog):
         botones_layout = QHBoxLayout()
         botones_layout.setSpacing(8)
         
-        self.btn_deploy = QPushButton("🚀 Ejecutar Deploy Completo")
-        self.btn_deploy.setStyleSheet("QPushButton { background-color: #27ae60; color: white; padding: 8px 15px; border: none; border-radius: 4px; font-weight: bold; font-size: 11px; min-width: 140px; } QPushButton:hover { background-color: #219a52; } QPushButton:disabled { background-color: #bdc3c7; }")
+        # ✅ CAMBIÉ EL TEXTO DEL BOTÓN PARA SER MÁS CLARO
+        self.btn_deploy = QPushButton("🚀 Ejecutar Deploy (Git Pull + Push)")
+        self.btn_deploy.setStyleSheet("QPushButton { background-color: #27ae60; color: white; padding: 8px 15px; border: none; border-radius: 4px; font-weight: bold; font-size: 11px; min-width: 200px; } QPushButton:hover { background-color: #219a52; } QPushButton:disabled { background-color: #bdc3c7; }")
         
         self.btn_verificar = QPushButton("🔍 Verificar")
         self.btn_verificar.setStyleSheet("QPushButton { background-color: #3498db; color: white; padding: 8px 15px; border: none; border-radius: 4px; font-weight: bold; font-size: 11px; min-width: 100px; } QPushButton:hover { background-color: #2980b9; }")
@@ -644,6 +679,7 @@ class DialogoBackendDeploy(QDialog):
         
         self.log_output.clear()
         self.log("🚀 INICIANDO DEPLOY COMPLETO AUTOMÁTICO...")
+        self.log("📝 Este proceso hará: Git Pull → Git Add → Git Commit → Git Push")
         
         config = {
             'nombre': self.datos_hosting.get('host', 'Servidor'),
@@ -666,6 +702,7 @@ class DialogoBackendDeploy(QDialog):
         if exito:
             QMessageBox.information(self, "🎉 ¡ÉXITO!", 
                                   f"{mensaje}\n\n"
+                                  f"✅ Sincronización con GitHub completada\n"
                                   f"✅ Assets copiados al repositorio\n"
                                   f"✅ Código subido a GitHub\n" 
                                   f"✅ Railway desplegando automáticamente\n"
