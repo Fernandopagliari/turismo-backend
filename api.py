@@ -24,34 +24,45 @@ def verificar_frontend_react():
 # Configuración DINÁMICA
 # =========================
 def obtener_base_url():
-    """Obtiene la BASE_URL dinámicamente del entorno"""
+    """Obtiene la BASE_URL desde datos_hosting - VERSIÓN DINÁMICA"""
     try:
-        # 1. Primero intenta desde variables de entorno
-        base_url = os.environ.get('BASE_URL')
-        
-        # 2. Si no existe y estamos en un contexto de request, la genera desde la request
-        if not base_url and hasattr(request, 'url_root'):
-            base_url = request.url_root.rstrip('/')
-        
-        # 3. Si todavía no hay base_url, usa una por defecto basada en el entorno
-        if not base_url:
-            # Para Railway
-            railway_url = os.environ.get('RAILWAY_STATIC_URL')
-            if railway_url:
-                base_url = railway_url
+        # 1. PRIMERO: Leer de la tabla datos_hosting de forma DINÁMICA
+        try:
+            # Configuración mínima para acceder a databaseapp
+            config_temp = {
+                'host': os.environ.get('MYSQLHOST', 'localhost'),
+                'user': os.environ.get('MYSQLUSER', 'root'),
+                'password': os.environ.get('MYSQLPASSWORD', ''),
+                'database': 'databaseapp',  # ✅ Donde está datos_hosting
+                'port': int(os.environ.get('MYSQLPORT', 3306)),
+            }
+            
+            conn_temp = mysql.connector.connect(**config_temp)
+            cursor = conn_temp.cursor(dictionary=True)
+            cursor.execute("SELECT base_url FROM datos_hosting WHERE activo = 1 LIMIT 1")
+            config = cursor.fetchone()
+            conn_temp.close()
+            
+            if config and config['base_url']:
+                base_url = config['base_url'].rstrip('/')
+                print(f"🌐 URL desde datos_hosting: {base_url}")
+                return base_url
             else:
-                # Para otros entornos
-                base_url = "https://turismo-regional.up.railway.app"
+                print("⚠️  No se encontró base_url en datos_hosting")
+        except Exception as e:
+            print(f"⚠️  No se pudo obtener URL de tabla: {e}")
         
-        # 4. Asegurar HTTPS en producción
-        if base_url.startswith('http://') and ('railway' in base_url or 'heroku' in base_url):
-            base_url = base_url.replace('http://', 'https://')
+        # 2. SEGUNDO: Usar request actual (dinámico)
+        if hasattr(request, 'url_root') and request.url_root:
+            base_url = request.url_root.rstrip('/')
+            print(f"🌐 URL detectada automáticamente: {base_url}")
+            return base_url
         
-        return base_url
+        # 3. TERCERO: Fallback genérico
+        return os.environ.get('BASE_URL', 'http://localhost:5000')
+        
     except Exception:
-        # Fallback seguro
-        return "https://turismo-regional.up.railway.app"
-
+        return "http://localhost:5000"
 INICIALIZADO = False
 
 # =========================
@@ -79,35 +90,59 @@ def inicializar_servidor():
     INICIALIZADO = True
 
 def conectar_base_datos():
-    """Conecta a la base de datos de forma DINÁMICA"""
+    """Conecta a la base de datos usando configuración de datos_hosting - VERSIÓN DINÁMICA"""
     try:
-        # Obtener configuración desde variables de entorno
-        config = {
-            'host': os.environ.get('MYSQLHOST'),
-            'user': os.environ.get('MYSQLUSER'),
-            'password': os.environ.get('MYSQLPASSWORD'),
-            'database': os.environ.get('MYSQLDATABASE'),
+        print("🔗 Conectando via configuración dinámica de datos_hosting...")
+        
+        # 1. PRIMERO: Variables de entorno MÍNIMAS para acceder a databaseapp
+        # Estas son las ÚNICAS que necesitamos hardcodear y son genéricas
+        config_minima = {
+            'host': os.environ.get('MYSQLHOST', 'localhost'),
+            'user': os.environ.get('MYSQLUSER', 'root'),
+            'password': os.environ.get('MYSQLPASSWORD', ''),
+            'database': 'databaseapp',  # ✅ Donde está la tabla datos_hosting
             'port': int(os.environ.get('MYSQLPORT', 3306)),
             'connect_timeout': 10
         }
         
-        # Verificar que tenemos configuración mínima
-        if not config['host'] or not config['user']:
-            raise Exception("Configuración de BD incompleta en variables de entorno")
+        # 2. Conectar a databaseapp para leer la configuración REAL
+        conn_temp = mysql.connector.connect(**config_minima)
+        cursor = conn_temp.cursor(dictionary=True)
         
-        print(f"🔗 Conectando a: {config['host']}:{config['port']} -> {config['database']}")
-        conexion = mysql.connector.connect(**config)
+        # 3. LEER configuración dinámica de datos_hosting
+        cursor.execute("SELECT * FROM datos_hosting WHERE activo = 1 ORDER BY id LIMIT 1")
+        hosting_config = cursor.fetchone()
+        
+        if not hosting_config:
+            conn_temp.close()
+            raise Exception("No hay configuración activa en tabla datos_hosting")
+        
+        print(f"🏠 Configuración leída: {hosting_config['host']} -> {hosting_config['base_datos']}")
+        
+        # 4. Cerrar conexión temporal
+        conn_temp.close()
+        
+        # 5. Conectar a la BD REAL usando la configuración DINÁMICA de la tabla
+        config_final = {
+            'host': hosting_config['host'],           # ✅ Dinámico desde tabla
+            'user': hosting_config['usuario'],        # ✅ Dinámico desde tabla
+            'password': hosting_config['password'],   # ✅ Dinámico desde tabla
+            'database': hosting_config['base_datos'], # ✅ Dinámico desde tabla
+            'port': hosting_config['puerto'],         # ✅ Dinámico desde tabla
+            'connect_timeout': 10
+        }
+        
+        conexion = mysql.connector.connect(**config_final)
         
         if conexion.is_connected():
-            print(f"✅ Conectado a BD: {config['host']} -> {config['database']}")
+            print(f"✅ Conectado via datos_hosting: {config_final['host']} -> {config_final['database']}")
             return conexion
         else:
-            raise Exception("No se pudo establecer conexión")
+            raise Exception("No se pudo conectar via datos_hosting")
             
     except Error as e:
-        print(f"❌ Error conectando a BD: {e}")
-        raise Exception(f"Error de conexión con BD: {str(e)}")
-
+        print(f"❌ Error conectando via datos_hosting: {e}")
+        raise Exception(f"Error de conexión: {str(e)}")
 def verificar_conexion_remota():
     """Verifica conexión a la base de datos"""
     try:
