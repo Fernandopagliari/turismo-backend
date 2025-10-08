@@ -41,8 +41,8 @@ class BackendDeployThread(QThread):
             self.log_signal.emit(f"📁 Backend encontrado en: {self.backend_path}")
             self.progress_signal.emit(10)
             
-            # Paso 2: Verificar y crear archivos esenciales
-            if not self.preparar_archivos_esenciales():
+            # Paso 2: Verificar y crear archivos esenciales PARA PRODUCCIÓN
+            if not self.preparar_archivos_produccion():
                 return
             
             self.progress_signal.emit(20)
@@ -70,7 +70,7 @@ class BackendDeployThread(QThread):
                 # Paso 6: Verificar deploy
                 if self.verificar_deploy():
                     self.progress_signal.emit(100)
-                    self.finished_signal.emit(True, f"✅ ¡DEPLOY COMPLETADO EXITOSAMENTE! 🎉\n\nTu aplicación está funcionando en:\n{self.datos_hosting.get('base_url', 'N/A')}")
+                    self.finished_signal.emit(True, f"✅ ¡DEPLOY COMPLETADO EXITOSAMENTE! 🎉\n\nTu aplicación está funcionando en PRODUCCIÓN:\n{self.datos_hosting.get('base_url', 'N/A')}")
                 else:
                     self.finished_signal.emit(True, f"⚠️  Deploy completado pero la verificación mostró advertencias")
             else:
@@ -79,8 +79,59 @@ class BackendDeployThread(QThread):
         except Exception as e:
             self.finished_signal.emit(False, f"❌ Error: {str(e)}")
     
-    def preparar_archivos_esenciales(self):
-        """Verificar y crear archivos esenciales para Railway"""
+    def preparar_archivos_produccion(self):
+        """Verificar y crear archivos esenciales para PRODUCCIÓN"""
+        self.log_signal.emit("🔧 Configurando para PRODUCCIÓN...")
+        
+        # ✅ 1. ACTUALIZAR requirements.txt CON GUNICORN
+        requirements_path = os.path.join(self.backend_path, "requirements.txt")
+        if os.path.exists(requirements_path):
+            try:
+                with open(requirements_path, 'r', encoding='utf-8') as f:
+                    contenido = f.read()
+                
+                if 'gunicorn' not in contenido:
+                    self.log_signal.emit("📦 Agregando gunicorn a requirements.txt...")
+                    with open(requirements_path, 'a', encoding='utf-8') as f:
+                        f.write("\ngunicorn==20.1.0\n")
+                    self.log_signal.emit("✅ gunicorn agregado para producción")
+                else:
+                    self.log_signal.emit("✅ gunicorn ya está en requirements.txt")
+            except Exception as e:
+                self.log_signal.emit(f"⚠️  Error actualizando requirements.txt: {str(e)}")
+        
+        # ✅ 2. CREAR/MODIFICAR Procfile PARA PRODUCCIÓN
+        procfile_path = os.path.join(self.backend_path, "Procfile")
+        try:
+            procfile_content = "web: gunicorn api:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120"
+            with open(procfile_path, 'w', encoding='utf-8') as f:
+                f.write(procfile_content)
+            self.log_signal.emit("✅ Procfile configurado para producción con gunicorn")
+        except Exception as e:
+            self.log_signal.emit(f"❌ Error creando Procfile: {str(e)}")
+            return False
+        
+        # ✅ 3. CREAR/MODIFICAR railway.toml
+        railway_toml_path = os.path.join(self.backend_path, "railway.toml")
+        try:
+            railway_config = """[build]
+builder = "nixpacks"
+
+[deploy]
+startCommand = "gunicorn api:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120"
+
+[[services]]
+name = "web"
+type = "web"
+"""
+            with open(railway_toml_path, 'w', encoding='utf-8') as f:
+                f.write(railway_config)
+            self.log_signal.emit("✅ railway.toml configurado para producción")
+        except Exception as e:
+            self.log_signal.emit(f"❌ Error creando railway.toml: {str(e)}")
+            return False
+        
+        # ✅ 4. VERIFICAR ARCHIVOS ESENCIALES
         archivos_esenciales = {
             "api.py": "Servidor Flask principal",
             "requirements.txt": "Dependencias Python", 
@@ -90,40 +141,6 @@ class BackendDeployThread(QThread):
             "runtime.txt": "Versión Python"
         }
         
-        # ✅ CREAR railway.toml SI NO EXISTE
-        railway_toml_path = os.path.join(self.backend_path, "railway.toml")
-        if not os.path.exists(railway_toml_path):
-            self.log_signal.emit("🔧 Creando railway.toml...")
-            try:
-                railway_config = """[build]
-builder = "nixpacks"
-
-[deploy]
-startCommand = "python api.py"
-
-[[services]]
-name = "web"
-type = "web"
-"""
-                with open(railway_toml_path, 'w', encoding='utf-8') as f:
-                    f.write(railway_config)
-                self.log_signal.emit("✅ railway.toml creado exitosamente")
-            except Exception as e:
-                self.log_signal.emit(f"❌ Error creando railway.toml: {str(e)}")
-                return False
-        
-        # ✅ VERIFICAR runtime.txt
-        runtime_path = os.path.join(self.backend_path, "runtime.txt")
-        if not os.path.exists(runtime_path):
-            self.log_signal.emit("🔧 Creando runtime.txt...")
-            try:
-                with open(runtime_path, 'w', encoding='utf-8') as f:
-                    f.write("python-3.9.18")
-                self.log_signal.emit("✅ runtime.txt creado")
-            except Exception as e:
-                self.log_signal.emit(f"⚠️  Error creando runtime.txt: {str(e)}")
-        
-        # Verificar los archivos restantes
         todos_encontrados = True
         for archivo, descripcion in archivos_esenciales.items():
             ruta_archivo = os.path.join(self.backend_path, archivo)
@@ -274,7 +291,7 @@ type = "web"
             self.log_signal.emit("✅ Todos los archivos agregados al staging")
             
             # ✅ PASO 3: COMMIT
-            mensaje_commit = f"Deploy automático: API + Assets + Railway - {time.strftime('%Y-%m-%d %H:%M')}"
+            mensaje_commit = f"Deploy PRODUCCIÓN: API + Assets + Gunicorn - {time.strftime('%Y-%m-%d %H:%M')}"
             self.log_signal.emit(f"💾 Realizando commit: {mensaje_commit}")
             
             commit_result = subprocess.run(
@@ -288,7 +305,7 @@ type = "web"
             else:
                 self.log_signal.emit("ℹ️  Sin cambios para commitear (posiblemente ya estaban commiteados)")
             
-            # ✅ PASO 4: PUSH CON FORCE si es necesario
+            # ✅ PASO 4: PUSH
             comando_push = comando if comando else "git push origin main"
             self.log_signal.emit(f"🔧 Ejecutando: {comando_push}")
             
@@ -311,32 +328,12 @@ type = "web"
                 
                 self.log_signal.emit("🔄 Railway detectará los cambios automáticamente...")
                 self.log_signal.emit("⏳ El deploy en Railway puede tomar 2-5 minutos")
+                self.log_signal.emit("🚀 Configurado para PRODUCCIÓN con Gunicorn")
                 
                 return True
             else:
-                # ✅ INTENTAR CON PUSH FORCE si falla el push normal
-                self.log_signal.emit("⚠️  Push normal falló, intentando con force...")
-                self.log_signal.emit("💡 Esto sobrescribirá el repositorio remoto con tu versión local")
-                
-                result_force = subprocess.run(
-                    ["git", "push", "--force", "origin", "main"], 
-                    capture_output=True, 
-                    text=True,
-                    timeout=300
-                )
-                
-                if result_force.returncode == 0:
-                    self.log_signal.emit("🎉 ¡PUSH FORCE EXITOSO A GITHUB!")
-                    self.log_signal.emit("⚠️  Repositorio remoto actualizado con versión local")
-                    
-                    # Verificar assets en GitHub
-                    self.verificar_assets_en_git()
-                    
-                    self.log_signal.emit("🔄 Railway detectará los cambios automáticamente...")
-                    return True
-                else:
-                    self.log_signal.emit(f"❌ Error en push force: {result_force.stderr}")
-                    return False
+                self.log_signal.emit(f"❌ Error en push: {result_push.stderr}")
+                return False
                 
         except subprocess.TimeoutExpired:
             self.log_signal.emit("❌ Timeout: El push tardó demasiado")
@@ -360,11 +357,6 @@ type = "web"
                 
                 if assets_subidos:
                     self.log_signal.emit(f"✅ {len(assets_subidos)} assets subidos a GitHub")
-                    # Mostrar algunos assets como ejemplo
-                    for asset in assets_subidos[:3]:
-                        self.log_signal.emit(f"   📄 {asset}")
-                    if len(assets_subidos) > 3:
-                        self.log_signal.emit(f"   ... y {len(assets_subidos) - 3} más")
                 else:
                     self.log_signal.emit("⚠️  No se detectaron assets en el repositorio")
         except Exception as e:
@@ -377,7 +369,7 @@ type = "web"
             if not base_url or base_url == 'No configurada':
                 return True
             
-            self.log_signal.emit("🔍 Verificando estado del servidor...")
+            self.log_signal.emit("🔍 Verificando estado del servidor en PRODUCCIÓN...")
             self.log_signal.emit(f"🌐 URL: {base_url}")
             
             endpoints = [
@@ -398,6 +390,8 @@ type = "web"
                                 data = response.json()
                                 if 'mensaje' in data:
                                     self.log_signal.emit(f"   💬 {data['mensaje']}")
+                                if 'entorno' in data:
+                                    self.log_signal.emit(f"   🏭 Entorno: {data['entorno']}")
                             except:
                                 pass
                     else:
@@ -408,7 +402,8 @@ type = "web"
                     todos_funcionan = False
             
             if todos_funcionan:
-                self.log_signal.emit("🎊 ¡TODOS LOS ENDPOINTS FUNCIONAN CORRECTAMENTE!")
+                self.log_signal.emit("🎊 ¡TODOS LOS ENDPOINTS FUNCIONAN EN PRODUCCIÓN!")
+                self.log_signal.emit("✅ Servidor configurado con Gunicorn para producción")
             else:
                 self.log_signal.emit("⚠️  Algunos endpoints tienen problemas")
             
@@ -431,11 +426,10 @@ type = "web"
         except:
             return False
 
-# ... (LA CLASE DialogoBackendDeploy SE MANTIENE IGUAL)
-# Solo cambio el texto del botón para que sea más claro
+# ... (EL RESTO DEL CÓDIGO DE DialogoBackendDeploy SE MANTIENE IGUAL)
 
 class DialogoBackendDeploy(QDialog):
-    """Diálogo para deploy COMPLETO del backend"""
+    """Diálogo para deploy COMPLETO del backend en PRODUCCIÓN"""
     
     def __init__(self, parent=None, backend_path=None):
         super().__init__(parent)
@@ -483,7 +477,7 @@ class DialogoBackendDeploy(QDialog):
             self.log(f"❌ Error: {str(e)}")
 
     def setup_ui(self):
-        self.setWindowTitle("🚀 Deploy Completo - Backend + Assets")
+        self.setWindowTitle("🚀 Deploy PRODUCCIÓN - Backend + Assets")
         self.setFixedSize(680, 520)
         
         scroll = QScrollArea()
@@ -494,7 +488,7 @@ class DialogoBackendDeploy(QDialog):
         layout.setContentsMargins(12, 12, 12, 12)
         
         # Título
-        titulo = QLabel("🚀 DEPLOY COMPLETO AUTOMÁTICO")
+        titulo = QLabel("🚀 DEPLOY COMPLETO PARA PRODUCCIÓN")
         titulo.setStyleSheet("font-size: 14px; font-weight: bold; color: #2c3e50; margin: 8px 0px;")
         layout.addWidget(titulo)
         
@@ -539,7 +533,7 @@ class DialogoBackendDeploy(QDialog):
         layout.addWidget(config_group)
         
         # Información del backend
-        info_backend_group = QGroupBox("📁 Archivos para Deploy")
+        info_backend_group = QGroupBox("📁 Archivos para PRODUCCIÓN")
         info_backend_layout = QVBoxLayout()
         
         self.lbl_backend = QLabel(f"📁 {self.backend_path}")
@@ -576,8 +570,7 @@ class DialogoBackendDeploy(QDialog):
         botones_layout = QHBoxLayout()
         botones_layout.setSpacing(8)
         
-        # ✅ CAMBIÉ EL TEXTO DEL BOTÓN PARA SER MÁS CLARO
-        self.btn_deploy = QPushButton("🚀 Ejecutar Deploy (Git Pull + Push)")
+        self.btn_deploy = QPushButton("🚀 Deploy PRODUCCIÓN (Gunicorn)")
         self.btn_deploy.setStyleSheet("QPushButton { background-color: #27ae60; color: white; padding: 8px 15px; border: none; border-radius: 4px; font-weight: bold; font-size: 11px; min-width: 200px; } QPushButton:hover { background-color: #219a52; } QPushButton:disabled { background-color: #bdc3c7; }")
         
         self.btn_verificar = QPushButton("🔍 Verificar")
@@ -609,13 +602,14 @@ class DialogoBackendDeploy(QDialog):
         self.verificar_archivos()
 
     def verificar_archivos(self):
-        """Verificar archivos para deploy"""
+        """Verificar archivos para deploy en producción"""
         try:
             archivos_esenciales = {
                 "api.py": "Servidor Flask",
                 "requirements.txt": "Dependencias", 
                 "database_hosting.py": "Conexión BD",
                 "railway.toml": "Config Railway",
+                "Procfile": "Config Proceso",
                 ".git": "Repositorio Git"
             }
             
@@ -625,6 +619,16 @@ class DialogoBackendDeploy(QDialog):
                 existe = os.path.exists(ruta_archivo)
                 icono = "✅" if existe else "❌"
                 mensaje += f"{icono} {archivo} - {descripcion}\n"
+            
+            # Verificar gunicorn en requirements
+            requirements_path = os.path.join(self.backend_path, "requirements.txt")
+            if os.path.exists(requirements_path):
+                with open(requirements_path, 'r') as f:
+                    contenido = f.read()
+                if 'gunicorn' in contenido:
+                    mensaje += "✅ Gunicorn - Configurado para producción\n"
+                else:
+                    mensaje += "❌ Gunicorn - Faltante para producción\n"
             
             # Verificar assets
             base_dir = os.path.dirname(self.backend_path)
@@ -639,7 +643,7 @@ class DialogoBackendDeploy(QDialog):
                 mensaje += "❌ Assets: No encontrados\n"
             
             self.lbl_archivos.setText(mensaje)
-            self.log("🔍 Verificación completada")
+            self.log("🔍 Verificación completada para PRODUCCIÓN")
             
         except Exception as e:
             self.lbl_archivos.setText(f"❌ Error: {str(e)}")
@@ -663,7 +667,7 @@ class DialogoBackendDeploy(QDialog):
         self.log_output.moveCursor(self.log_output.textCursor().End)
 
     def iniciar_deploy(self):
-        """Iniciar deploy completo"""
+        """Iniciar deploy completo para producción"""
         if not self.datos_hosting:
             QMessageBox.warning(self, "Configuración", "Configure hosting primero")
             return
@@ -678,8 +682,8 @@ class DialogoBackendDeploy(QDialog):
         self.progress_bar.setValue(0)
         
         self.log_output.clear()
-        self.log("🚀 INICIANDO DEPLOY COMPLETO AUTOMÁTICO...")
-        self.log("📝 Este proceso hará: Git Pull → Git Add → Git Commit → Git Push")
+        self.log("🚀 INICIANDO DEPLOY PARA PRODUCCIÓN...")
+        self.log("📝 Configurando Gunicorn como servidor WSGI de producción")
         
         config = {
             'nombre': self.datos_hosting.get('host', 'Servidor'),
@@ -700,13 +704,14 @@ class DialogoBackendDeploy(QDialog):
         self.log(mensaje)
         
         if exito:
-            QMessageBox.information(self, "🎉 ¡ÉXITO!", 
+            QMessageBox.information(self, "🎉 ¡PRODUCCIÓN CONFIGURADA!", 
                                   f"{mensaje}\n\n"
+                                  f"✅ Gunicorn configurado como servidor WSGI\n"
                                   f"✅ Sincronización con GitHub completada\n"
                                   f"✅ Assets copiados al repositorio\n"
                                   f"✅ Código subido a GitHub\n" 
                                   f"✅ Railway desplegando automáticamente\n"
-                                  f"✅ API funcionando correctamente")
+                                  f"✅ API funcionando en PRODUCCIÓN")
         else:
             QMessageBox.critical(self, "❌ Error", mensaje)
 
