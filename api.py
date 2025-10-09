@@ -90,32 +90,33 @@ def inicializar_servidor():
     INICIALIZADO = True
 
 def conectar_base_datos():
-    """Conexión SIMPLIFICADA - usa configuración directa de Railway"""
+    """Conecta a la base de datos - VERSIÓN CORREGIDA PARA RAILWAY"""
     try:
-        print("🔗 Conectando via variables de entorno de Railway...")
+        # ✅ CONEXIÓN DIRECTA usando las variables de entorno de RAILWAY
+        print("🔗 Conectando a BD Railway...")
         
         config = {
             'host': os.environ.get('MYSQLHOST'),
             'user': os.environ.get('MYSQLUSER'),
             'password': os.environ.get('MYSQLPASSWORD'),
-            'database': os.environ.get('MYSQLDATABASE'),
+            'database': os.environ.get('MYSQLDATABASE'),  # ✅ 'railway' no 'databaseapp'
             'port': int(os.environ.get('MYSQLPORT', 3306)),
+            'connect_timeout': 10
         }
         
-        print(f"🔧 Config: {config['host']}:{config['port']} -> {config['database']}")
+        print(f"🔧 Conectando a: {config['host']}:{config['port']} -> {config['database']}")
         
         conexion = mysql.connector.connect(**config)
         
         if conexion.is_connected():
-            print("✅ Conectado via variables entorno")
+            print("✅ Conexión exitosa a Railway BD")
             return conexion
         else:
-            raise Exception("Conexión falló")
+            raise Exception("No se pudo establecer conexión")
             
     except Error as e:
-        print(f"❌ Error conectando: {e}")
-        raise Exception(f"Error de conexión BD: {str(e)}")
-    
+        print(f"❌ Error conectando a BD Railway: {e}")
+        raise Exception(f"Error de conexión BD: {str(e)}")    
     
 def verificar_conexion_remota():
     """Verifica conexión a la base de datos"""
@@ -415,6 +416,33 @@ def debug_conexion():
             "error": "❌ CONEXIÓN FALLIDA",
             "detalles": str(e)
         }), 500
+        
+@app.route("/api/verificar-tablas")
+def verificar_tablas():
+    """Verificar que las tablas existen en la BD railway"""
+    try:
+        conn = conectar_base_datos()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Verificar tablas críticas
+        tablas = ['datos_hosting', 'regiones_zonas', 'secciones', 'configuracion_app']
+        resultados = {}
+        
+        for tabla in tablas:
+            try:
+                cursor.execute(f"SELECT COUNT(*) as count FROM {tabla}")
+                count = cursor.fetchone()['count']
+                resultados[tabla] = f"✅ EXISTE - {count} registros"
+            except Exception as e:
+                resultados[tabla] = f"❌ NO EXISTE - {str(e)}"
+        
+        conn.close()
+        return jsonify(resultados)
+        
+    except Exception as e:
+        return jsonify({"error": f"Error verificando tablas: {str(e)}"}), 500
+
+
 # =========================
 # Endpoints de ARCHIVOS ESTÁTICOS
 # =========================
