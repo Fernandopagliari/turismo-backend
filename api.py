@@ -90,59 +90,33 @@ def inicializar_servidor():
     INICIALIZADO = True
 
 def conectar_base_datos():
-    """Conecta a la base de datos usando configuración de datos_hosting - VERSIÓN DINÁMICA"""
+    """Conexión SIMPLIFICADA - usa configuración directa de Railway"""
     try:
-        print("🔗 Conectando via configuración dinámica de datos_hosting...")
+        print("🔗 Conectando via variables de entorno de Railway...")
         
-        # 1. PRIMERO: Variables de entorno MÍNIMAS para acceder a databaseapp
-        # Estas son las ÚNICAS que necesitamos hardcodear y son genéricas
-        config_minima = {
-            'host': os.environ.get('MYSQLHOST', 'localhost'),
-            'user': os.environ.get('MYSQLUSER', 'root'),
-            'password': os.environ.get('MYSQLPASSWORD', ''),
-            'database': 'databaseapp',  # ✅ Donde está la tabla datos_hosting
+        config = {
+            'host': os.environ.get('MYSQLHOST'),
+            'user': os.environ.get('MYSQLUSER'),
+            'password': os.environ.get('MYSQLPASSWORD'),
+            'database': os.environ.get('MYSQLDATABASE'),
             'port': int(os.environ.get('MYSQLPORT', 3306)),
-            'connect_timeout': 10
         }
         
-        # 2. Conectar a databaseapp para leer la configuración REAL
-        conn_temp = mysql.connector.connect(**config_minima)
-        cursor = conn_temp.cursor(dictionary=True)
+        print(f"🔧 Config: {config['host']}:{config['port']} -> {config['database']}")
         
-        # 3. LEER configuración dinámica de datos_hosting
-        cursor.execute("SELECT * FROM datos_hosting WHERE activo = 1 ORDER BY id LIMIT 1")
-        hosting_config = cursor.fetchone()
-        
-        if not hosting_config:
-            conn_temp.close()
-            raise Exception("No hay configuración activa en tabla datos_hosting")
-        
-        print(f"🏠 Configuración leída: {hosting_config['host']} -> {hosting_config['base_datos']}")
-        
-        # 4. Cerrar conexión temporal
-        conn_temp.close()
-        
-        # 5. Conectar a la BD REAL usando la configuración DINÁMICA de la tabla
-        config_final = {
-            'host': hosting_config['host'],           # ✅ Dinámico desde tabla
-            'user': hosting_config['usuario'],        # ✅ Dinámico desde tabla
-            'password': hosting_config['password'],   # ✅ Dinámico desde tabla
-            'database': hosting_config['base_datos'], # ✅ Dinámico desde tabla
-            'port': hosting_config['puerto'],         # ✅ Dinámico desde tabla
-            'connect_timeout': 10
-        }
-        
-        conexion = mysql.connector.connect(**config_final)
+        conexion = mysql.connector.connect(**config)
         
         if conexion.is_connected():
-            print(f"✅ Conectado via datos_hosting: {config_final['host']} -> {config_final['database']}")
+            print("✅ Conectado via variables entorno")
             return conexion
         else:
-            raise Exception("No se pudo conectar via datos_hosting")
+            raise Exception("Conexión falló")
             
     except Error as e:
-        print(f"❌ Error conectando via datos_hosting: {e}")
-        raise Exception(f"Error de conexión: {str(e)}")
+        print(f"❌ Error conectando: {e}")
+        raise Exception(f"Error de conexión BD: {str(e)}")
+    
+    
 def verificar_conexion_remota():
     """Verifica conexión a la base de datos"""
     try:
@@ -383,6 +357,64 @@ def get_subsecciones():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route("/api/debug-conexion")
+def debug_conexion():
+    """Debug completo de la conexión a BD"""
+    try:
+        print("🔍 Debug: Intentando conectar a databaseapp...")
+        
+        # 1. Primero intentar conectar a databaseapp
+        config_databaseapp = {
+            'host': os.environ.get('MYSQLHOST', 'localhost'),
+            'user': os.environ.get('MYSQLUSER', 'root'),
+            'password': os.environ.get('MYSQLPASSWORD', ''),
+            'database': 'databaseapp',
+            'port': int(os.environ.get('MYSQLPORT', 3306)),
+        }
+        
+        conn_temp = mysql.connector.connect(**config_databaseapp)
+        cursor = conn_temp.cursor(dictionary=True)
+        
+        # 2. Leer datos_hosting
+        cursor.execute("SELECT * FROM datos_hosting WHERE activo = 1 LIMIT 1")
+        hosting_config = cursor.fetchone()
+        conn_temp.close()
+        
+        if not hosting_config:
+            return jsonify({"error": "No hay configuración en datos_hosting"}), 500
+        
+        # 3. Intentar conectar con la configuración de datos_hosting
+        config_final = {
+            'host': hosting_config['host'],
+            'user': hosting_config['usuario'],
+            'password': hosting_config['password'],
+            'database': hosting_config['base_datos'],
+            'port': hosting_config['puerto'],
+        }
+        
+        conn_final = mysql.connector.connect(**config_final)
+        conn_final.close()
+        
+        return jsonify({
+            "status": "✅ CONEXIÓN EXITOSA",
+            "config_databaseapp": {
+                "host": config_databaseapp['host'],
+                "database": config_databaseapp['database'],
+                "conexion_exitosa": True
+            },
+            "config_datos_hosting": {
+                "host": hosting_config['host'],
+                "database": hosting_config['base_datos'],
+                "puerto": hosting_config['puerto'],
+                "conexion_exitosa": True
+            }
+        })
+        
+    except Exception as e:
+        return jsonify({
+            "error": "❌ CONEXIÓN FALLIDA",
+            "detalles": str(e)
+        }), 500
 # =========================
 # Endpoints de ARCHIVOS ESTÁTICOS
 # =========================
