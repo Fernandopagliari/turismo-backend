@@ -5,7 +5,7 @@ import mysql.connector
 from mysql.connector import Error
 import os
 
-app = Flask(__name__, static_folder=None)  # Deshabilitar static folder por defecto
+app = Flask(__name__, static_folder='react-build', static_url_path='')   # Deshabilitar static folder por defecto
 CORS(app)
 
 # =========================
@@ -386,14 +386,15 @@ def get_subsecciones():
 # =========================
 # Endpoints de ARCHIVOS ESTÁTICOS
 # =========================
+# ✅ RUTA ESPECÍFICA PARA SERVIR ARCHIVOS ESTÁTICOS
 @app.route('/assets/<path:filename>')
 def serve_assets(filename):
-    """Servir archivos estáticos"""
+    """Servir archivos estáticos desde react-build/assets/"""
     try:
-        return send_from_directory('assets', filename)
+        return send_from_directory(os.path.join(app.static_folder, 'assets'), filename)
     except Exception as e:
+        print(f"❌ Error sirviendo asset {filename}: {e}")
         return jsonify({"error": f"Archivo no encontrado: {filename}"}), 404
-
 # =========================
 # Manejo de errores
 # =========================
