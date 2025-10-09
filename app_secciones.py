@@ -19,6 +19,16 @@ def ruta_absoluta_desde_relativa(relativa):
     base_assets = os.path.join(base_dir, "frontend", "public")
     return os.path.join(base_assets, relativa.lstrip("/"))
 
+def convertir_ruta_produccion(ruta_absoluta):
+    """Convierte rutas absolutas a rutas relativas para producción React"""
+    if not ruta_absoluta or not os.path.exists(ruta_absoluta):
+        return ""
+    
+    nombre_archivo = os.path.basename(ruta_absoluta)
+    
+    # Para secciones, usar estructura específica de iconos
+    return f"assets/imagenes/iconos/{nombre_archivo}"
+
 class VentanaSecciones(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -129,7 +139,6 @@ class VentanaSecciones(QWidget):
             self.label_icono_seccion.clear()
             self.label_icono_seccion.setText("Sin icono")
 
-
         self.btnAgregarSeccion.setEnabled(False)
         self.btnModificarSeccion.setEnabled(True)
         self.btnEliminarSeccion.setEnabled(True)
@@ -146,16 +155,22 @@ class VentanaSecciones(QWidget):
         nombre = self.lineEdit_nombre_seccion_app.text().strip()
         icono = self.lineEdit_icono_seccion.text().strip()
         orden = self.spinBox_orden_seccion.value()
+        
         if not nombre:
             QMessageBox.warning(self, "Campos obligatorios", "Debes ingresar un nombre de sección.")
             return
+        
+        # ✅ CORREGIDO: Convertir ruta absoluta a ruta de producción
+        ruta_absoluta_actual = icono
+        ruta_relativa_corregida = convertir_ruta_produccion(ruta_absoluta_actual) if ruta_absoluta_actual else None
+        
         try:
             conexion = conectar_base_datos()
             cursor = conexion.cursor()
             cursor.execute("""
                 INSERT INTO secciones (nombre_seccion, icono_seccion, orden, habilitar)
                 VALUES (%s, %s, %s, 1)
-            """, (nombre, icono, orden))
+            """, (nombre, ruta_relativa_corregida, orden))  # ✅ Usar ruta corregida
             conexion.commit()
             conexion.close()
             QMessageBox.information(self, "Sección", "Sección agregada correctamente.")
@@ -168,6 +183,11 @@ class VentanaSecciones(QWidget):
         if not hasattr(self, 'seccion_seleccionada_id') or not self.seccion_seleccionada_id:
             QMessageBox.warning(self, "Modificar", "Seleccione una sección para modificar.")
             return
+        
+        # ✅ CORREGIDO: Convertir ruta absoluta a ruta de producción
+        ruta_absoluta_actual = self.lineEdit_icono_seccion.text().strip()
+        ruta_relativa_corregida = convertir_ruta_produccion(ruta_absoluta_actual) if ruta_absoluta_actual else None
+        
         try:
             conexion = conectar_base_datos()
             cursor = conexion.cursor()
@@ -177,7 +197,7 @@ class VentanaSecciones(QWidget):
                 WHERE id_seccion=%s
             """, (
                 self.lineEdit_nombre_seccion_app.text(),
-                self.lineEdit_icono_seccion.text(),
+                ruta_relativa_corregida,  # ✅ Usar ruta corregida
                 self.spinBox_orden_seccion.value(),
                 self.seccion_seleccionada_id
             ))
@@ -295,9 +315,9 @@ class VentanaSecciones(QWidget):
             self.label_icono_seccion.setText("Sin icono")
             return
 
-        # Carpeta destino: ahora dentro de /assets/imagenes/iconos
+        # ✅ CORREGIDO: Carpeta destino para React production
         carpeta_destino = os.path.join(os.getcwd(), "public", "assets", "imagenes", "iconos")
-        os.makedirs(carpeta_destino, exist_ok=True)  # Aseguramos que exista
+        os.makedirs(carpeta_destino, exist_ok=True)
 
         nombre_archivo = os.path.basename(ruta_origen)
         nombre_base, extension = os.path.splitext(nombre_archivo)
@@ -332,15 +352,31 @@ class VentanaSecciones(QWidget):
             QMessageBox.warning(self, "Error", f"No se pudo copiar el icono:\n{e}")
             return
 
-        # Guardamos la ruta relativa correcta (con imágenes/iconos)
-        ruta_relativa = f"/assets/imagenes/iconos/{os.path.basename(ruta_destino)}"
-        self.lineEdit_icono_seccion.setText(ruta_relativa)
+        # ✅ CORREGIDO: Usar función helper para ruta de producción
+        ruta_relativa = convertir_ruta_produccion(ruta_final)
+        
+        # Mostrar ruta absoluta en el lineEdit (para visualización)
+        self.lineEdit_icono_seccion.setText(ruta_final)
 
         # Mostrar icono
         pixmap_icono = self.cargar_imagen_en_label(ruta_final, self.label_icono_seccion, size=75, circular=True)
         self.label_icono_seccion.setPixmap(pixmap_icono)
         self.label_icono_seccion.setText("")
 
+        # ✅ CORREGIDO: Si hay una sección seleccionada, actualizar en BD con ruta de producción
+        if hasattr(self, 'seccion_seleccionada_id') and self.seccion_seleccionada_id:
+            try:
+                conexion = conectar_base_datos()
+                cursor = conexion.cursor()
+                cursor.execute("""
+                    UPDATE secciones
+                    SET icono_seccion=%s
+                    WHERE id_seccion=%s
+                """, (ruta_relativa, self.seccion_seleccionada_id))
+                conexion.commit()
+                conexion.close()
+            except Exception as e:
+                QMessageBox.warning(self, "Error", f"No se pudo actualizar el icono en BD:\n{e}")
 
     # ------------------ Función reusable para imágenes -------------------
     def cargar_imagen_en_label(self, ruta_imagen, label=None, size=75, circular=True, center=True):

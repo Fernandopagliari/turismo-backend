@@ -5,6 +5,9 @@ from PyQt5.QtWidgets import QFileDialog, QTableWidgetItem, QApplication, QMainWi
 from PyQt5.QtGui import QIcon, QPixmap, QPainter, QBrush, QPen, QColor, QPainterPath
 from PyQt5.QtCore import Qt
 import os
+import shutil
+import hashlib
+
 def ruta_absoluta_desde_relativa(relativa: str) -> str:
     """
     Convierte '/assets/...png' a la ruta absoluta correcta.
@@ -14,13 +17,11 @@ def ruta_absoluta_desde_relativa(relativa: str) -> str:
 
     # Subimos dos niveles desde src/backend a la raíz del proyecto
     base_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-    base_assets = os.path.join(base_dir, "public")  # 👈 en vez de "frontend/public"
+    base_assets = os.path.join(base_dir, "public")
 
     # Quitamos el primer "/" o "\" si lo tiene
     ruta_limpia = relativa.lstrip("/\\")
     return os.path.normpath(os.path.join(base_assets, ruta_limpia))
-
-
 
 class VentanaUsuarios(QWidget):
     def __init__(self, parent=None):
@@ -30,18 +31,18 @@ class VentanaUsuarios(QWidget):
         self.resize(700, 550)
         self.centrar_ventana()
         self.parent_widget = parent
+        
         # Ruta absoluta y robusta al archivo .ui
         ruta_ui = os.path.join(
             os.path.dirname(__file__),   # carpeta actual: src/backend
             "interfaz",                  # subcarpeta
-            "usuarios.ui"        # archivo .ui
+            "usuarios.ui"                # archivo .ui
         )
 
         if not os.path.exists(ruta_ui):
             raise FileNotFoundError(f"No se encontró el archivo UI en: {ruta_ui}")
 
         uic.loadUi(ruta_ui, self)
-        
         
         self.setWindowTitle("Gestión de Usuarios")
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowMinMaxButtonsHint)
@@ -62,7 +63,6 @@ class VentanaUsuarios(QWidget):
         self.tabla_usuarios_activos.cellClicked.connect(self.seleccionar_usuario_tabla)
         self.tabla_usuarios_inactivos.cellClicked.connect(self.seleccionar_usuario_inactivo)
         self.btnReactivarUsuario.clicked.connect(self.reactivar_usuario)
-
 
     def centrar_ventana(self):
         pantalla = QApplication.primaryScreen().availableGeometry()
@@ -101,16 +101,14 @@ class VentanaUsuarios(QWidget):
         self.btnModificarUsuario.setEnabled(True)
         self.btnEliminarUsuario.setEnabled(True)
 
-        # Mostrar la foto
+        # Mostrar la foto usando ruta_absoluta_desde_relativa
         ruta_foto = obtener_texto(fila, 10)
         if ruta_foto:
-            ruta_relativa = ruta_foto.lstrip("/\\")
-            ruta_foto_completa = os.path.join(os.getcwd(), "public", ruta_relativa)
-
-            if os.path.exists(ruta_foto_completa):
-                self.label_foto_usuario.setText("")  # limpiar texto antes de mostrar la imagen
+            ruta_absoluta = ruta_absoluta_desde_relativa(ruta_foto)
+            if os.path.exists(ruta_absoluta):
+                self.label_foto_usuario.setText("")
                 self.redondear_imagen(
-                    ruta_foto_completa,
+                    ruta_absoluta,
                     self.label_foto_usuario,
                     circular=True,
                     size=100
@@ -121,7 +119,6 @@ class VentanaUsuarios(QWidget):
         else:
             self.label_foto_usuario.clear()
             self.label_foto_usuario.setText("Sin foto")
-
 
     def seleccionar_usuario_inactivo(self, fila, columna):
         item = self.tabla_usuarios_inactivos.item(fila, 0)
@@ -136,13 +133,11 @@ class VentanaUsuarios(QWidget):
 
             ruta_foto = obtener_texto_inactivo(fila, 10)
             if ruta_foto:
-                ruta_relativa = ruta_foto.lstrip("/\\")
-                ruta_foto_completa = os.path.join(os.getcwd(), "public", ruta_relativa)
-
-                if os.path.exists(ruta_foto_completa):
-                    self.label_foto_usuario.setText("")  # limpiar texto
+                ruta_absoluta = ruta_absoluta_desde_relativa(ruta_foto)
+                if os.path.exists(ruta_absoluta):
+                    self.label_foto_usuario.setText("")
                     self.redondear_imagen(
-                        ruta_foto_completa,
+                        ruta_absoluta,
                         self.label_foto_usuario,
                         circular=True,
                         size=100
@@ -154,16 +149,14 @@ class VentanaUsuarios(QWidget):
                 self.label_foto_usuario.clear()
                 self.label_foto_usuario.setText("Sin foto")
 
-
     def reactivar_usuario(self):
         if not hasattr(self, 'usuario_inactivo_id') or not self.usuario_inactivo_id:
             QMessageBox.warning(self, "Seleccionar", "Seleccioná un usuario para reactivar.")
             return
 
         try:
-            conexion = conectar()
+            conexion = conectar_base_datos()
             cursor = conexion.cursor()
-            # 🔹 En MySQL se usa %s, no ?
             cursor.execute(
                 "UPDATE usuarios SET activo = 1 WHERE id_usuario = %s",
                 (self.usuario_inactivo_id,)
@@ -175,13 +168,11 @@ class VentanaUsuarios(QWidget):
             QMessageBox.information(self, "Usuario reactivado", "El usuario fue reactivado correctamente.")
             self.cargar_usuarios()
             self.cargar_usuarios_inactivos()
-            self.btnReactivarUsuario.setEnabled(False)  # deshabilitamos hasta que seleccione otro
+            self.btnReactivarUsuario.setEnabled(False)
             self.usuario_inactivo_id = None
 
         except Exception as e:
             QMessageBox.critical(self, "Error", f"No se pudo reactivar el usuario:\n{e}")
-
-
 
     def cargar_usuarios(self):
         conexion = conectar_base_datos()
@@ -231,23 +222,6 @@ class VentanaUsuarios(QWidget):
             for column_number, data in enumerate(row_data):
                 item = QTableWidgetItem(str(data))
                 self.tabla_usuarios_inactivos.setItem(row_number, column_number, item)
-
-    def reactivar_usuario(self):
-        if not hasattr(self, 'usuario_inactivo_id') or not self.usuario_inactivo_id:
-            QMessageBox.warning(self, "Seleccionar", "Seleccioná un usuario para reactivar.")
-            return
-
-        conexion = conectar_base_datos()
-        cursor = conexion.cursor()
-        cursor.execute("UPDATE usuarios SET activo = 1 WHERE id_usuario = %s", (self.usuario_inactivo_id,))
-        conexion.commit()
-        conexion.close()
-
-        QMessageBox.information(self, "Usuario reactivado", "El usuario fue reactivado correctamente.")
-        self.cargar_usuarios()
-        self.cargar_usuarios_inactivos()
-        self.btnReactivarUsuario.setEnabled(True)
-        self.usuario_inactivo_id = None
 
     def agregar_usuario(self):
         apellido_nombre = self.lineEdit_apellido_nombre_usuario.text().strip()
@@ -349,9 +323,6 @@ class VentanaUsuarios(QWidget):
             self.limpiar_formulario()
             
     def seleccionar_foto_usuario(self):
-        import shutil
-        import hashlib
-
         ruta_origen, _ = QFileDialog.getOpenFileName(
             self, "Seleccionar foto de usuario", "", "Imágenes (*.png *.jpg *.jpeg *.bmp *.gif)"
         )
@@ -362,8 +333,11 @@ class VentanaUsuarios(QWidget):
             self.label_foto_usuario.setText("Sin foto")
             return
 
-        # 📌 Carpeta destino ya existente dentro de public/assets
-        carpeta_destino = os.path.join(os.getcwd(), "public", "assets", "imagenes", "fotos_usuarios")
+        # 📌 Carpeta destino usando ruta absoluta
+        carpeta_destino = ruta_absoluta_desde_relativa("/assets/imagenes/fotos_usuarios")
+        
+        # Asegurar que la carpeta existe
+        os.makedirs(carpeta_destino, exist_ok=True)
 
         nombre_archivo = os.path.basename(ruta_origen)
         nombre_base, extension = os.path.splitext(nombre_archivo)
@@ -408,12 +382,6 @@ class VentanaUsuarios(QWidget):
         self.label_foto_usuario.setPixmap(pixmap_foto)
         self.label_foto_usuario.setText("")
 
-
-
-
-
-
-
     def redondear_imagen(self, ruta_imagen, label, circular=False, size=None):
         from PyQt5.QtGui import QPixmap, QPainter, QPainterPath
         from PyQt5.QtCore import Qt, QRectF
@@ -445,7 +413,6 @@ class VentanaUsuarios(QWidget):
 
         return pixmap
 
-
     def existe_foto_en_uso(self, ruta_foto, id_actual=None):
         conexion = conectar_base_datos()
         cursor = conexion.cursor()
@@ -459,6 +426,7 @@ class VentanaUsuarios(QWidget):
         resultado = cursor.fetchone()[0]
         conexion.close()
         return resultado > 0
+
     def limpiar_formulario(self):
         self.lineEdit_apellido_nombre_usuario.clear()
         self.lineEdit_dni_usuario.clear()
@@ -469,7 +437,6 @@ class VentanaUsuarios(QWidget):
         self.lineEdit_password_usuario.clear()
         self.lineEdit_ruta_foto.clear()
 
-        
         self.comboBox_localidad_usuario.setCurrentIndex(0)
         self.comboBox_provincia_usuario.setCurrentIndex(0)
         self.comboBox_rol_usuario.setCurrentIndex(0)
@@ -482,4 +449,3 @@ class VentanaUsuarios(QWidget):
         self.btnAgregarUsuario.setEnabled(True)
         self.btnModificarUsuario.setEnabled(False)
         self.btnEliminarUsuario.setEnabled(False)
-

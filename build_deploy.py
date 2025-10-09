@@ -1,13 +1,13 @@
-# build_deploy.py - CON INTEGRACIÓN FLASK REACT
+# build_deploy.py - CON INTEGRACIÓN FLASK REACT - VERSIÓN MEJORADA
 import os
 import subprocess
 import sys
 import shutil
+import time
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
                              QPushButton, QTextEdit, QProgressBar, QMessageBox,
-                             QGroupBox, QComboBox)
+                             QGroupBox, QComboBox, QScrollArea, QWidget)
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
-import threading
 
 # Importar la conexión a la base de datos
 try:
@@ -82,10 +82,13 @@ class BuildDeployThread(QThread):
         
         for ruta in posibles_rutas:
             try:
-                result = subprocess.run([ruta, "--version"], capture_output=True, text=True)
+                result = subprocess.run([ruta, "--version"], capture_output=True, text=True, timeout=10)
                 if result.returncode == 0:
                     print(f"✅ npm encontrado en: {ruta}")
                     return ruta
+            except subprocess.TimeoutExpired:
+                print(f"⚠️  Timeout verificando npm en: {ruta}")
+                continue
             except:
                 continue
         
@@ -103,10 +106,13 @@ class BuildDeployThread(QThread):
         
         for ruta in posibles_rutas:
             try:
-                result = subprocess.run([ruta, "--version"], capture_output=True, text=True)
+                result = subprocess.run([ruta, "--version"], capture_output=True, text=True, timeout=10)
                 if result.returncode == 0:
                     print(f"✅ node encontrado en: {ruta}")
                     return ruta
+            except subprocess.TimeoutExpired:
+                print(f"⚠️  Timeout verificando node en: {ruta}")
+                continue
             except:
                 continue
         
@@ -288,18 +294,25 @@ class BuildDeployThread(QThread):
             if result.returncode == 0:
                 self.log_signal.emit("✅ Dependencias instaladas correctamente")
                 if result.stdout:
-                    self.log_signal.emit(f"📋 Output: {result.stdout[-200:]}")  # Últimas 200 chars
+                    # Mostrar solo las últimas líneas relevantes
+                    lineas = result.stdout.split('\n')
+                    lineas_relevantes = [l for l in lineas if 'added' in l.lower() or 'audit' in l.lower() or 'funding' in l.lower()]
+                    for linea in lineas_relevantes[-5:]:  # Últimas 5 líneas relevantes
+                        if linea.strip():
+                            self.log_signal.emit(f"   📋 {linea.strip()}")
                 return True
             else:
                 self.log_signal.emit(f"❌ Error instalando dependencias")
                 if result.stderr:
-                    self.log_signal.emit(f"🔴 Stderr: {result.stderr}")
-                if result.stdout:
-                    self.log_signal.emit(f"🟡 Stdout: {result.stdout}")
+                    # Mostrar solo las primeras líneas de error
+                    lineas_error = result.stderr.split('\n')[:10]
+                    for linea in lineas_error:
+                        if linea.strip():
+                            self.log_signal.emit(f"   🔴 {linea.strip()}")
                 return False
                 
         except subprocess.TimeoutExpired:
-            self.log_signal.emit("❌ Timeout instalando dependencias")
+            self.log_signal.emit("❌ Timeout instalando dependencias (5 minutos)")
             return False
         except Exception as e:
             self.log_signal.emit(f"❌ Error: {str(e)}")
@@ -334,19 +347,21 @@ class BuildDeployThread(QThread):
                     
                     # Mostrar archivos generados
                     archivos = self.listar_archivos_dist()
-                    self.log_signal.emit(f"📄 Archivos generados: {', '.join(archivos)}")
+                    self.log_signal.emit(f"📄 Archivos generados: {', '.join(archivos[:8])}...")
                     
                 return True
             else:
                 self.log_signal.emit(f"❌ Error en build")
                 if result.stderr:
-                    self.log_signal.emit(f"🔴 Stderr: {result.stderr}")
-                if result.stdout:
-                    self.log_signal.emit(f"🟡 Stdout: {result.stdout}")
+                    # Mostrar solo las primeras líneas de error
+                    lineas_error = result.stderr.split('\n')[:10]
+                    for linea in lineas_error:
+                        if linea.strip():
+                            self.log_signal.emit(f"   🔴 {linea.strip()}")
                 return False
                 
         except subprocess.TimeoutExpired:
-            self.log_signal.emit("❌ Timeout en build")
+            self.log_signal.emit("❌ Timeout en build (5 minutos)")
             return False
         except Exception as e:
             self.log_signal.emit(f"❌ Error: {str(e)}")
@@ -368,6 +383,8 @@ class BuildDeployThread(QThread):
                 return self.deploy_netlify()
             elif 'vercel' in base_url:
                 return self.deploy_vercel()
+            elif 'github' in base_url or 'pages' in base_url:
+                return self.deploy_github_pages()
             else:
                 # Deploy genérico (FTP, SSH, etc.)
                 return self.deploy_generico()
@@ -384,7 +401,8 @@ class BuildDeployThread(QThread):
             # Verificar que railway CLI está instalado
             result = subprocess.run(["railway", "--version"], 
                                   capture_output=True, text=True,
-                                  shell=True)  # ✅ Usar shell
+                                  shell=True,
+                                  timeout=30)  # ✅ Timeout de 30 segundos
             
             if result.returncode != 0:
                 self.log_signal.emit("❌ Railway CLI no encontrado. Instala con: npm install -g @railway/cli")
@@ -394,44 +412,91 @@ class BuildDeployThread(QThread):
             # Deploy con railway
             result = subprocess.run(["railway", "deploy"], 
                                   capture_output=True, text=True, 
-                                  timeout=600,
-                                  shell=True)  # ✅ Usar shell
+                                  timeout=600,  # 10 minutos para deploy
+                                  shell=True)
             
             if result.returncode == 0:
                 self.log_signal.emit("✅ Deploy a Railway completado")
                 self.log_signal.emit(f"🌐 Aplicación disponible en: {self.deploy_config.get('base_url')}")
                 return True
             else:
-                self.log_signal.emit(f"❌ Error en deploy Railway: {result.stderr}")
+                self.log_signal.emit(f"❌ Error en deploy Railway: {result.stderr[:500]}...")  # Limitar output
                 self.log_signal.emit("💡 Deploy manual requerido")
                 return True  # No es error crítico, solo build
                 
         except subprocess.TimeoutExpired:
-            self.log_signal.emit("❌ Timeout en deploy Railway")
+            self.log_signal.emit("❌ Timeout en deploy Railway (10 minutos)")
             return True
         except Exception as e:
             self.log_signal.emit(f"❌ Error: {str(e)}")
+            return True
+
+    def deploy_github_pages(self):
+        """Deploy a GitHub Pages"""
+        try:
+            self.log_signal.emit("🐙 Configuración GitHub Pages detectada")
+            
+            # Verificar si es un repositorio git
+            if not os.path.exists(os.path.join(self.project_root, ".git")):
+                self.log_signal.emit("❌ No es un repositorio Git")
+                self.log_signal.emit("💡 Deploy manual requerido para GitHub Pages")
+                return True
+            
+            # Intentar deploy automático con gh-pages si está instalado
+            result = subprocess.run([self.npm_path, "list", "gh-pages"], 
+                                  capture_output=True, text=True,
+                                  shell=True)
+            
+            if "gh-pages" in result.stdout:
+                self.log_signal.emit("📦 Ejecutando deploy con gh-pages...")
+                deploy_result = subprocess.run([self.npm_path, "run", "deploy"], 
+                                             capture_output=True, text=True,
+                                             timeout=300,
+                                             shell=True)
+                
+                if deploy_result.returncode == 0:
+                    self.log_signal.emit("✅ Deploy a GitHub Pages completado")
+                    return True
+                else:
+                    self.log_signal.emit("❌ Error en deploy automático")
+            
+            self.log_signal.emit("💡 Instrucciones para deploy manual:")
+            self.log_signal.emit("   1. Sube la carpeta 'dist' a la rama gh-pages")
+            self.log_signal.emit("   2. O configura GitHub Actions para deploy automático")
+            return True
+            
+        except Exception as e:
+            self.log_signal.emit(f"⚠️  Error en deploy GitHub Pages: {str(e)}")
             return True
     
     def deploy_netlify(self):
         """Deploy a Netlify"""
         self.log_signal.emit("☁️  Configuración Netlify detectada")
-        self.log_signal.emit("💡 Deploy manual requerido para Netlify")
-        self.log_signal.emit(f"🔗 Sube la carpeta 'dist' a: {self.deploy_config.get('base_url')}")
+        self.log_signal.emit("💡 Instrucciones para deploy:")
+        self.log_signal.emit("   1. Ve a https://app.netlify.com/")
+        self.log_signal.emit("   2. Arrastra la carpeta 'dist' a la zona de deploy")
+        self.log_signal.emit("   3. O conecta tu repositorio GitHub")
+        self.log_signal.emit(f"🔗 Tu app estará en: {self.deploy_config.get('base_url')}")
         return True
     
     def deploy_vercel(self):
         """Deploy a Vercel"""
         self.log_signal.emit("▲ Configuración Vercel detectada")
-        self.log_signal.emit("💡 Deploy manual requerido para Vercel")
-        self.log_signal.emit(f"🔗 Sube la carpeta 'dist' a: {self.deploy_config.get('base_url')}")
+        self.log_signal.emit("💡 Instrucciones para deploy:")
+        self.log_signal.emit("   1. Instala Vercel CLI: npm i -g vercel")
+        self.log_signal.emit("   2. Ejecuta: vercel --prod en la carpeta del proyecto")
+        self.log_signal.emit("   3. O conecta tu repositorio en vercel.com")
+        self.log_signal.emit(f"🔗 Tu app estará en: {self.deploy_config.get('base_url')}")
         return True
     
     def deploy_generico(self):
         """Deploy genérico"""
         self.log_signal.emit("🌐 Configuración de deploy genérico")
         self.log_signal.emit(f"🔗 URL de producción: {self.deploy_config.get('base_url')}")
-        self.log_signal.emit("💡 Sube manualmente la carpeta 'dist' a tu servidor")
+        self.log_signal.emit("💡 Instrucciones para deploy manual:")
+        self.log_signal.emit("   1. Sube manualmente la carpeta 'dist' a tu servidor")
+        self.log_signal.emit("   2. Configura tu servidor web (Apache/Nginx)")
+        self.log_signal.emit("   3. Asegúrate de que index.html sea la página principal")
         return True
     
     def get_folder_size(self, folder_path):
@@ -461,7 +526,7 @@ class BuildDeployThread(QThread):
                 elif os.path.isdir(os.path.join(self.dist_path, item)):
                     archivos.append(f"{item}/")
             
-            return archivos[:5]  # Solo primeros 5 archivos
+            return archivos
         except:
             return ["Error listando archivos"]
 
@@ -478,49 +543,70 @@ class DialogoBuildDeploy(QDialog):
         
     def setup_ui(self):
         self.setWindowTitle("🚀 Build & Deploy Automático + Flask")
-        self.setFixedSize(700, 600)
+        self.setFixedSize(750, 650)
         
-        layout = QVBoxLayout()
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll_content = QWidget()
+        layout = QVBoxLayout(scroll_content)
+        layout.setSpacing(10)
+        layout.setContentsMargins(12, 12, 12, 12)
         
         # Título
-        titulo = QLabel("Sistema Automático de Build & Deploy + Flask")
-        titulo.setStyleSheet("font-size: 16px; font-weight: bold; color: #2c3e50; margin: 10px;")
+        titulo = QLabel("🚀 Sistema Automático de Build & Deploy + Flask")
+        titulo.setStyleSheet("font-size: 16px; font-weight: bold; color: #2c3e50; margin: 8px 0px;")
         layout.addWidget(titulo)
         
         # Información del proyecto
-        info_group = QGroupBox("📋 Información del Proyecto")
+        info_group = QGroupBox("📋 Información del Sistema")
         info_layout = QVBoxLayout()
         
-        self.lbl_proyecto = QLabel(f"📁 Proyecto: {self.project_path}")
+        self.lbl_proyecto = QLabel(f"📁 Proyecto React: {self.project_path}")
+        self.lbl_proyecto.setStyleSheet("font-size: 11px; color: #2c3e50;")
+        
         self.lbl_deploy = QLabel("🌐 Deploy: Cargando configuración...")
+        self.lbl_deploy.setStyleSheet("font-size: 11px; color: #2c3e50;")
+        
         self.lbl_url = QLabel("🔗 URL: Cargando...")
+        self.lbl_url.setStyleSheet("font-size: 11px; color: #2c3e50;")
+        
         self.lbl_flask = QLabel("🐍 Flask: Verificando...")
+        self.lbl_flask.setStyleSheet("font-size: 11px; color: #2c3e50;")
+        
+        self.lbl_node = QLabel("📦 Node.js: Verificando...")
+        self.lbl_node.setStyleSheet("font-size: 11px; color: #2c3e50;")
         
         info_layout.addWidget(self.lbl_proyecto)
         info_layout.addWidget(self.lbl_deploy)
         info_layout.addWidget(self.lbl_url)
         info_layout.addWidget(self.lbl_flask)
+        info_layout.addWidget(self.lbl_node)
         
         info_group.setLayout(info_layout)
         layout.addWidget(info_group)
         
         # Log output
-        layout.addWidget(QLabel("📝 Log de ejecución:"))
+        lbl_log = QLabel("📝 Log de ejecución:")
+        lbl_log.setStyleSheet("font-size: 11px; font-weight: bold;")
+        layout.addWidget(lbl_log)
+        
         self.log_output = QTextEdit()
+        self.log_output.setMaximumHeight(200)
         self.log_output.setReadOnly(True)
-        self.log_output.setStyleSheet("font-family: 'Courier New'; font-size: 10px;")
+        self.log_output.setStyleSheet("font-family: 'Consolas'; font-size: 9px; background-color: #f8f9fa;")
         layout.addWidget(self.log_output)
         
         # Progress bar
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
+        self.progress_bar.setMaximumHeight(10)
         layout.addWidget(self.progress_bar)
         
         # Botones
         botones_layout = QHBoxLayout()
+        botones_layout.setSpacing(8)
         
-        self.btn_build_only = QPushButton("🔨 Solo Build")
-        self.btn_build_only.clicked.connect(lambda: self.iniciar_proceso(None))
+        self.btn_build_only = QPushButton("🔨 Solo Build + Flask")
         self.btn_build_only.setStyleSheet("""
             QPushButton {
                 background-color: #3498db;
@@ -529,13 +615,14 @@ class DialogoBuildDeploy(QDialog):
                 border: none;
                 border-radius: 4px;
                 font-weight: bold;
+                font-size: 11px;
+                min-width: 150px;
             }
             QPushButton:hover { background-color: #2980b9; }
             QPushButton:disabled { background-color: #bdc3c7; }
         """)
         
         self.btn_build_deploy = QPushButton("🚀 Build + Deploy")
-        self.btn_build_deploy.clicked.connect(lambda: self.iniciar_proceso(self.deploy_config))
         self.btn_build_deploy.setStyleSheet("""
             QPushButton {
                 background-color: #27ae60;
@@ -544,13 +631,44 @@ class DialogoBuildDeploy(QDialog):
                 border: none;
                 border-radius: 4px;
                 font-weight: bold;
+                font-size: 11px;
+                min-width: 150px;
             }
             QPushButton:hover { background-color: #219a52; }
             QPushButton:disabled { background-color: #bdc3c7; }
         """)
         
+        self.btn_verificar = QPushButton("🔍 Verificar")
+        self.btn_verificar.setStyleSheet("""
+            QPushButton {
+                background-color: #f39c12;
+                color: white;
+                padding: 8px 15px;
+                border: none;
+                border-radius: 4px;
+                font-weight: bold;
+                font-size: 11px;
+                min-width: 100px;
+            }
+            QPushButton:hover { background-color: #e67e22; }
+        """)
+        
+        self.btn_limpiar = QPushButton("🗑️ Limpiar")
+        self.btn_limpiar.setStyleSheet("""
+            QPushButton {
+                background-color: #95a5a6;
+                color: white;
+                padding: 8px 15px;
+                border: none;
+                border-radius: 4px;
+                font-weight: bold;
+                font-size: 11px;
+                min-width: 100px;
+            }
+            QPushButton:hover { background-color: #7f8c8d; }
+        """)
+        
         self.btn_cerrar = QPushButton("❌ Cerrar")
-        self.btn_cerrar.clicked.connect(self.close)
         self.btn_cerrar.setStyleSheet("""
             QPushButton {
                 background-color: #e74c3c;
@@ -559,41 +677,69 @@ class DialogoBuildDeploy(QDialog):
                 border: none;
                 border-radius: 4px;
                 font-weight: bold;
+                font-size: 11px;
+                min-width: 100px;
             }
             QPushButton:hover { background-color: #c0392b; }
         """)
         
         botones_layout.addWidget(self.btn_build_only)
         botones_layout.addWidget(self.btn_build_deploy)
+        botones_layout.addWidget(self.btn_verificar)
+        botones_layout.addWidget(self.btn_limpiar)
         botones_layout.addWidget(self.btn_cerrar)
+        
         layout.addLayout(botones_layout)
         
-        self.setLayout(layout)
+        scroll.setWidget(scroll_content)
+        main_layout = QVBoxLayout(self)
+        main_layout.addWidget(scroll)
         
-        # Thread
+        self.btn_build_only.clicked.connect(lambda: self.iniciar_proceso(None))
+        self.btn_build_deploy.clicked.connect(lambda: self.iniciar_proceso(self.deploy_config))
+        self.btn_verificar.clicked.connect(self.verificar_sistema)
+        self.btn_limpiar.clicked.connect(self.limpiar_log)
+        self.btn_cerrar.clicked.connect(self.close)
+        
         self.build_thread = None
         
-        # Verificar Flask inicialmente
-        self.verificar_flask_inicial()
+        # Verificar sistema inicialmente
+        self.verificar_sistema()
     
-    def verificar_flask_inicial(self):
-        """Verificar estado de Flask al iniciar"""
+    def verificar_sistema(self):
+        """Verificar estado del sistema completo"""
         try:
-            # Simular la búsqueda de Flask como lo hace el thread
+            # Verificar Flask
             posibles_backends = [
-                r"E:\Sistemas de app para androide\turismo-backend",
+                r"E:\Sistemas de app para androide\turismo-app\turismo-backend",
                 os.path.join(os.path.dirname(self.project_path), "turismo-backend"),
             ]
             
+            flask_encontrado = False
             for backend_path in posibles_backends:
                 if os.path.exists(backend_path) and os.path.exists(os.path.join(backend_path, "api.py")):
                     self.lbl_flask.setText(f"🐍 Flask: ✅ CONECTADO - {os.path.basename(backend_path)}")
-                    return
+                    flask_encontrado = True
+                    break
             
-            self.lbl_flask.setText("🐍 Flask: ❌ NO ENCONTRADO")
+            if not flask_encontrado:
+                self.lbl_flask.setText("🐍 Flask: ❌ NO ENCONTRADO")
+            
+            # Verificar Node.js y npm
+            thread_temp = BuildDeployThread(self.project_path)
+            node_path = thread_temp.encontrar_node()
+            npm_path = thread_temp.encontrar_npm()
+            
+            if node_path and npm_path:
+                self.lbl_node.setText(f"📦 Node.js: ✅ INSTALADO")
+            else:
+                self.lbl_node.setText("📦 Node.js: ❌ NO INSTALADO")
+            
+            self.log("🔍 Verificación del sistema completada")
             
         except Exception as e:
             self.lbl_flask.setText(f"🐍 Flask: ⚠️ ERROR - {str(e)}")
+            self.lbl_node.setText("📦 Node.js: ⚠️ ERROR")
     
     def cargar_configuracion_desde_bd(self):
         """Cargar configuración de deploy desde la base de datos"""
@@ -620,7 +766,7 @@ class DialogoBuildDeploy(QDialog):
     
     def actualizar_ui_configuracion(self, base_url, host_info):
         """Actualizar la UI con la configuración cargada"""
-        if base_url:
+        if base_url and base_url != 'No configurado':
             self.lbl_deploy.setText(f"🌐 Deploy: {host_info}")
             self.lbl_url.setText(f"🔗 URL: {base_url}")
             self.btn_build_deploy.setEnabled(True)
@@ -629,13 +775,14 @@ class DialogoBuildDeploy(QDialog):
             self.lbl_url.setText("🔗 URL: No configurado")
             self.btn_build_deploy.setEnabled(False)
     
+    def limpiar_log(self):
+        self.log_output.clear()
+        self.log("🗑️ Log limpiado")
+    
     def log(self, mensaje):
         """Agregar mensaje al log"""
         self.log_output.append(f"{mensaje}")
-        # Auto-scroll
-        cursor = self.log_output.textCursor()
-        cursor.movePosition(cursor.End)
-        self.log_output.setTextCursor(cursor)
+        self.log_output.moveCursor(self.log_output.textCursor().End)
     
     def iniciar_proceso(self, deploy_config):
         """Iniciar proceso de build/deploy"""
@@ -669,11 +816,15 @@ class DialogoBuildDeploy(QDialog):
         # Mostrar mensaje final
         self.log(mensaje)
         
-        # Actualizar estado de Flask
-        self.verificar_flask_inicial()
+        # Actualizar estado del sistema
+        self.verificar_sistema()
         
         if exito:
-            QMessageBox.information(self, "✅ Éxito", mensaje)
+            QMessageBox.information(self, "✅ Éxito", 
+                                  f"{mensaje}\n\n"
+                                  f"✅ Build de React completado\n"
+                                  f"✅ Integración con Flask exitosa\n"
+                                  f"✅ Deploy configurado para producción")
         else:
             QMessageBox.critical(self, "❌ Error", mensaje)
 

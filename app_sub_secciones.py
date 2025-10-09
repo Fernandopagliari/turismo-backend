@@ -11,6 +11,7 @@ from PyQt5.QtCore import Qt, QDate
 from database_hosting import conectar_hosting as conectar_base_datos
 from datetime import date, datetime
 import os
+import shutil
 
 # -------------------------
 # HELPERS GENERALES
@@ -27,6 +28,72 @@ def ruta_absoluta_desde_relativa(ruta_rel):
     ruta_abs = os.path.abspath(os.path.join(base_dir, ruta_rel))
 
     return ruta_abs
+
+def convertir_ruta_produccion(ruta_absoluta, tipo_archivo):
+    """Convierte rutas absolutas a rutas relativas para producción React"""
+    if not ruta_absoluta or not os.path.exists(ruta_absoluta):
+        return ""
+    
+    nombre_archivo = os.path.basename(ruta_absoluta)
+    
+    # Determinar estructura según tipo de archivo
+    if tipo_archivo == "icono":
+        return f"assets/imagenes/iconos/{nombre_archivo}"
+    elif tipo_archivo == "imagen_region":
+        return f"assets/imagenes/regiones_zonas/{nombre_archivo}"
+    elif tipo_archivo == "imagen_subseccion":
+        return f"assets/imagenes/sub_secciones/{nombre_archivo}"
+    elif tipo_archivo == "foto_subseccion":
+        return f"assets/imagenes/sub_secciones/{nombre_archivo}"
+    else:
+        return f"assets/imagenes/{nombre_archivo}"
+
+def copiar_archivo_a_destino(ruta_origen, tipo_archivo):
+    """Copia un archivo a la carpeta destino correspondiente y devuelve ruta relativa"""
+    if not ruta_origen or not os.path.exists(ruta_origen):
+        return ""
+    
+    nombre_archivo = os.path.basename(ruta_origen)
+    
+    # Determinar carpeta destino según tipo
+    if tipo_archivo == "icono":
+        carpeta_destino = os.path.join(os.getcwd(), "public", "assets", "imagenes", "iconos")
+    elif tipo_archivo == "imagen_region":
+        carpeta_destino = os.path.join(os.getcwd(), "public", "assets", "imagenes", "regiones_zonas")
+    elif tipo_archivo in ["imagen_subseccion", "foto_subseccion"]:
+        carpeta_destino = os.path.join(os.getcwd(), "public", "assets", "imagenes", "sub_secciones")
+    else:
+        carpeta_destino = os.path.join(os.getcwd(), "public", "assets", "imagenes")
+    
+    # Crear carpeta si no existe
+    os.makedirs(carpeta_destino, exist_ok=True)
+    
+    ruta_destino = os.path.join(carpeta_destino, nombre_archivo)
+    
+    try:
+        # Si el archivo ya está en la carpeta destino, no copiar
+        if os.path.abspath(ruta_origen) == os.path.abspath(ruta_destino):
+            return convertir_ruta_produccion(ruta_destino, tipo_archivo)
+        
+        # Si existe y es diferente, renombrar
+        if os.path.exists(ruta_destino):
+            base, ext = os.path.splitext(nombre_archivo)
+            contador = 1
+            while True:
+                nuevo_nombre = f"{base}_{contador}{ext}"
+                nueva_ruta = os.path.join(carpeta_destino, nuevo_nombre)
+                if not os.path.exists(nueva_ruta):
+                    ruta_destino = nueva_ruta
+                    break
+                contador += 1
+        
+        # Copiar archivo
+        shutil.copy2(ruta_origen, ruta_destino)
+        return convertir_ruta_produccion(ruta_destino, tipo_archivo)
+        
+    except Exception as e:
+        print(f"Error copiando archivo: {e}")
+        return ""
 
 # -------------------------
 # CLASE PRINCIPAL
@@ -79,16 +146,34 @@ class VentanaSubSecciones(QWidget):
         self.btnLimpiarFormulario.clicked.connect(self.limpiar_formulario)
         self.btnCerrar.clicked.connect(self.close)
 
-        # Selección de imágenes
+        # ✅ CORREGIDO: Selección de imágenes con tipos específicos
         self.btnBuscarImagen.clicked.connect(
-            lambda: self.seleccionar_archivo(self.label_imagen, self.lineEdit_imagen, 200, 150, "public/assets/imagenes")
+            lambda: self.seleccionar_archivo_corregido(
+                self.label_imagen, self.lineEdit_imagen, 200, 150, "imagen_subseccion"
+            )
         )
         
-        # Selección de fotos
-        self.btnBuscarFoto1.clicked.connect(lambda: self.seleccionar_archivo(self.label_foto_1, self.lineEdit_foto_1, 200, 150, "public/assets/imagenes"))
-        self.btnBuscarFoto2.clicked.connect(lambda: self.seleccionar_archivo(self.label_foto_2, self.lineEdit_foto_2, 200, 150, "public/assets/imagenes"))
-        self.btnBuscarFoto3.clicked.connect(lambda: self.seleccionar_archivo(self.label_foto_3, self.lineEdit_foto_3, 200, 150, "public/assets/imagenes"))
-        self.btnBuscarFoto4.clicked.connect(lambda: self.seleccionar_archivo(self.label_foto_4, self.lineEdit_foto_4, 200, 150, "public/assets/imagenes"))
+        # ✅ CORREGIDO: Selección de fotos con tipos específicos
+        self.btnBuscarFoto1.clicked.connect(
+            lambda: self.seleccionar_archivo_corregido(
+                self.label_foto_1, self.lineEdit_foto_1, 200, 150, "foto_subseccion"
+            )
+        )
+        self.btnBuscarFoto2.clicked.connect(
+            lambda: self.seleccionar_archivo_corregido(
+                self.label_foto_2, self.lineEdit_foto_2, 200, 150, "foto_subseccion"
+            )
+        )
+        self.btnBuscarFoto3.clicked.connect(
+            lambda: self.seleccionar_archivo_corregido(
+                self.label_foto_3, self.lineEdit_foto_3, 200, 150, "foto_subseccion"
+            )
+        )
+        self.btnBuscarFoto4.clicked.connect(
+            lambda: self.seleccionar_archivo_corregido(
+                self.label_foto_4, self.lineEdit_foto_4, 200, 150, "foto_subseccion"
+            )
+        )
 
     # -------------------------
     # EVENTOS DE VENTANA
@@ -228,28 +313,71 @@ class VentanaSubSecciones(QWidget):
             self.cargar_sub_secciones_inactivas()
 
     # -------------------------
-    # SELECCIÓN DE ARCHIVOS
+    # ✅ CORREGIDO: SELECCIÓN DE ARCHIVOS
     # -------------------------
-    def seleccionar_archivo(self, label_obj, lineedit_obj, ancho, alto, carpeta_destino):
-        """Abre diálogo para seleccionar archivo y lo carga en la UI"""
+    def seleccionar_archivo_corregido(self, label_obj, lineedit_obj, ancho, alto, tipo_archivo):
+        """Abre diálogo para seleccionar archivo y lo procesa para producción"""
         archivo, _ = QFileDialog.getOpenFileName(
             self, "Seleccionar archivo", "", "Imágenes (*.png *.jpg *.jpeg *.bmp)"
         )
-        if archivo:
-            ruta_absoluta = os.path.abspath(archivo)
+        if not archivo:
+            return
 
-            try:
-                ruta_relativa = os.path.relpath(ruta_absoluta, os.path.join(os.getcwd(), "public")).replace("\\", "/")
-                ruta_relativa = "/" + ruta_relativa
-            except ValueError:
-                ruta_relativa = os.path.basename(ruta_absoluta)
+        # ✅ CORREGIDO: Copiar archivo a destino y obtener ruta de producción
+        ruta_relativa_produccion = copiar_archivo_a_destino(archivo, tipo_archivo)
+        
+        if not ruta_relativa_produccion:
+            QMessageBox.warning(self, "Error", "No se pudo procesar el archivo seleccionado")
+            return
 
-            pixmap = QPixmap(ruta_absoluta).scaled(ancho, alto, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-            label_obj.setPixmap(pixmap)
+        # Mostrar imagen en el label
+        pixmap = QPixmap(archivo).scaled(ancho, alto, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        label_obj.setPixmap(pixmap)
 
-            label_obj.setToolTip(f"ABS:{ruta_absoluta}|REL:{ruta_relativa}")
-            lineedit_obj.setText(ruta_relativa)
-            label_obj.ruta_absoluta = ruta_absoluta
+        # ✅ CORREGIDO: Guardar ruta de producción en el lineedit
+        lineedit_obj.setText(ruta_relativa_produccion)
+        label_obj.setToolTip(f"Ruta producción: {ruta_relativa_produccion}")
+
+        # ✅ CORREGIDO: Actualizar automáticamente en BD si hay subsección seleccionada
+        if hasattr(self, 'id_subseccion_seleccionada') and self.id_subseccion_seleccionada:
+            self.actualizar_ruta_en_bd(tipo_archivo, ruta_relativa_produccion)
+
+    def actualizar_ruta_en_bd(self, tipo_archivo, ruta_relativa):
+        """Actualiza automáticamente la ruta en la base de datos"""
+        try:
+            conexion = conectar_base_datos()
+            cursor = conexion.cursor()
+            
+            # Determinar campo a actualizar según tipo de archivo
+            if tipo_archivo == "imagen_subseccion":
+                campo = "imagen_ruta_relativa"
+            elif tipo_archivo == "foto_subseccion":
+                # Determinar qué foto actualizar basado en el lineedit que activó la función
+                sender = self.sender()
+                if sender == self.btnBuscarFoto1:
+                    campo = "foto1_ruta_relativa"
+                elif sender == self.btnBuscarFoto2:
+                    campo = "foto2_ruta_relativa"
+                elif sender == self.btnBuscarFoto3:
+                    campo = "foto3_ruta_relativa"
+                elif sender == self.btnBuscarFoto4:
+                    campo = "foto4_ruta_relativa"
+                else:
+                    campo = "imagen_ruta_relativa"
+            else:
+                campo = "imagen_ruta_relativa"
+            
+            cursor.execute(f"""
+                UPDATE sub_secciones
+                SET {campo} = %s
+                WHERE id_sub_seccion = %s
+            """, (ruta_relativa, self.id_subseccion_seleccionada))
+            
+            conexion.commit()
+            conexion.close()
+            
+        except Exception as e:
+            print(f"Error actualizando BD: {e}")
 
     # -------------------------
     # CARGA DE SUBSECCIONES
@@ -464,7 +592,7 @@ class VentanaSubSecciones(QWidget):
             "orden": subseccion.get('orden', ''),
             "destacado": subseccion.get('destacado',''),
             "id_seccion": subseccion.get('id_seccion'),
-            "id_region_zona": subseccion.get('id_region_zona'),  # Nuevo campo
+            "id_region_zona": subseccion.get('id_region_zona'),
             "domicilio": subseccion.get('domicilio', ''),
             "latitud": subseccion.get('latitud'),
             "longitud": subseccion.get('longitud'),
@@ -669,10 +797,10 @@ class VentanaSubSecciones(QWidget):
         self.btnDesactivar.setEnabled(False)
     
     # -------------------------
-    # OPERACIONES CRUD (ADAPTADAS)
+    # ✅ CORREGIDO: OPERACIONES CRUD
     # -------------------------
     def agregar_sub_seccion(self):
-        """Agrega una nueva subsección incluyendo región/zona"""
+        """Agrega una nueva subsección con rutas de producción"""
         # Validaciones básicas
         nombre = self.lineEdit_nombre_subSeccion.text().strip()
         id_seccion = self.comboBox_seccion.currentData()
@@ -686,13 +814,21 @@ class VentanaSubSecciones(QWidget):
             QMessageBox.warning(self, "Error", "Debe seleccionar una región/zona")
             return
 
-        # Campos básicos
+        # ✅ CORREGIDO: Procesar rutas para producción
+        imagen_rel = self.lineEdit_imagen.text().strip() or None
+        icono_rel = self.lineEdit_icono.text().strip() or None
+        foto1_rel = self.lineEdit_foto_1.text().strip() or None
+        foto2_rel = self.lineEdit_foto_2.text().strip() or None
+        foto3_rel = self.lineEdit_foto_3.text().strip() or None
+        foto4_rel = self.lineEdit_foto_4.text().strip() or None
+
+        # Resto de campos
         domicilio = self.lineEdit_domicilio.text().strip()
         distancia = self.lineEdit_distancia.text().strip()
         telefono = self.lineEdit_numero_telefono.text().strip()
         itinerario = self.lineEdit_itinerario.text().strip()
         habilitar = 1
-        orden = self.spinBox_orden.value()  # CORREGIDO: usar value() en lugar de text()
+        orden = self.spinBox_orden.value()
         destacado = 1 if self.checkBox_destacado.isChecked() else 0
 
         # Fecha de desactivación
@@ -716,27 +852,6 @@ class VentanaSubSecciones(QWidget):
             QMessageBox.warning(self, "Error", "Longitud inválida. Debe ser un número decimal entre -180 y 180")
             return
 
-        # Helper para procesar rutas
-        def procesar_ruta(lineedit, base_dir):
-            ruta_rel = lineedit.text().strip() or None
-            if ruta_rel:
-                ruta_abs = os.path.abspath(os.path.join(base_dir, ruta_rel))
-                ruta_rel = ruta_rel.replace("\\", "/")
-            else:
-                ruta_abs = None
-            return ruta_abs, ruta_rel
-
-        base_imagenes = os.path.abspath("public/assets/imagenes")
-        base_iconos = os.path.abspath("public/assets/iconos")
-
-        # Rutas de imagen, icono y fotos
-        imagen_abs, imagen_rel = procesar_ruta(self.lineEdit_imagen, base_imagenes)
-        icono_abs, icono_rel = procesar_ruta(self.lineEdit_icono, base_iconos)
-        foto1_abs, foto1_rel = procesar_ruta(self.lineEdit_foto_1, base_imagenes)
-        foto2_abs, foto2_rel = procesar_ruta(self.lineEdit_foto_2, base_imagenes)
-        foto3_abs, foto3_rel = procesar_ruta(self.lineEdit_foto_3, base_imagenes)
-        foto4_abs, foto4_rel = procesar_ruta(self.lineEdit_foto_4, base_imagenes)
-
         # Insertar en DB
         try:
             conexion = conectar_base_datos()
@@ -744,18 +859,15 @@ class VentanaSubSecciones(QWidget):
             cursor.execute("""
                 INSERT INTO sub_secciones 
                 (id_seccion, id_region_zona, nombre_sub_seccion, domicilio, latitud, longitud, 
-                distancia, numero_telefono, imagen, imagen_ruta_relativa, icono, icono_ruta_relativa, 
+                distancia, numero_telefono, imagen_ruta_relativa, icono_ruta_relativa, 
                 itinerario_maps, habilitar, fecha_desactivacion, orden, destacado,
-                foto1_ruta_absoluta, foto1_ruta_relativa, foto2_ruta_absoluta, foto2_ruta_relativa,
-                foto3_ruta_absoluta, foto3_ruta_relativa, foto4_ruta_absoluta, foto4_ruta_relativa)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 
-                        %s, %s, %s, %s, %s, %s, %s, %s)
+                foto1_ruta_relativa, foto2_ruta_relativa, foto3_ruta_relativa, foto4_ruta_relativa)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 id_seccion, id_region_zona, nombre, domicilio, latitud, longitud, 
-                distancia, telefono, imagen_abs, imagen_rel, icono_abs, icono_rel, 
+                distancia, telefono, imagen_rel, icono_rel, 
                 itinerario, habilitar, fecha, orden, destacado,
-                foto1_abs, foto1_rel, foto2_abs, foto2_rel, 
-                foto3_abs, foto3_rel, foto4_abs, foto4_rel
+                foto1_rel, foto2_rel, foto3_rel, foto4_rel
             ))
             conexion.commit()
             conexion.close()
@@ -768,19 +880,27 @@ class VentanaSubSecciones(QWidget):
             QMessageBox.critical(self, "Error", f"No se pudo agregar la subsección: {str(e)}")
 
     def modificar_sub_seccion(self):
-        """Modifica una subsección existente incluyendo región/zona"""
+        """Modifica una subsección existente con rutas de producción"""
         if not self.id_subseccion_seleccionada:
             QMessageBox.warning(self, "Error", "Seleccione una subsección para modificar")
             return
 
-        # Campos básicos
+        # ✅ CORREGIDO: Procesar rutas para producción
+        imagen_rel = self.lineEdit_imagen.text().strip() or None
+        icono_rel = self.lineEdit_icono.text().strip() or None
+        foto1_rel = self.lineEdit_foto_1.text().strip() or None
+        foto2_rel = self.lineEdit_foto_2.text().strip() or None
+        foto3_rel = self.lineEdit_foto_3.text().strip() or None
+        foto4_rel = self.lineEdit_foto_4.text().strip() or None
+
+        # Resto de campos
         nombre = self.lineEdit_nombre_subSeccion.text().strip()
         domicilio = self.lineEdit_domicilio.text().strip()
         distancia = self.lineEdit_distancia.text().strip()
         telefono = self.lineEdit_numero_telefono.text().strip()
         itinerario = self.lineEdit_itinerario.text().strip()
         habilitar = 1
-        orden = self.spinBox_orden.value()  # CORREGIDO: usar value()
+        orden = self.spinBox_orden.value()
         destacado = 1 if self.checkBox_destacado.isChecked() else 0
 
         id_seccion = self.comboBox_seccion.currentData()
@@ -814,27 +934,6 @@ class VentanaSubSecciones(QWidget):
         except ValueError:
             QMessageBox.warning(self, "Error", "Longitud inválida. Debe ser un número decimal entre -180 y 180")
             return
-
-        # Helper para procesar rutas
-        def procesar_ruta(lineedit, base_dir):
-            ruta_rel = lineedit.text().strip() or None
-            if ruta_rel:
-                ruta_abs = os.path.abspath(os.path.join(base_dir, ruta_rel))
-                ruta_rel = ruta_rel.replace("\\", "/")
-            else:
-                ruta_abs = None
-            return ruta_abs, ruta_rel
-
-        base_imagenes = os.path.abspath("public/assets/imagenes")
-        base_iconos = os.path.abspath("public/assets/iconos")
-
-        # Rutas de imagen, icono y fotos
-        imagen_abs, imagen_rel = procesar_ruta(self.lineEdit_imagen, base_imagenes)
-        icono_abs, icono_rel = procesar_ruta(self.lineEdit_icono, base_iconos)
-        foto1_abs, foto1_rel = procesar_ruta(self.lineEdit_foto_1, base_imagenes)
-        foto2_abs, foto2_rel = procesar_ruta(self.lineEdit_foto_2, base_imagenes)
-        foto3_abs, foto3_rel = procesar_ruta(self.lineEdit_foto_3, base_imagenes)
-        foto4_abs, foto4_rel = procesar_ruta(self.lineEdit_foto_4, base_imagenes)
 
         # Actualizar en DB
         try:
@@ -850,30 +949,23 @@ class VentanaSubSecciones(QWidget):
                     longitud = %s,
                     distancia = %s,
                     numero_telefono = %s,
-                    imagen = %s,
                     imagen_ruta_relativa = %s,
-                    icono = %s,
                     icono_ruta_relativa = %s,
                     itinerario_maps = %s,
                     habilitar = %s,
                     fecha_desactivacion = %s,
                     orden = %s,
                     destacado = %s,
-                    foto1_ruta_absoluta = %s, 
                     foto1_ruta_relativa = %s,
-                    foto2_ruta_absoluta = %s, 
                     foto2_ruta_relativa = %s,
-                    foto3_ruta_absoluta = %s, 
                     foto3_ruta_relativa = %s,
-                    foto4_ruta_absoluta = %s, 
                     foto4_ruta_relativa = %s
                 WHERE id_sub_seccion = %s
             """, (
                 id_seccion, id_region_zona, nombre, domicilio, latitud, longitud, 
-                distancia, telefono, imagen_abs, imagen_rel, icono_abs, icono_rel, 
+                distancia, telefono, imagen_rel, icono_rel, 
                 itinerario, habilitar, fecha, orden, destacado,
-                foto1_abs, foto1_rel, foto2_abs, foto2_rel, 
-                foto3_abs, foto3_rel, foto4_abs, foto4_rel,
+                foto1_rel, foto2_rel, foto3_rel, foto4_rel,
                 self.id_subseccion_seleccionada
             ))
             conexion.commit()

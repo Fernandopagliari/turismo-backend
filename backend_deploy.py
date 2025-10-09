@@ -244,6 +244,116 @@ type = "web"
             self.log_signal.emit(f"❌ Error en deploy {servidor}: {str(e)}")
             return self.deploy_con_git_completo(servidor, comando_personalizado)
     
+    def deploy_con_cli(self, servidor, comando_personalizado=""):
+        """Deploy usando CLI específico (Railway, Heroku, etc.)"""
+        try:
+            self.log_signal.emit(f"🔧 Ejecutando deploy via CLI para {servidor}...")
+            
+            # Determinar qué CLI usar basado en el servidor
+            if "railway" in servidor.lower():
+                cli_tool = "railway"
+                comando_base = "railway deploy"
+            elif "heroku" in servidor.lower():
+                cli_tool = "heroku"
+                comando_base = "git push heroku main"
+            else:
+                # CLI genérico
+                cli_tool = servidor
+                comando_base = comando_personalizado
+            
+            # Verificar que la CLI está instalada
+            if not self.verificar_herramienta(cli_tool):
+                self.log_signal.emit(f"❌ {cli_tool} CLI no encontrado")
+                return False
+            
+            # Ejecutar comando de deploy
+            comando = comando_personalizado if comando_personalizado else comando_base
+            self.log_signal.emit(f"🚀 Ejecutando: {comando}")
+            
+            os.chdir(self.backend_path)
+            result = subprocess.run(
+                comando.split(), 
+                capture_output=True, 
+                text=True,
+                timeout=300
+            )
+            
+            if result.returncode == 0:
+                self.log_signal.emit(f"✅ Deploy via {cli_tool} exitoso!")
+                if result.stdout:
+                    for linea in result.stdout.split('\n'):
+                        if linea.strip():
+                            self.log_signal.emit(f"   📤 {linea.strip()}")
+                return True
+            else:
+                self.log_signal.emit(f"❌ Error en {cli_tool} deploy: {result.stderr}")
+                return False
+                
+        except Exception as e:
+            self.log_signal.emit(f"❌ Error en CLI deploy: {str(e)}")
+            return False
+
+    def deploy_manual(self, servidor):
+        """Provee instrucciones para deploy manual"""
+        try:
+            self.log_signal.emit("📋 MODO MANUAL - INSTRUCCIONES:")
+            self.log_signal.emit("=" * 50)
+            
+            # Instrucciones específicas basadas en el servidor
+            if "railway" in servidor.lower():
+                instrucciones = [
+                    "1. Abrir terminal en la carpeta del backend",
+                    "2. Ejecutar: railway login",
+                    "3. Ejecutar: railway link (si no está vinculado)",
+                    "4. Ejecutar: railway deploy",
+                    "5. O usar: git push origin main (si está conectado a GitHub)"
+                ]
+            elif "heroku" in servidor.lower():
+                instrucciones = [
+                    "1. Abrir terminal en la carpeta del backend", 
+                    "2. Ejecutar: heroku login",
+                    "3. Ejecutar: git push heroku main",
+                    "4. O usar: heroku deploy:war"
+                ]
+            else:
+                instrucciones = [
+                    "1. Subir manualmente los archivos al servidor",
+                    "2. Asegurar que requirements.txt tenga gunicorn",
+                    "3. Configurar Procfile para producción",
+                    "4. Reiniciar servicio web"
+                ]
+            
+            for paso in instrucciones:
+                self.log_signal.emit(f"   {paso}")
+            
+            self.log_signal.emit("")
+            self.log_signal.emit("📁 Archivos preparados para deploy manual:")
+            
+            # Listar archivos esenciales
+            archivos_esenciales = [
+                "api.py", "requirements.txt", "database_hosting.py",
+                "railway.toml", "Procfile", "assets/", "runtime.txt"
+            ]
+            
+            for archivo in archivos_esenciales:
+                ruta = os.path.join(self.backend_path, archivo)
+                if os.path.exists(ruta):
+                    if os.path.isdir(ruta):
+                        num_items = len(os.listdir(ruta))
+                        self.log_signal.emit(f"   ✅ {archivo} ({num_items} elementos)")
+                    else:
+                        self.log_signal.emit(f"   ✅ {archivo}")
+                else:
+                    self.log_signal.emit(f"   ❌ {archivo} - FALTANTE")
+            
+            self.log_signal.emit("")
+            self.log_signal.emit("🎯 El backend está listo para deploy manual")
+            return True
+            
+        except Exception as e:
+            self.log_signal.emit(f"❌ Error generando instrucciones: {str(e)}")
+            return False
+    
     def deploy_con_git_completo(self, servidor, comando):
         """✅ DEPLOY COMPLETO con Git - Con pull automático"""
         try:
@@ -357,6 +467,11 @@ type = "web"
                 
                 if assets_subidos:
                     self.log_signal.emit(f"✅ {len(assets_subidos)} assets subidos a GitHub")
+                    # Mostrar primeros 5 assets como ejemplo
+                    for asset in assets_subidos[:5]:
+                        self.log_signal.emit(f"   📄 {asset}")
+                    if len(assets_subidos) > 5:
+                        self.log_signal.emit(f"   ... y {len(assets_subidos) - 5} más")
                 else:
                     self.log_signal.emit("⚠️  No se detectaron assets en el repositorio")
         except Exception as e:
@@ -420,13 +535,15 @@ type = "web"
                 [herramienta, "--version"], 
                 capture_output=True, 
                 text=True,
-                shell=True
+                shell=True,
+                timeout=10  # Agregado timeout de 10 segundos
             )
             return result.returncode == 0
+        except subprocess.TimeoutExpired:
+            self.log_signal.emit(f"⚠️  Timeout verificando {herramienta}")
+            return False
         except:
             return False
-
-# ... (EL RESTO DEL CÓDIGO DE DialogoBackendDeploy SE MANTIENE IGUAL)
 
 class DialogoBackendDeploy(QDialog):
     """Diálogo para deploy COMPLETO del backend en PRODUCCIÓN"""

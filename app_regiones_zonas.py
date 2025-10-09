@@ -19,6 +19,15 @@ def ruta_absoluta_desde_relativa(relativa):
     base_assets = os.path.join(base_dir, "public")         # la carpeta real es "public"
     return os.path.join(base_assets, relativa.lstrip("/"))
 
+def convertir_ruta_produccion(ruta_absoluta):
+    """Convierte rutas absolutas a rutas relativas para producción React"""
+    if not ruta_absoluta or not os.path.exists(ruta_absoluta):
+        return ""
+    
+    nombre_archivo = os.path.basename(ruta_absoluta)
+    
+    # Para regiones/zonas, usar estructura específica
+    return f"assets/imagenes/regiones_zonas/{nombre_archivo}"
 
 
 class VentanaRegionesZonas(QWidget):
@@ -140,13 +149,11 @@ class VentanaRegionesZonas(QWidget):
                 self.label_imagen_region_zona.clear()
                 self.label_imagen_region_zona.setText("Sin icono")
 
-
         self.btnAgregarRegionZona.setEnabled(False)
         self.btnModificarRegionZona.setEnabled(True)
         self.btnEliminarRegionZona.setEnabled(True)
         self.btnDesactivarRegionZona.setEnabled(True)
         self.btnReactivarRegionZona.setEnabled(False)
-
 
     def seleccionar_RegionZona_inactiva(self, fila, columna):
         item = self.Tabla_RegionZona_inactivas.item(fila, 0)
@@ -182,6 +189,11 @@ class VentanaRegionesZonas(QWidget):
         if not self.region_zona_seleccionada_id:
             QMessageBox.warning(self, "Modificar", "Seleccione una región/zona para modificar.")
             return
+        
+        # ✅ CORREGIDO: Obtener ruta absoluta actual para convertir a ruta de producción
+        ruta_absoluta_actual = self.lineEdit_ruta_imagen_region_zona.text().strip()
+        ruta_relativa_corregida = convertir_ruta_produccion(ruta_absoluta_actual) if ruta_absoluta_actual else None
+        
         try:
             conexion = conectar_base_datos()
             cursor = conexion.cursor()
@@ -191,7 +203,7 @@ class VentanaRegionesZonas(QWidget):
                 WHERE id_region_zona=%s
             """, (
                 self.lineEdit_nombre_region_zona.text(),
-                self.lineEdit_ruta_imagen_region_zona.text(),
+                ruta_relativa_corregida,  # ✅ Usar ruta corregida para producción
                 self.spinBox_orden_region_zona.value(),
                 self.region_zona_seleccionada_id
             ))
@@ -293,7 +305,7 @@ class VentanaRegionesZonas(QWidget):
         self.region_zona_inactiva_id = None
         self.btnAgregarRegionZona.setEnabled(True)
         self.btnModificarRegionZona.setEnabled(False)
-        self.btnEliminarRegionZona.setEnabled(False)   # 🔹 estaba mal: al limpiar debe quedar deshabilitado
+        self.btnEliminarRegionZona.setEnabled(False)
         self.btnDesactivarRegionZona.setEnabled(False)
         self.btnReactivarRegionZona.setEnabled(False)
 
@@ -308,6 +320,7 @@ class VentanaRegionesZonas(QWidget):
             self.label_imagen_region_zona.setText("Sin icono")
             return
 
+        # ✅ CORREGIDO: Carpeta destino para React production
         carpeta_destino = os.path.join(os.getcwd(), "public", "assets", "imagenes", "regiones_zonas")
         os.makedirs(carpeta_destino, exist_ok=True)
 
@@ -337,13 +350,31 @@ class VentanaRegionesZonas(QWidget):
             QMessageBox.warning(self, "Error", f"No se pudo copiar la imagen:\n{e}")
             return
 
-        ruta_relativa = f"/assets/imagenes/regiones_zonas/{os.path.basename(ruta_destino)}"
-        self.lineEdit_ruta_imagen_region_zona.setText(ruta_relativa)
+        # ✅ CORREGIDO: Usar función helper para ruta de producción
+        ruta_relativa = convertir_ruta_produccion(ruta_final)
+        
+        # Mostrar ruta absoluta en el lineEdit (para visualización)
+        self.lineEdit_ruta_imagen_region_zona.setText(ruta_final)
 
+        # Cargar imagen en el label
         pixmap_imagen = self.cargar_imagen_en_label(ruta_final, self.label_imagen_region_zona, size=75, circular=True)
         self.label_imagen_region_zona.setPixmap(pixmap_imagen)
         self.label_imagen_region_zona.setText("")
 
+        # ✅ CORREGIDO: Si hay una región seleccionada, actualizar en BD con ruta de producción
+        if hasattr(self, 'region_zona_seleccionada_id') and self.region_zona_seleccionada_id:
+            try:
+                conexion = conectar_base_datos()
+                cursor = conexion.cursor()
+                cursor.execute("""
+                    UPDATE regiones_zonas
+                    SET imagen_region_zona_ruta_relativa=%s
+                    WHERE id_region_zona=%s
+                """, (ruta_relativa, self.region_zona_seleccionada_id))
+                conexion.commit()
+                conexion.close()
+            except Exception as e:
+                QMessageBox.warning(self, "Error", f"No se pudo actualizar la imagen en BD:\n{e}")
 
     def cargar_imagen_en_label(self, ruta_imagen, label=None, size=75, circular=True, center=True):
         pixmap = QPixmap(ruta_imagen)

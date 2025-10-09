@@ -19,6 +19,25 @@ def imagen_a_base64(ruta_imagen):
         print(f"Error procesando imagen: {e}")
         return None
 
+def convertir_ruta_produccion(ruta_absoluta):
+    """Convierte rutas absolutas a rutas relativas para producción React"""
+    if not ruta_absoluta or not os.path.exists(ruta_absoluta):
+        return ""
+    
+    nombre_archivo = os.path.basename(ruta_absoluta)
+    
+    # Determinar tipo de archivo por extensión y contexto
+    if nombre_archivo.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp')):
+        if any(keyword in nombre_archivo.lower() for keyword in ['icono', 'menu', 'hamburguesa']):
+            return f"assets/imagenes/iconos/{nombre_archivo}"
+        elif any(keyword in nombre_archivo.lower() for keyword in ['logo', 'app']):
+            return f"assets/imagenes/iconos/{nombre_archivo}"
+        elif any(keyword in nombre_archivo.lower() for keyword in ['hero', 'principal', 'banner']):
+            return f"assets/imagenes/{nombre_archivo}"
+        else:
+            return f"assets/imagenes/{nombre_archivo}"
+    
+    return f"assets/imagenes/{nombre_archivo}"
 
 class VentanaConfiguracion(QWidget):
     def __init__(self, parent=None):
@@ -203,9 +222,6 @@ class VentanaConfiguracion(QWidget):
         self.label_icono_cerrar.setFixedSize(50, 50)
         self.label_imagen_central.setFixedSize(100, 100)
 
-
-
-
     def seleccionar_config_inactiva(self, fila, columna):
         def obtener_texto(f, c):
             item = self.Tabla_configuraciones_inactiva.item(f, c)
@@ -273,18 +289,17 @@ class VentanaConfiguracion(QWidget):
             QMessageBox.warning(self, "Campos obligatorios", "Debes completar todos los campos requeridos.")
             return
 
+        # ✅ CORREGIDO: Usar función helper para rutas de producción
+        logo_rel = convertir_ruta_produccion(logo)
+        icono_abrir_rel = convertir_ruta_produccion(icono_abrir)
+        icono_cerrar_rel = convertir_ruta_produccion(icono_cerrar)
+        hero_img_rel = convertir_ruta_produccion(hero_img)
+
         # --- CONVERTIR IMÁGENES A BASE64 ---
         logo_base64 = imagen_a_base64(logo) if logo and os.path.exists(logo) else None
         icono_abrir_base64 = imagen_a_base64(icono_abrir) if icono_abrir and os.path.exists(icono_abrir) else None
         icono_cerrar_base64 = imagen_a_base64(icono_cerrar) if icono_cerrar and os.path.exists(icono_cerrar) else None
         hero_img_base64 = imagen_a_base64(hero_img) if hero_img and os.path.exists(hero_img) else None
-
-        # --- Rutas relativas (mantener por compatibilidad) ---
-        ruta_base = os.path.abspath(os.path.join(os.getcwd(), "public"))
-        logo_rel = "/" + os.path.relpath(logo, ruta_base).replace("\\", "/") if logo else ""
-        icono_abrir_rel = "/" + os.path.relpath(icono_abrir, ruta_base).replace("\\", "/") if icono_abrir else ""
-        icono_cerrar_rel = "/" + os.path.relpath(icono_cerrar, ruta_base).replace("\\", "/") if icono_cerrar else ""
-        hero_img_rel = "/" + os.path.relpath(hero_img, ruta_base).replace("\\", "/") if hero_img else ""
 
         try:
             conexion = conectar_base_datos()
@@ -320,23 +335,22 @@ class VentanaConfiguracion(QWidget):
             QMessageBox.warning(self, "Modificar", "Seleccione una configuración para modificar.")
             return
 
-        # --- CONVERTIR IMÁGENES A BASE64 ---
+        # ✅ CORREGIDO: Usar función helper para rutas de producción
         logo = self.lineEdit_logo_app.text().strip()
         icono_abrir = self.lineEdit_icono_abrir.text().strip()
         icono_cerrar = self.lineEdit_icono_cerrar.text().strip()
         hero_img = self.lineEdit_hero_imagen.text().strip()
         
+        logo_rel = convertir_ruta_produccion(logo)
+        icono_abrir_rel = convertir_ruta_produccion(icono_abrir)
+        icono_cerrar_rel = convertir_ruta_produccion(icono_cerrar)
+        hero_img_rel = convertir_ruta_produccion(hero_img)
+
+        # --- CONVERTIR IMÁGENES A BASE64 ---
         logo_base64 = imagen_a_base64(logo) if logo and os.path.exists(logo) else None
         icono_abrir_base64 = imagen_a_base64(icono_abrir) if icono_abrir and os.path.exists(icono_abrir) else None
         icono_cerrar_base64 = imagen_a_base64(icono_cerrar) if icono_cerrar and os.path.exists(icono_cerrar) else None
         hero_img_base64 = imagen_a_base64(hero_img) if hero_img and os.path.exists(hero_img) else None
-
-        # --- Crear rutas relativas dinámicas desde la carpeta 'public' ---
-        ruta_base = os.path.abspath(os.path.join(os.getcwd(), "public"))
-        logo_rel = "/" + os.path.relpath(logo, ruta_base).replace("\\", "/") if logo else ""
-        icono_abrir_rel = "/" + os.path.relpath(icono_abrir, ruta_base).replace("\\", "/") if icono_abrir else ""
-        icono_cerrar_rel = "/" + os.path.relpath(icono_cerrar, ruta_base).replace("\\", "/") if icono_cerrar else ""
-        hero_img_rel = "/" + os.path.relpath(hero_img, ruta_base).replace("\\", "/") if hero_img else ""
 
         try:
             conexion = conectar_base_datos()
@@ -379,6 +393,7 @@ class VentanaConfiguracion(QWidget):
 
         except Exception as e:
             QMessageBox.critical(self, "Error", f"No se pudo modificar configuración:\n{str(e)}")
+
     def desactivar_configuracion(self):
         if not hasattr(self, 'config_seleccionada_id') or not self.config_seleccionada_id:
             QMessageBox.warning(self, "Desactivar", "Seleccione una configuración para desactivar.")
@@ -460,11 +475,10 @@ class VentanaConfiguracion(QWidget):
         if not ruta_absoluta:
             return
 
-        # --- Guardar ruta relativa desde /assets ---
-        nombre_archivo = os.path.basename(ruta_absoluta)
-        ruta_relativa = f"/assets/iconos/{nombre_archivo}"
+        # ✅ CORREGIDO: Usar función helper para ruta de producción
+        ruta_relativa = convertir_ruta_produccion(ruta_absoluta)
 
-        # Mostrar ruta absoluta en QLineEdit
+        # Mostrar ruta absoluta en QLineEdit (solo para visualización)
         self.lineEdit_logo_app.setText(ruta_absoluta)
 
         # Mostrar en QLabel
@@ -473,7 +487,7 @@ class VentanaConfiguracion(QWidget):
             self.label_logo_app.setPixmap(pixmap_logo)
             self.label_logo_app.setText("")
 
-        # Guardar en DB si ya hay config seleccionada
+        # Guardar en DB con rutas CORRECTAS
         if hasattr(self, 'config_seleccionada_id') and self.config_seleccionada_id:
             conexion = conectar_base_datos()
             cursor = conexion.cursor()
@@ -485,7 +499,6 @@ class VentanaConfiguracion(QWidget):
             conexion.commit()
             conexion.close()
 
-
     def seleccionar_icono_abrir(self):
         ruta_absoluta, _ = QFileDialog.getOpenFileName(
             self, "Seleccionar icono abrir", "", "Iconos (*.png *.jpg *.jpeg *.bmp *.gif)"
@@ -493,8 +506,8 @@ class VentanaConfiguracion(QWidget):
         if not ruta_absoluta:
             return
 
-        nombre_archivo = os.path.basename(ruta_absoluta)
-        ruta_relativa = f"/assets/iconos/{nombre_archivo}"
+        # ✅ CORREGIDO: Usar función helper para ruta de producción
+        ruta_relativa = convertir_ruta_produccion(ruta_absoluta)
 
         self.lineEdit_icono_abrir.setText(ruta_absoluta)
 
@@ -508,12 +521,11 @@ class VentanaConfiguracion(QWidget):
             cursor = conexion.cursor()
             cursor.execute("""
                 UPDATE configuracion_app
-                SET logo_app=%s, logo_app_ruta_relativa=%s, logo_base64=%s
+                SET icono_hamburguesa=%s, icono_hamburguesa_ruta_relativa=%s, icono_hamburguesa_base64=%s
                 WHERE id_config=%s
             """, (ruta_absoluta, ruta_relativa, imagen_a_base64(ruta_absoluta), self.config_seleccionada_id))
             conexion.commit()
             conexion.close()
-
 
     def seleccionar_icono_cerrar(self):
         ruta_absoluta, _ = QFileDialog.getOpenFileName(
@@ -522,8 +534,8 @@ class VentanaConfiguracion(QWidget):
         if not ruta_absoluta:
             return
 
-        nombre_archivo = os.path.basename(ruta_absoluta)
-        ruta_relativa = f"/assets/iconos/{nombre_archivo}"
+        # ✅ CORREGIDO: Usar función helper para ruta de producción
+        ruta_relativa = convertir_ruta_produccion(ruta_absoluta)
 
         self.lineEdit_icono_cerrar.setText(ruta_absoluta)
 
@@ -537,12 +549,11 @@ class VentanaConfiguracion(QWidget):
             cursor = conexion.cursor()
             cursor.execute("""
                 UPDATE configuracion_app
-                SET icono_cerrar=%s, icono_cerrar_ruta_relativa=%s
+                SET icono_cerrar=%s, icono_cerrar_ruta_relativa=%s, icono_cerrar_base64=%s
                 WHERE id_config=%s
-            """, (ruta_absoluta, ruta_relativa, self.config_seleccionada_id))
+            """, (ruta_absoluta, ruta_relativa, imagen_a_base64(ruta_absoluta), self.config_seleccionada_id))
             conexion.commit()
             conexion.close()
-
 
     def seleccionar_hero_imagen(self):
         ruta_absoluta, _ = QFileDialog.getOpenFileName(
@@ -551,10 +562,8 @@ class VentanaConfiguracion(QWidget):
         if not ruta_absoluta:
             return
 
-        # Convertir la ruta absoluta a relativa desde la carpeta 'public'
-        ruta_base = os.path.abspath(os.path.join(os.getcwd(), "public"))
-        ruta_relativa = os.path.relpath(ruta_absoluta, ruta_base).replace("\\", "/")
-        ruta_relativa = f"/{ruta_relativa}"  # Añadir la barra inicial
+        # ✅ CORREGIDO: Usar función helper para ruta de producción
+        ruta_relativa = convertir_ruta_produccion(ruta_absoluta)
 
         # Mostrar la ruta absoluta en el lineEdit
         self.lineEdit_hero_imagen.setText(ruta_absoluta)
@@ -571,9 +580,9 @@ class VentanaConfiguracion(QWidget):
             cursor = conexion.cursor()
             cursor.execute("""
                 UPDATE configuracion_app
-                SET hero_imagen=%s, hero_imagen_ruta_relativa=%s
+                SET hero_imagen=%s, hero_imagen_ruta_relativa=%s, hero_imagen_base64=%s
                 WHERE id_config=%s
-            """, (ruta_absoluta, ruta_relativa, self.config_seleccionada_id))
+            """, (ruta_absoluta, ruta_relativa, imagen_a_base64(ruta_absoluta), self.config_seleccionada_id))
             conexion.commit()
             conexion.close()
 
