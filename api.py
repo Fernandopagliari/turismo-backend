@@ -5,7 +5,7 @@ import mysql.connector
 from mysql.connector import Error
 import os
 
-app = Flask(__name__, static_folder='react-build', static_url_path='')   # Deshabilitar static folder por defecto
+app = Flask(__name__, static_folder='react-build', static_url_path='')
 CORS(app)
 
 # =========================
@@ -21,86 +21,105 @@ def verificar_frontend_react():
     return existe
 
 # =========================
-# Configuración DINÁMICA
+# Configuración UNIVERSAL
 # =========================
-def obtener_base_url():
-    """Obtiene la BASE_URL desde datos_hosting - VERSIÓN DINÁMICA"""
+def obtener_configuracion_hosting():
+    """Obtiene configuración desde la tabla datos_hosting - VERSIÓN UNIVERSAL"""
     try:
-        # 1. PRIMERO: Leer de la tabla datos_hosting de forma DINÁMICA
+        # 1. PRIMERO: Variables de entorno MÍNIMAS para conectar a databaseapp
+        config_temp = {
+            'host': os.environ.get('MYSQLHOST', 'localhost'),
+            'user': os.environ.get('MYSQLUSER', 'root'),
+            'password': os.environ.get('MYSQLPASSWORD', ''),
+            'database': 'databaseapp',  # BD donde está datos_hosting
+            'port': int(os.environ.get('MYSQLPORT', 3306)),
+            'connect_timeout': 10
+        }
+        
+        print(f"🔗 Conectando a databaseapp: {config_temp['host']} -> {config_temp['database']}")
+        
+        conn = mysql.connector.connect(**config_temp)
+        cursor = conn.cursor(dictionary=True)
+        
+        # 2. Leer configuración activa de datos_hosting
+        cursor.execute("SELECT * FROM datos_hosting WHERE activo = 1 ORDER BY id LIMIT 1")
+        hosting_config = cursor.fetchone()
+        conn.close()
+        
+        if not hosting_config:
+            raise Exception("No hay configuración activa en datos_hosting")
+        
+        print(f"✅ Configuración encontrada: {hosting_config['host']} -> {hosting_config['base_datos']}")
+        return hosting_config
+        
+    except Exception as e:
+        print(f"❌ Error leyendo datos_hosting: {e}")
+        raise Exception(f"No se pudo obtener configuración: {str(e)}")
+
+def obtener_base_url():
+    """Obtiene BASE_URL desde datos_hosting o request"""
+    try:
+        # 1. Intentar desde datos_hosting
         try:
-            # Configuración mínima para acceder a databaseapp
-            config_temp = {
-                'host': os.environ.get('MYSQLHOST', 'localhost'),
-                'user': os.environ.get('MYSQLUSER', 'root'),
-                'password': os.environ.get('MYSQLPASSWORD', ''),
-                'database': 'databaseapp',  # ✅ Donde está datos_hosting
-                'port': int(os.environ.get('MYSQLPORT', 3306)),
-            }
-            
-            conn_temp = mysql.connector.connect(**config_temp)
-            cursor = conn_temp.cursor(dictionary=True)
-            cursor.execute("SELECT base_url FROM datos_hosting WHERE activo = 1 LIMIT 1")
-            config = cursor.fetchone()
-            conn_temp.close()
-            
-            if config and config['base_url']:
-                base_url = config['base_url'].rstrip('/')
+            hosting_config = obtener_configuracion_hosting()
+            if hosting_config and hosting_config.get('base_url'):
+                base_url = hosting_config['base_url'].rstrip('/')
                 print(f"🌐 URL desde datos_hosting: {base_url}")
                 return base_url
-            else:
-                print("⚠️  No se encontró base_url en datos_hosting")
         except Exception as e:
             print(f"⚠️  No se pudo obtener URL de tabla: {e}")
         
-        # 2. SEGUNDO: Usar request actual (dinámico)
+        # 2. Usar request actual
         if hasattr(request, 'url_root') and request.url_root:
             base_url = request.url_root.rstrip('/')
             print(f"🌐 URL detectada automáticamente: {base_url}")
             return base_url
         
-        # 3. TERCERO: Fallback genérico
+        # 3. Fallback genérico
         return os.environ.get('BASE_URL', 'http://localhost:5000')
         
     except Exception:
         return "http://localhost:5000"
+
 INICIALIZADO = False
 
 # =========================
-# Funciones utilitarias
+# Funciones utilitarias - UNIVERSALES
 # =========================
 def inicializar_servidor():
-    """Inicializa el servidor - VERSIÓN CON REACT"""
+    """Inicializa el servidor"""
     global INICIALIZADO
     
     if INICIALIZADO:
         return
     
-    print("🚀 INICIANDO SERVIDOR API - CON FRONTEND REACT")
-    print(f"🌐 Host BD: {os.environ.get('MYSQLHOST', 'No configurado')}")
-    print(f"👤 Usuario BD: {os.environ.get('MYSQLUSER', 'No configurado')}")
-    print(f"🗄️  Base de datos: {os.environ.get('MYSQLDATABASE', 'No configurado')}")
+    print("🚀 INICIANDO SERVIDOR API - CONFIGURACIÓN UNIVERSAL")
+    print("🎯 Usando tabla datos_hosting para configuración")
     
     # Verificar frontend React
     frontend_activo = verificar_frontend_react()
     if frontend_activo:
-        print("🎯 Frontend React integrado y listo")
+        print("✅ Frontend React integrado y listo")
     else:
-        print("⚠️  Frontend React no encontrado - Solo APIs disponibles")
+        print("⚠️  Frontend React no encontrado")
     
     INICIALIZADO = True
 
 def conectar_base_datos():
-    """Conecta a la base de datos - VERSIÓN CORREGIDA PARA RAILWAY"""
+    """Conecta a la base de datos usando datos_hosting - VERSIÓN UNIVERSAL"""
     try:
-        # ✅ CONEXIÓN DIRECTA usando las variables de entorno de RAILWAY
-        print("🔗 Conectando a BD Railway...")
+        print("🔗 Conectando via datos_hosting...")
         
+        # 1. Obtener configuración desde datos_hosting
+        hosting_config = obtener_configuracion_hosting()
+        
+        # 2. Conectar usando la configuración de la tabla
         config = {
-            'host': os.environ.get('MYSQLHOST'),
-            'user': os.environ.get('MYSQLUSER'),
-            'password': os.environ.get('MYSQLPASSWORD'),
-            'database': os.environ.get('MYSQLDATABASE'),  # ✅ 'railway' no 'databaseapp'
-            'port': int(os.environ.get('MYSQLPORT', 3306)),
+            'host': hosting_config['host'],
+            'user': hosting_config['usuario'],
+            'password': hosting_config['password'],
+            'database': hosting_config['base_datos'],
+            'port': hosting_config['puerto'],
             'connect_timeout': 10
         }
         
@@ -109,15 +128,35 @@ def conectar_base_datos():
         conexion = mysql.connector.connect(**config)
         
         if conexion.is_connected():
-            print("✅ Conexión exitosa a Railway BD")
+            print("✅ Conexión exitosa via datos_hosting")
             return conexion
         else:
             raise Exception("No se pudo establecer conexión")
             
     except Error as e:
-        print(f"❌ Error conectando a BD Railway: {e}")
-        raise Exception(f"Error de conexión BD: {str(e)}")    
-    
+        print(f"❌ Error conectando via datos_hosting: {e}")
+        
+        # FALLBACK: Intentar con variables de entorno directas
+        try:
+            print("🔄 Intentando conexión directa...")
+            config_fallback = {
+                'host': os.environ.get('MYSQLHOST'),
+                'user': os.environ.get('MYSQLUSER'),
+                'password': os.environ.get('MYSQLPASSWORD'),
+                'database': os.environ.get('MYSQLDATABASE'),
+                'port': int(os.environ.get('MYSQLPORT', 3306)),
+            }
+            
+            if all([config_fallback['host'], config_fallback['user'], config_fallback['database']]):
+                conexion = mysql.connector.connect(**config_fallback)
+                if conexion.is_connected():
+                    print("✅ Conexión exitosa via fallback")
+                    return conexion
+        except Error as fallback_error:
+            print(f"❌ Fallback también falló: {fallback_error}")
+        
+        raise Exception(f"Error de conexión BD: {str(e)}")
+
 def verificar_conexion_remota():
     """Verifica conexión a la base de datos"""
     try:
@@ -152,18 +191,13 @@ def verificar_conexion_remota():
         return None
 
 def url_completa(ruta_relativa: str) -> str:
-    """Convierte rutas relativas en URL completas de forma DINÁMICA"""
+    """Convierte rutas relativas en URL completas"""
     if not ruta_relativa:
         return None
     
     base_url = obtener_base_url()
     ruta_limpia = ruta_relativa.replace("\\", "/").lstrip("/")
-    
-    # Si la ruta no empieza con assets/, agregarlo
-    if not ruta_limpia.startswith("assets/"):
-        ruta_limpia = f"assets/{ruta_limpia}"
-    
-    return f"{base_url}/{ruta_limpia}"
+    return f"{base_url}/assets/{ruta_limpia}"
 
 def limpiar_columnas_absolutas(row: dict) -> dict:
     """Convierte columnas con 'ruta' en URL completa"""
@@ -195,34 +229,93 @@ def servir_frontend():
     try:
         return send_from_directory(REACT_BUILD_PATH, 'index.html')
     except Exception as e:
-        # Si no hay frontend, mostrar info de APIs
         return jsonify({
-            "mensaje": "Backend API funcionando - Frontend no configurado",
-            "status": "api_activa",
-            "endpoints_disponibles": [
-                "/api/info-servidor",
-                "/api/configuracion", 
-                "/api/regiones",
-                "/api/usuarios",
-                "/api/secciones",
-                "/api/subsecciones"
-            ],
-            "frontend": "no_encontrado"
-        })
+            "mensaje": "Backend API funcionando - Frontend no disponible",
+            "error": str(e)
+        }), 500
 
 @app.route("/<path:path>")
 def servir_react(path):
     """Servir archivos estáticos del React build"""
     try:
-        # Si es un archivo que existe en el build, servirlo
-        if os.path.exists(os.path.join(REACT_BUILD_PATH, path)):
+        file_path = os.path.join(REACT_BUILD_PATH, path)
+        if os.path.exists(file_path) and os.path.isfile(file_path):
             return send_from_directory(REACT_BUILD_PATH, path)
         else:
-            # Para React Router - siempre servir index.html
             return send_from_directory(REACT_BUILD_PATH, 'index.html')
     except Exception:
-        # Fallback a index.html
         return send_from_directory(REACT_BUILD_PATH, 'index.html')
+
+@app.route('/assets/<path:filename>')
+def serve_assets(filename):
+    """Servir archivos estáticos desde react-build/assets/"""
+    try:
+        assets_path = os.path.join(REACT_BUILD_PATH, 'assets')
+        return send_from_directory(assets_path, filename)
+    except Exception as e:
+        print(f"❌ Error sirviendo asset {filename}: {e}")
+        return jsonify({"error": f"Archivo no encontrado: {filename}"}), 404
+
+# =========================
+# Endpoints de DEBUG - UNIVERSALES
+# =========================
+@app.route("/api/debug-conexion")
+def debug_conexion():
+    """Debug de conexión usando datos_hosting"""
+    try:
+        print("🔍 Debug: Verificando configuración datos_hosting...")
+        
+        # 1. Obtener configuración
+        hosting_config = obtener_configuracion_hosting()
+        
+        # 2. Intentar conexión
+        config = {
+            'host': hosting_config['host'],
+            'user': hosting_config['usuario'],
+            'password': hosting_config['password'],
+            'database': hosting_config['base_datos'],
+            'port': hosting_config['puerto'],
+        }
+        
+        print(f"🔧 Config desde datos_hosting: {config}")
+        
+        conn = mysql.connector.connect(**config)
+        
+        if conn.is_connected():
+            # Verificar tablas
+            cursor = conn.cursor(dictionary=True)
+            tablas = ['regiones_zonas', 'secciones', 'usuarios', 'configuracion_app']
+            resultados = {}
+            
+            for tabla in tablas:
+                try:
+                    cursor.execute(f"SELECT COUNT(*) as count FROM {tabla}")
+                    count = cursor.fetchone()['count']
+                    resultados[tabla] = f"✅ {count} registros"
+                except Exception as e:
+                    resultados[tabla] = f"❌ Error: {str(e)}"
+            
+            conn.close()
+            
+            return jsonify({
+                "status": "✅ CONEXIÓN EXITOSA via datos_hosting",
+                "config_usada": config,
+                "tablas": resultados,
+                "base_url_desde_tabla": hosting_config.get('base_url')
+            })
+        else:
+            return jsonify({"error": "Conexión falló"}), 500
+            
+    except Exception as e:
+        return jsonify({
+            "error": "❌ CONEXIÓN FALLIDA",
+            "detalles": str(e)
+        }), 500
+
+@app.route("/api/verificar-tablas")
+def verificar_tablas():
+    """Verificar tablas"""
+    return debug_conexion()
 
 # =========================
 # Endpoints PRINCIPALES
@@ -358,89 +451,6 @@ def get_subsecciones():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route("/api/debug-conexion")
-def debug_conexion():
-    """Debug completo de la conexión a BD"""
-    try:
-        print("🔍 Debug: Intentando conectar a databaseapp...")
-        
-        # 1. Primero intentar conectar a databaseapp
-        config_databaseapp = {
-            'host': os.environ.get('MYSQLHOST', 'localhost'),
-            'user': os.environ.get('MYSQLUSER', 'root'),
-            'password': os.environ.get('MYSQLPASSWORD', ''),
-            'database': 'databaseapp',
-            'port': int(os.environ.get('MYSQLPORT', 3306)),
-        }
-        
-        conn_temp = mysql.connector.connect(**config_databaseapp)
-        cursor = conn_temp.cursor(dictionary=True)
-        
-        # 2. Leer datos_hosting
-        cursor.execute("SELECT * FROM datos_hosting WHERE activo = 1 LIMIT 1")
-        hosting_config = cursor.fetchone()
-        conn_temp.close()
-        
-        if not hosting_config:
-            return jsonify({"error": "No hay configuración en datos_hosting"}), 500
-        
-        # 3. Intentar conectar con la configuración de datos_hosting
-        config_final = {
-            'host': hosting_config['host'],
-            'user': hosting_config['usuario'],
-            'password': hosting_config['password'],
-            'database': hosting_config['base_datos'],
-            'port': hosting_config['puerto'],
-        }
-        
-        conn_final = mysql.connector.connect(**config_final)
-        conn_final.close()
-        
-        return jsonify({
-            "status": "✅ CONEXIÓN EXITOSA",
-            "config_databaseapp": {
-                "host": config_databaseapp['host'],
-                "database": config_databaseapp['database'],
-                "conexion_exitosa": True
-            },
-            "config_datos_hosting": {
-                "host": hosting_config['host'],
-                "database": hosting_config['base_datos'],
-                "puerto": hosting_config['puerto'],
-                "conexion_exitosa": True
-            }
-        })
-        
-    except Exception as e:
-        return jsonify({
-            "error": "❌ CONEXIÓN FALLIDA",
-            "detalles": str(e)
-        }), 500
-        
-@app.route("/api/verificar-tablas")
-def verificar_tablas():
-    """Verificar que las tablas existen en la BD railway"""
-    try:
-        conn = conectar_base_datos()
-        cursor = conn.cursor(dictionary=True)
-        
-        # Verificar tablas críticas
-        tablas = ['datos_hosting', 'regiones_zonas', 'secciones', 'configuracion_app']
-        resultados = {}
-        
-        for tabla in tablas:
-            try:
-                cursor.execute(f"SELECT COUNT(*) as count FROM {tabla}")
-                count = cursor.fetchone()['count']
-                resultados[tabla] = f"✅ EXISTE - {count} registros"
-            except Exception as e:
-                resultados[tabla] = f"❌ NO EXISTE - {str(e)}"
-        
-        conn.close()
-        return jsonify(resultados)
-        
-    except Exception as e:
-        return jsonify({"error": f"Error verificando tablas: {str(e)}"}), 500
 
 
 # =========================
@@ -456,11 +466,10 @@ def serve_assets(filename):
         print(f"❌ Error sirviendo asset {filename}: {e}")
         return jsonify({"error": f"Archivo no encontrado: {filename}"}), 404
 # =========================
-# Manejo de errores
+# Manejo de errores 
 # =========================
 @app.errorhandler(404)
 def not_found(error):
-    # Si es una ruta de API, mostrar error JSON
     if request.path.startswith('/api/'):
         return jsonify({
             "error": "Endpoint no encontrado",
@@ -471,11 +480,12 @@ def not_found(error):
                 "/api/regiones",
                 "/api/usuarios",
                 "/api/secciones",
-                "/api/subsecciones"
+                "/api/subsecciones",
+                "/api/debug-conexion",
+                "/api/verificar-tablas"
             ]
         }), 404
     else:
-        # Para rutas del frontend, servir index.html (React Router)
         try:
             return send_from_directory(REACT_BUILD_PATH, 'index.html')
         except:
@@ -487,17 +497,15 @@ def internal_error(error):
         "error": "Error interno del servidor",
         "mensaje": "Ocurrió un error inesperado"
     }), 500
-
 # =========================
 # Main
 # =========================
 if __name__ == "__main__":
-    # Este bloque solo se ejecuta en desarrollo local
     inicializar_servidor()
     print("🔍 Verificando conexión...")
     estado = verificar_conexion_remota()
     if estado:
-        print("✅ Conexión verificada")
+        print("✅ Conexión verificada via datos_hosting")
     else:
         print("⚠️  Problemas con conexión")
     
