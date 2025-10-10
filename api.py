@@ -35,9 +35,9 @@ def conectar_bd():
 def servir_frontend():
     return send_from_directory(REACT_BUILD_PATH, 'index.html')
 
-@app.route("/assets/<path:filename>")
+# ✅ CORREGIDO: Cambiar de "/assets/" a "/static-assets/" para evitar conflicto con React Router
+@app.route("/static-assets/<path:filename>")
 def servir_assets(filename):
-    # ✅ CORREGIDO: Servir desde la carpeta assets/ del backend, NO de react-build
     assets_path = os.path.join(os.path.dirname(__file__), 'assets')
     return send_from_directory(assets_path, filename)
 
