@@ -212,10 +212,19 @@ def get_sub_secciones():
             SELECT 
                 id_sub_seccion,
                 id_seccion,
-                nombre_sub_seccion, 
-                icono_sub_seccion,
+                id_region_zona,
+                nombre_sub_seccion,
+                domicilio,
+                latitud,
+                longitud,
+                distancia,
+                numero_telefono,
+                imagen_ruta_relativa,
+                icono_ruta_relativa,
+                itinerario_maps,
+                habilitar,
                 orden,
-                habilitar
+                destacado
             FROM sub_secciones WHERE habilitar = 1 ORDER BY orden
         """)
         sub_secciones = cursor.fetchall()
@@ -226,7 +235,7 @@ def get_sub_secciones():
     except Exception as e:
         print(f"❌ API Sub-Secciones - Error: {e}")
         return jsonify({"error": str(e)}), 500
-
+    
 # =========================
 # MANEJO DE ERRORES
 # =========================
