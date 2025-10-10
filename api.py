@@ -37,7 +37,9 @@ def servir_frontend():
 
 @app.route("/assets/<path:filename>")
 def servir_assets(filename):
-    return send_from_directory(os.path.join(REACT_BUILD_PATH, 'assets'), filename)
+    # ✅ CORREGIDO: Servir desde la carpeta assets/ del backend, NO de react-build
+    assets_path = os.path.join(os.path.dirname(__file__), 'assets')
+    return send_from_directory(assets_path, filename)
 
 @app.route("/<path:path>")
 def servir_react(path):
