@@ -71,6 +71,82 @@ def info_servidor():
         "frontend_react": os.path.exists(os.path.join(REACT_BUILD_PATH, 'index.html'))
     })
 
+@app.route("/api/configuracion")
+def get_configuracion():
+    conn = conectar_bd()
+    if not conn:
+        return jsonify({"error": "No hay conexión a BD"}), 500
+    
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("""
+            SELECT 
+                id_config,
+                titulo_app,
+                logo_app,
+                logo_app_ruta_relativa,
+                icono_hamburguesa,
+                icono_hamburguesa_ruta_relativa,
+                icono_cerrar, 
+                icono_cerrar_ruta_relativa,
+                hero_titulo,
+                hero_imagen,
+                hero_imagen_ruta_relativa,
+                footer_texto,
+                direccion_facebook,
+                direccion_instagram,
+                direccion_twitter,
+                direccion_youtube,
+                correo_electronico,
+                habilitar
+            FROM configuracion_app WHERE habilitar = 1 LIMIT 1
+        """)
+        config = cursor.fetchone()
+        conn.close()
+        
+        if config:
+            print("✅ API Config - Configuración cargada")
+        else:
+            print("⚠️ API Config - No hay configuración activa")
+            
+        return jsonify(config if config else {})
+    except Exception as e:
+        print(f"❌ API Config - Error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/usuarios")
+def get_usuarios():
+    conn = conectar_bd()
+    if not conn:
+        return jsonify({"error": "No hay conexión a BD"}), 500
+    
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("""
+            SELECT 
+                id_usuario,
+                apellido_nombres_usuario,
+                dni_usuario,
+                domicilio_usuario,
+                localidad_usuario,
+                provincia_usuario,
+                telefono_usuario,
+                email_usuario,
+                nombre_usuario_acceso,
+                foto_usuario,
+                rol_usuario,
+                activo
+            FROM usuarios WHERE activo = 1 ORDER BY apellido_nombres_usuario
+        """)
+        usuarios = cursor.fetchall()
+        conn.close()
+        
+        print(f"✅ API Usuarios - {len(usuarios)} usuarios activos")
+        return jsonify(usuarios)
+    except Exception as e:
+        print(f"❌ API Usuarios - Error: {e}")
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/api/regiones")
 @app.route("/api/regiones_zonas")
 def get_regiones():
@@ -80,11 +156,22 @@ def get_regiones():
     
     try:
         cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT * FROM regiones_zonas WHERE habilitar = 1 ORDER BY orden ASC")
+        cursor.execute("""
+            SELECT 
+                id_region_zona,
+                nombre_region_zona,
+                imagen_region_zona_ruta_relativa,
+                habilitar,
+                orden
+            FROM regiones_zonas WHERE habilitar = 1 ORDER BY orden ASC
+        """)
         regiones = cursor.fetchall()
         conn.close()
+        
+        print(f"✅ API Regiones - {len(regiones)} regiones")
         return jsonify(regiones)
     except Exception as e:
+        print(f"❌ API Regiones - Error: {e}")
         return jsonify({"error": str(e)}), 500
 
 @app.route("/api/secciones")
@@ -95,26 +182,49 @@ def get_secciones():
     
     try:
         cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT * FROM secciones WHERE habilitar = 1 ORDER BY orden")
+        cursor.execute("""
+            SELECT 
+                id_seccion,
+                nombre_seccion,
+                icono_seccion,
+                orden,
+                habilitar
+            FROM secciones WHERE habilitar = 1 ORDER BY orden
+        """)
         secciones = cursor.fetchall()
         conn.close()
+        
+        print(f"✅ API Secciones - {len(secciones)} secciones")
         return jsonify(secciones)
     except Exception as e:
+        print(f"❌ API Secciones - Error: {e}")
         return jsonify({"error": str(e)}), 500
 
-@app.route("/api/configuracion")
-def get_configuracion():
+@app.route("/api/sub-secciones")
+def get_sub_secciones():
     conn = conectar_bd()
     if not conn:
         return jsonify({"error": "No hay conexión a BD"}), 500
     
     try:
         cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT * FROM configuracion_app LIMIT 1")
-        config = cursor.fetchone()
+        cursor.execute("""
+            SELECT 
+                id_sub_seccion,
+                id_seccion,
+                nombre_sub_seccion, 
+                icono_sub_seccion,
+                orden,
+                habilitar
+            FROM sub_secciones WHERE habilitar = 1 ORDER BY orden
+        """)
+        sub_secciones = cursor.fetchall()
         conn.close()
-        return jsonify(config if config else {})
+        
+        print(f"✅ API Sub-Secciones - {len(sub_secciones)} sub-secciones")
+        return jsonify(sub_secciones)
     except Exception as e:
+        print(f"❌ API Sub-Secciones - Error: {e}")
         return jsonify({"error": str(e)}), 500
 
 # =========================
