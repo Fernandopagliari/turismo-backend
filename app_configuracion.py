@@ -99,13 +99,22 @@ class VentanaConfiguracion(QWidget):
         conexion = conectar_base_datos()
         cursor = conexion.cursor()
         cursor.execute("""
-            SELECT id_config, titulo_app, logo_app, icono_hamburguesa, icono_cerrar, hero_titulo, hero_imagen, footer_texto, direccion_facebook, direccion_instagram, direccion_twitter, direccion_youtube, correo_electronico
+            SELECT id_config, titulo_app, 
+                logo_app, logo_app_ruta_relativa,
+                icono_hamburguesa, icono_hamburguesa_ruta_relativa,
+                icono_cerrar, icono_cerrar_ruta_relativa,
+                hero_titulo, hero_imagen, hero_imagen_ruta_relativa,
+                footer_texto, direccion_facebook, direccion_instagram, 
+                direccion_twitter, direccion_youtube, correo_electronico
             FROM configuracion_app WHERE habilitar = 1
         """)
         resultados = cursor.fetchall()
         conexion.close()
 
-        columnas = ["ID", "Título", "Logo", "Icono Abrir", "Icono Cerrar", "Hero Título", "Hero Imagen", "Footer", "Facebook", "Instagram", "Twitter", "Youtube", "Correo Electrónico"]
+        columnas = ["ID", "Título", "Logo", "Logo Ruta Rel", "Icono Abrir", "Icono Abrir Ruta Rel", 
+                    "Icono Cerrar", "Icono Cerrar Ruta Rel", "Hero Título", "Hero Imagen", "Hero Imagen Ruta Rel",
+                    "Footer", "Facebook", "Instagram", "Twitter", "Youtube", "Correo"]
+        
         self.Tabla_configuracion_activa.setColumnCount(len(columnas))
         self.Tabla_configuracion_activa.setHorizontalHeaderLabels(columnas)
         self.Tabla_configuracion_activa.setRowCount(0)
@@ -120,13 +129,22 @@ class VentanaConfiguracion(QWidget):
         conexion = conectar_base_datos()
         cursor = conexion.cursor()
         cursor.execute("""
-            SELECT id_config, titulo_app, logo_app, icono_hamburguesa, icono_cerrar, hero_titulo, hero_imagen, footer_texto, direccion_facebook, direccion_instagram, direccion_twitter, direccion_youtube, correo_electronico
+            SELECT id_config, titulo_app, 
+                logo_app, logo_app_ruta_relativa,
+                icono_hamburguesa, icono_hamburguesa_ruta_relativa,
+                icono_cerrar, icono_cerrar_ruta_relativa,
+                hero_titulo, hero_imagen, hero_imagen_ruta_relativa,
+                footer_texto, direccion_facebook, direccion_instagram, 
+                direccion_twitter, direccion_youtube, correo_electronico
             FROM configuracion_app WHERE habilitar = 0
         """)
         resultados = cursor.fetchall()
         conexion.close()
 
-        columnas = ["ID", "Título", "Logo", "Icono Abrir", "Icono Cerrar", "Hero Título", "Hero Imagen", "Footer", "Facebook", "Instagram", "Twitter", "Youtube", "Correo Electrónico"]
+        columnas = ["ID", "Título", "Logo", "Logo Ruta Rel", "Icono Abrir", "Icono Abrir Ruta Rel", 
+                    "Icono Cerrar", "Icono Cerrar Ruta Rel", "Hero Título", "Hero Imagen", "Hero Imagen Ruta Rel",
+                    "Footer", "Facebook", "Instagram", "Twitter", "Youtube", "Correo"]
+        
         self.Tabla_configuraciones_inactiva.setColumnCount(len(columnas))
         self.Tabla_configuraciones_inactiva.setHorizontalHeaderLabels(columnas)
         self.Tabla_configuraciones_inactiva.setRowCount(0)
@@ -136,7 +154,7 @@ class VentanaConfiguracion(QWidget):
             for column_number, data in enumerate(row_data):
                 item = QTableWidgetItem(str(data))
                 self.Tabla_configuraciones_inactiva.setItem(row_number, column_number, item)
-
+                
     def seleccionar_config_activa(self, fila, columna):
         import os
 
@@ -161,19 +179,20 @@ class VentanaConfiguracion(QWidget):
             return ""
 
         # --- Guardar valores en lineEdits (solo mostrar rutas absolutas) ---
-        self.config_seleccionada_id = obtener_texto(fila, 0)
-        self.lineEdit_titulo_app.setText(obtener_texto(fila, 1))
-        self.lineEdit_logo_app.setText(ruta_absoluta(obtener_texto(fila, 2), obtener_texto(fila, 3)))
-        self.lineEdit_icono_abrir.setText(ruta_absoluta(obtener_texto(fila, 3), obtener_texto(fila, 4)))
-        self.lineEdit_icono_cerrar.setText(ruta_absoluta(obtener_texto(fila, 4), obtener_texto(fila, 5)))
-        self.lineEdit_hero_titulo.setText(obtener_texto(fila, 5))
-        self.lineEdit_hero_imagen.setText(ruta_absoluta(obtener_texto(fila, 6), obtener_texto(fila, 7)))
-        self.lineEdit_footer_texto.setText(obtener_texto(fila, 7))
-        self.lineEdit_direccion_facebook.setText(obtener_texto(fila, 8))
-        self.lineEdit_direccion_instagram.setText(obtener_texto(fila, 9))
-        self.lineEdit_direccion_twitter.setText(obtener_texto(fila, 10))
-        self.lineEdit_direccion_youtube.setText(obtener_texto(fila, 11))
-        self.lineEdit_direccion_correo.setText(obtener_texto(fila, 12))
+        self.config_seleccionada_id = obtener_texto(fila, 0)  # id_config
+        self.lineEdit_titulo_app.setText(obtener_texto(fila, 1))  # titulo_app
+        self.lineEdit_logo_app.setText(ruta_absoluta(obtener_texto(fila, 2), obtener_texto(fila, 3)))  # logo_app + logo_app_ruta_relativa
+        self.lineEdit_icono_abrir.setText(ruta_absoluta(obtener_texto(fila, 4), obtener_texto(fila, 5)))  # icono_hamburguesa + icono_hamburguesa_ruta_relativa
+        self.lineEdit_icono_cerrar.setText(ruta_absoluta(obtener_texto(fila, 6), obtener_texto(fila, 7)))  # icono_cerrar + icono_cerrar_ruta_relativa
+        self.lineEdit_hero_titulo.setText(obtener_texto(fila, 8))  # hero_titulo
+        self.lineEdit_hero_imagen.setText(ruta_absoluta(obtener_texto(fila, 9), obtener_texto(fila, 10)))  # ✅ hero_imagen + hero_imagen_ruta_relativa
+        self.lineEdit_footer_texto.setText(obtener_texto(fila, 11))  # footer_texto
+        self.lineEdit_direccion_facebook.setText(obtener_texto(fila, 12))  # direccion_facebook
+        self.lineEdit_direccion_instagram.setText(obtener_texto(fila, 13))  # direccion_instagram
+        self.lineEdit_direccion_twitter.setText(obtener_texto(fila, 14))  # direccion_twitter
+        self.lineEdit_direccion_youtube.setText(obtener_texto(fila, 15))  # direccion_youtube
+        self.lineEdit_direccion_correo.setText(obtener_texto(fila, 16))  # correo_electronico
+
         # --- Mostrar LOGO ---
         ruta_logo = self.lineEdit_logo_app.text()
         if ruta_logo:
@@ -236,20 +255,20 @@ class VentanaConfiguracion(QWidget):
             abs_path = os.path.join(base_dir, ruta_relativa.lstrip("/\\"))
             return abs_path if os.path.exists(abs_path) else ""
 
-        self.config_inactiva_id = obtener_texto(fila, 0)
-        self.lineEdit_titulo_app.setText(obtener_texto(fila, 1))
-        self.lineEdit_logo_app.setText(ruta_absoluta(obtener_texto(fila, 2)))
-        self.lineEdit_icono_abrir.setText(ruta_absoluta(obtener_texto(fila, 3)))
-        self.lineEdit_icono_cerrar.setText(ruta_absoluta(obtener_texto(fila, 4)))
-        self.lineEdit_hero_titulo.setText(obtener_texto(fila, 5))
-        self.lineEdit_hero_imagen.setText(ruta_absoluta(obtener_texto(fila, 6)))
-        self.lineEdit_footer_texto.setText(obtener_texto(fila, 7))
-        self.lineEdit_direccion_facebook.setText(obtener_texto(fila, 8))
-        self.lineEdit_direccion_instagram.setText(obtener_texto(fila, 9))
-        self.lineEdit_direccion_twitter.setText(obtener_texto(fila, 10))
-        self.lineEdit_direccion_youtube.setText(obtener_texto(fila, 11))
-        self.lineEdit_direccion_correo.setText(obtener_texto(fila, 12))
-        
+        # ✅ CORREGIDO: Índices actualizados según nueva consulta
+        self.config_inactiva_id = obtener_texto(fila, 0)  # id_config
+        self.lineEdit_titulo_app.setText(obtener_texto(fila, 1))  # titulo_app
+        self.lineEdit_logo_app.setText(ruta_absoluta(obtener_texto(fila, 2)))  # logo_app (absoluta)
+        self.lineEdit_icono_abrir.setText(ruta_absoluta(obtener_texto(fila, 4)))  # icono_hamburguesa (absoluta)
+        self.lineEdit_icono_cerrar.setText(ruta_absoluta(obtener_texto(fila, 6)))  # icono_cerrar (absoluta)
+        self.lineEdit_hero_titulo.setText(obtener_texto(fila, 8))  # hero_titulo
+        self.lineEdit_hero_imagen.setText(ruta_absoluta(obtener_texto(fila, 9)))  # ✅ hero_imagen (absoluta) - índice 9
+        self.lineEdit_footer_texto.setText(obtener_texto(fila, 11))  # footer_texto
+        self.lineEdit_direccion_facebook.setText(obtener_texto(fila, 12))  # direccion_facebook
+        self.lineEdit_direccion_instagram.setText(obtener_texto(fila, 13))  # direccion_instagram
+        self.lineEdit_direccion_twitter.setText(obtener_texto(fila, 14))  # direccion_twitter
+        self.lineEdit_direccion_youtube.setText(obtener_texto(fila, 15))  # direccion_youtube
+        self.lineEdit_direccion_correo.setText(obtener_texto(fila, 16))  # correo_electronico
 
         # --- Mostrar imágenes en QLabel ---
         for label, ruta in [
@@ -270,7 +289,7 @@ class VentanaConfiguracion(QWidget):
         self.btnModificarConfig.setEnabled(False)
         self.btnDesactivarConfig.setEnabled(False)
         self.btnReactivarConfiguracion.setEnabled(True)
-
+        
     def agregar_configuracion(self):
         titulo = self.lineEdit_titulo_app.text().strip()
         logo = self.lineEdit_logo_app.text().strip()
@@ -289,11 +308,18 @@ class VentanaConfiguracion(QWidget):
             QMessageBox.warning(self, "Campos obligatorios", "Debes completar todos los campos requeridos.")
             return
 
-        # ✅ CORREGIDO: Usar función helper para rutas de producción
-        logo_rel = convertir_ruta_produccion(logo)
-        icono_abrir_rel = convertir_ruta_produccion(icono_abrir)
-        icono_cerrar_rel = convertir_ruta_produccion(icono_cerrar)
-        hero_img_rel = convertir_ruta_produccion(hero_img)
+        # ✅ CORREGIDO: Guardar ABSOLUTA en campos principales y RELATIVA en campos _ruta_relativa
+        logo_abs = logo  # Ruta absoluta (ya está en el lineEdit)
+        logo_rel = convertir_ruta_produccion(logo)  # Ruta relativa para producción
+        
+        icono_abrir_abs = icono_abrir  # Ruta absoluta
+        icono_abrir_rel = convertir_ruta_produccion(icono_abrir)  # Ruta relativa
+        
+        icono_cerrar_abs = icono_cerrar  # Ruta absoluta
+        icono_cerrar_rel = convertir_ruta_produccion(icono_cerrar)  # Ruta relativa
+        
+        hero_img_abs = hero_img  # Ruta absoluta
+        hero_img_rel = convertir_ruta_produccion(hero_img)  # Ruta relativa
 
         # --- CONVERTIR IMÁGENES A BASE64 ---
         logo_base64 = imagen_a_base64(logo) if logo and os.path.exists(logo) else None
@@ -306,7 +332,8 @@ class VentanaConfiguracion(QWidget):
             cursor = conexion.cursor()
             cursor.execute("""
                 INSERT INTO configuracion_app 
-                (titulo_app, logo_app, logo_app_ruta_relativa, logo_base64,
+                (titulo_app, 
+                logo_app, logo_app_ruta_relativa, logo_base64,           # ✅ ABSOLUTA y RELATIVA separadas
                 icono_hamburguesa, icono_hamburguesa_ruta_relativa, icono_hamburguesa_base64,
                 icono_cerrar, icono_cerrar_ruta_relativa, icono_cerrar_base64,
                 hero_titulo, hero_imagen, hero_imagen_ruta_relativa, hero_imagen_base64,
@@ -314,10 +341,11 @@ class VentanaConfiguracion(QWidget):
                 direccion_twitter, direccion_youtube, correo_electronico, habilitar)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1)
             """, (
-                titulo, logo, logo_rel, logo_base64,
-                icono_abrir, icono_abrir_rel, icono_abrir_base64,
-                icono_cerrar, icono_cerrar_rel, icono_cerrar_base64,
-                hero_titulo, hero_img, hero_img_rel, hero_img_base64,
+                titulo, 
+                logo_abs, logo_rel, logo_base64,                        # ✅ Absoluta + Relativa
+                icono_abrir_abs, icono_abrir_rel, icono_abrir_base64,   # ✅ Absoluta + Relativa
+                icono_cerrar_abs, icono_cerrar_rel, icono_cerrar_base64, # ✅ Absoluta + Relativa
+                hero_titulo, hero_img_abs, hero_img_rel, hero_img_base64, # ✅ Absoluta + Relativa
                 footer, facebook, instagram, twitter, youtube, correo
             ))
             conexion.commit()
@@ -329,22 +357,29 @@ class VentanaConfiguracion(QWidget):
 
         except Exception as e:
             QMessageBox.critical(self, "Error", f"No se pudo agregar configuración:\n{str(e)}")
-
+            
     def modificar_configuracion(self):
         if not hasattr(self, 'config_seleccionada_id') or not self.config_seleccionada_id:
             QMessageBox.warning(self, "Modificar", "Seleccione una configuración para modificar.")
             return
 
-        # ✅ CORREGIDO: Usar función helper para rutas de producción
+        # ✅ CORREGIDO: Guardar ABSOLUTA en campos principales y RELATIVA en campos _ruta_relativa
         logo = self.lineEdit_logo_app.text().strip()
         icono_abrir = self.lineEdit_icono_abrir.text().strip()
         icono_cerrar = self.lineEdit_icono_cerrar.text().strip()
         hero_img = self.lineEdit_hero_imagen.text().strip()
         
-        logo_rel = convertir_ruta_produccion(logo)
-        icono_abrir_rel = convertir_ruta_produccion(icono_abrir)
-        icono_cerrar_rel = convertir_ruta_produccion(icono_cerrar)
-        hero_img_rel = convertir_ruta_produccion(hero_img)
+        logo_abs = logo  # Ruta absoluta
+        logo_rel = convertir_ruta_produccion(logo)  # Ruta relativa
+        
+        icono_abrir_abs = icono_abrir  # Ruta absoluta
+        icono_abrir_rel = convertir_ruta_produccion(icono_abrir)  # Ruta relativa
+        
+        icono_cerrar_abs = icono_cerrar  # Ruta absoluta
+        icono_cerrar_rel = convertir_ruta_produccion(icono_cerrar)  # Ruta relativa
+        
+        hero_img_abs = hero_img  # Ruta absoluta
+        hero_img_rel = convertir_ruta_produccion(hero_img)  # Ruta relativa
 
         # --- CONVERTIR IMÁGENES A BASE64 ---
         logo_base64 = imagen_a_base64(logo) if logo and os.path.exists(logo) else None
@@ -358,7 +393,7 @@ class VentanaConfiguracion(QWidget):
             cursor.execute("""
                 UPDATE configuracion_app
                 SET titulo_app=%s,
-                    logo_app=%s, logo_app_ruta_relativa=%s, logo_base64=%s,
+                    logo_app=%s, logo_app_ruta_relativa=%s, logo_base64=%s,           # ✅ ABSOLUTA y RELATIVA separadas
                     icono_hamburguesa=%s, icono_hamburguesa_ruta_relativa=%s, icono_hamburguesa_base64=%s,
                     icono_cerrar=%s, icono_cerrar_ruta_relativa=%s, icono_cerrar_base64=%s,
                     hero_titulo=%s, hero_imagen=%s, hero_imagen_ruta_relativa=%s, hero_imagen_base64=%s,
@@ -371,11 +406,11 @@ class VentanaConfiguracion(QWidget):
                 WHERE id_config=%s
             """, (
                 self.lineEdit_titulo_app.text(),
-                logo, logo_rel, logo_base64,
-                icono_abrir, icono_abrir_rel, icono_abrir_base64,
-                icono_cerrar, icono_cerrar_rel, icono_cerrar_base64,
+                logo_abs, logo_rel, logo_base64,                                # ✅ Absoluta + Relativa
+                icono_abrir_abs, icono_abrir_rel, icono_abrir_base64,           # ✅ Absoluta + Relativa
+                icono_cerrar_abs, icono_cerrar_rel, icono_cerrar_base64,        # ✅ Absoluta + Relativa
                 self.lineEdit_hero_titulo.text(),
-                hero_img, hero_img_rel, hero_img_base64,
+                hero_img_abs, hero_img_rel, hero_img_base64,                    # ✅ Absoluta + Relativa
                 self.lineEdit_footer_texto.text(),
                 self.lineEdit_direccion_facebook.text(),
                 self.lineEdit_direccion_instagram.text(),
@@ -393,7 +428,6 @@ class VentanaConfiguracion(QWidget):
 
         except Exception as e:
             QMessageBox.critical(self, "Error", f"No se pudo modificar configuración:\n{str(e)}")
-
     def desactivar_configuracion(self):
         if not hasattr(self, 'config_seleccionada_id') or not self.config_seleccionada_id:
             QMessageBox.warning(self, "Desactivar", "Seleccione una configuración para desactivar.")
@@ -475,7 +509,7 @@ class VentanaConfiguracion(QWidget):
         if not ruta_absoluta:
             return
 
-        # ✅ CORREGIDO: Usar función helper para ruta de producción
+        # ✅ CORREGIDO: Guardar ruta ABSOLUTA en campo absoluto y RELATIVA en campo relativo
         ruta_relativa = convertir_ruta_produccion(ruta_absoluta)
 
         # Mostrar ruta absoluta en QLineEdit (solo para visualización)
@@ -487,7 +521,7 @@ class VentanaConfiguracion(QWidget):
             self.label_logo_app.setPixmap(pixmap_logo)
             self.label_logo_app.setText("")
 
-        # Guardar en DB con rutas CORRECTAS
+        # ✅ CORREGIDO: Guardar en DB con rutas CORRECTAS
         if hasattr(self, 'config_seleccionada_id') and self.config_seleccionada_id:
             conexion = conectar_base_datos()
             cursor = conexion.cursor()
@@ -506,7 +540,7 @@ class VentanaConfiguracion(QWidget):
         if not ruta_absoluta:
             return
 
-        # ✅ CORREGIDO: Usar función helper para ruta de producción
+        # ✅ CORREGIDO: Guardar ruta ABSOLUTA en campo absoluto y RELATIVA en campo relativo
         ruta_relativa = convertir_ruta_produccion(ruta_absoluta)
 
         self.lineEdit_icono_abrir.setText(ruta_absoluta)
@@ -534,7 +568,7 @@ class VentanaConfiguracion(QWidget):
         if not ruta_absoluta:
             return
 
-        # ✅ CORREGIDO: Usar función helper para ruta de producción
+        # ✅ CORREGIDO: Guardar ruta ABSOLUTA en campo absoluto y RELATIVA en campo relativo
         ruta_relativa = convertir_ruta_produccion(ruta_absoluta)
 
         self.lineEdit_icono_cerrar.setText(ruta_absoluta)
@@ -562,7 +596,7 @@ class VentanaConfiguracion(QWidget):
         if not ruta_absoluta:
             return
 
-        # ✅ CORREGIDO: Usar función helper para ruta de producción
+        # ✅ CORREGIDO: Guardar ruta ABSOLUTA en campo absoluto y RELATIVA en campo relativo
         ruta_relativa = convertir_ruta_produccion(ruta_absoluta)
 
         # Mostrar la ruta absoluta en el lineEdit
@@ -574,7 +608,7 @@ class VentanaConfiguracion(QWidget):
             self.label_imagen_central.setPixmap(pixmap_hero)
             self.label_imagen_central.setText("")
 
-        # Guardar en la base de datos
+        # ✅ CORREGIDO: Guardar en la base de datos con rutas CORRECTAS
         if hasattr(self, 'config_seleccionada_id') and self.config_seleccionada_id:
             conexion = conectar_base_datos()
             cursor = conexion.cursor()
@@ -585,7 +619,6 @@ class VentanaConfiguracion(QWidget):
             """, (ruta_absoluta, ruta_relativa, imagen_a_base64(ruta_absoluta), self.config_seleccionada_id))
             conexion.commit()
             conexion.close()
-
     def redondear_imagen(self, ruta_imagen, label: QLabel = None, size: int = None, circular: bool = True):
         """
         Carga una imagen en un QLabel y la ajusta automáticamente.

@@ -23,6 +23,7 @@ def ruta_absoluta_desde_relativa(relativa: str) -> str:
     ruta_limpia = relativa.lstrip("/\\")
     return os.path.normpath(os.path.join(base_assets, ruta_limpia))
 
+
 class VentanaUsuarios(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -119,6 +120,15 @@ class VentanaUsuarios(QWidget):
         else:
             self.label_foto_usuario.clear()
             self.label_foto_usuario.setText("Sin foto")
+            
+    def convertir_ruta_windows_a_relativa(self, ruta_windows):
+        """Convierte rutas absolutas de Windows a rutas relativas para producción"""
+        if not ruta_windows or not ruta_windows.startswith('E:/'):
+            return ruta_windows
+        
+        # Extraer solo el nombre del archivo y construir ruta relativa
+        nombre_archivo = os.path.basename(ruta_windows)
+        return f"/assets/imagenes/fotos_usuarios/{nombre_archivo}"
 
     def seleccionar_usuario_inactivo(self, fila, columna):
         item = self.tabla_usuarios_inactivos.item(fila, 0)
@@ -266,6 +276,12 @@ class VentanaUsuarios(QWidget):
             QMessageBox.warning(self, "Modificación", "Seleccione un usuario de la tabla para modificar.")
             return
 
+        # ✅ CORREGIDO: Sanitizar ruta de foto antes de guardar
+        ruta_foto = self.lineEdit_ruta_foto.text().strip()
+        if ruta_foto and ruta_foto.startswith('E:/'):
+            # Convertir ruta absoluta de Windows a relativa
+            ruta_foto = self.convertir_ruta_windows_a_relativa(ruta_foto)
+
         try:
             conexion = conectar_base_datos()
             cursor = conexion.cursor()
@@ -286,7 +302,7 @@ class VentanaUsuarios(QWidget):
                 self.lineEdit_email_usuario.text(),
                 self.lineEdit_usuario_acceso.text(),
                 self.lineEdit_password_usuario.text(),
-                self.lineEdit_ruta_foto.text(),
+                ruta_foto,  # ✅ Usar ruta sanitizada
                 self.comboBox_rol_usuario.currentText(),
                 self.usuario_seleccionado_id
             ))
@@ -298,7 +314,6 @@ class VentanaUsuarios(QWidget):
             QMessageBox.critical(self, "Error", f"Ocurrió un error al modificar el usuario:\n{str(e)}")
         finally:
             conexion.close()
-
     def eliminar_usuario(self):
         if not self.usuario_seleccionado_id:
             QMessageBox.warning(self, "Selección requerida", "Por favor seleccione un usuario.")
@@ -333,7 +348,7 @@ class VentanaUsuarios(QWidget):
             self.label_foto_usuario.setText("Sin foto")
             return
 
-        # 📌 Carpeta destino usando ruta absoluta
+        # ✅ CORREGIDO: Carpeta destino usando ruta absoluta
         carpeta_destino = ruta_absoluta_desde_relativa("/assets/imagenes/fotos_usuarios")
         
         # Asegurar que la carpeta existe
@@ -374,14 +389,20 @@ class VentanaUsuarios(QWidget):
             QMessageBox.warning(self, "Error", f"No se pudo copiar la foto:\n{e}")
             return
 
-        # 📌 Guardamos la ruta relativa
+        # ✅ CORREGIDO: Guardamos SOLO la ruta relativa
         ruta_relativa = f"/assets/imagenes/fotos_usuarios/{os.path.basename(ruta_destino)}"
 
+        # ✅ CORREGIDO: Forzar que solo se guarde la ruta relativa
         self.lineEdit_ruta_foto.setText(ruta_relativa)
+        
+        # Mostrar imagen
         pixmap_foto = self.redondear_imagen(ruta_final, self.label_foto_usuario, circular=True, size=100)
         self.label_foto_usuario.setPixmap(pixmap_foto)
         self.label_foto_usuario.setText("")
 
+        # ✅ CORREGIDO: Actualizar automáticamente en BD si hay usuario seleccionado
+        if hasattr(self, 'usuario_seleccionado_id') and self.usuario_seleccionado_id:
+            self.actualizar_foto_en_bd(ruta_relativa)
     def redondear_imagen(self, ruta_imagen, label, circular=False, size=None):
         from PyQt5.QtGui import QPixmap, QPainter, QPainterPath
         from PyQt5.QtCore import Qt, QRectF
@@ -412,6 +433,22 @@ class VentanaUsuarios(QWidget):
         label.setScaledContents(True)
 
         return pixmap
+    
+    def actualizar_foto_en_bd(self, ruta_relativa):
+        """Actualiza automáticamente la foto en la base de datos"""
+        try:
+            conexion = conectar_base_datos()
+            cursor = conexion.cursor()
+            cursor.execute("""
+                UPDATE usuarios
+                SET foto_usuario = %s
+                WHERE id_usuario = %s
+            """, (ruta_relativa, self.usuario_seleccionado_id))
+            conexion.commit()
+            conexion.close()
+            print(f"✅ Foto actualizada en BD: {ruta_relativa}")
+        except Exception as e:
+            print(f"❌ Error actualizando foto en BD: {e}")
 
     def existe_foto_en_uso(self, ruta_foto, id_actual=None):
         conexion = conectar_base_datos()

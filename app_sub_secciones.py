@@ -12,6 +12,7 @@ from database_hosting import conectar_hosting as conectar_base_datos
 from datetime import date, datetime
 import os
 import shutil
+import hashlib
 
 # -------------------------
 # HELPERS GENERALES
@@ -71,30 +72,49 @@ def copiar_archivo_a_destino(ruta_origen, tipo_archivo):
     ruta_destino = os.path.join(carpeta_destino, nombre_archivo)
     
     try:
-        # Si el archivo ya está en la carpeta destino, no copiar
+        # ✅ MEJORADO: Verificar si ya está en la carpeta destino
         if os.path.abspath(ruta_origen) == os.path.abspath(ruta_destino):
-            return convertir_ruta_produccion(ruta_destino, tipo_archivo)
+            # Ya está en la carpeta correcta, generar ruta relativa
+            return f"assets/imagenes/{os.path.basename(carpeta_destino)}/{nombre_archivo}"
         
-        # Si existe y es diferente, renombrar
+        # ✅ MEJORADO: Si existe y es diferente, renombrar usando hash
         if os.path.exists(ruta_destino):
-            base, ext = os.path.splitext(nombre_archivo)
-            contador = 1
-            while True:
-                nuevo_nombre = f"{base}_{contador}{ext}"
-                nueva_ruta = os.path.join(carpeta_destino, nuevo_nombre)
-                if not os.path.exists(nueva_ruta):
-                    ruta_destino = nueva_ruta
-                    break
-                contador += 1
+            def hash_archivo(path):
+                hasher = hashlib.md5()
+                with open(path, "rb") as f:
+                    while chunk := f.read(8192):
+                        hasher.update(chunk)
+                return hasher.hexdigest()
+            
+            # Solo renombrar si son archivos diferentes
+            if hash_archivo(ruta_destino) != hash_archivo(ruta_origen):
+                base, ext = os.path.splitext(nombre_archivo)
+                contador = 1
+                while True:
+                    nuevo_nombre = f"{base}_{contador}{ext}"
+                    nueva_ruta = os.path.join(carpeta_destino, nuevo_nombre)
+                    if not os.path.exists(nueva_ruta):
+                        ruta_destino = nueva_ruta
+                        nombre_archivo = nuevo_nombre
+                        break
+                    contador += 1
         
         # Copiar archivo
         shutil.copy2(ruta_origen, ruta_destino)
-        return convertir_ruta_produccion(ruta_destino, tipo_archivo)
         
+        # ✅ MEJORADO: Generar ruta relativa consistente
+        if tipo_archivo == "icono":
+            return f"assets/imagenes/iconos/{nombre_archivo}"
+        elif tipo_archivo == "imagen_region":
+            return f"assets/imagenes/regiones_zonas/{nombre_archivo}"
+        elif tipo_archivo in ["imagen_subseccion", "foto_subseccion"]:
+            return f"assets/imagenes/sub_secciones/{nombre_archivo}"
+        else:
+            return f"assets/imagenes/{nombre_archivo}"
+            
     except Exception as e:
         print(f"Error copiando archivo: {e}")
         return ""
-
 # -------------------------
 # CLASE PRINCIPAL
 # -------------------------
@@ -340,32 +360,30 @@ class VentanaSubSecciones(QWidget):
 
         # ✅ CORREGIDO: Actualizar automáticamente en BD si hay subsección seleccionada
         if hasattr(self, 'id_subseccion_seleccionada') and self.id_subseccion_seleccionada:
-            self.actualizar_ruta_en_bd(tipo_archivo, ruta_relativa_produccion)
-
-    def actualizar_ruta_en_bd(self, tipo_archivo, ruta_relativa):
+            self.actualizar_ruta_en_bd(tipo_archivo, ruta_relativa_produccion, lineedit_obj)
+    
+    def actualizar_ruta_en_bd(self, tipo_archivo, ruta_relativa, lineedit_obj=None):
         """Actualiza automáticamente la ruta en la base de datos"""
         try:
             conexion = conectar_base_datos()
             cursor = conexion.cursor()
             
             # Determinar campo a actualizar según tipo de archivo
+            campo = "imagen_ruta_relativa"  # valor por defecto
+            
             if tipo_archivo == "imagen_subseccion":
                 campo = "imagen_ruta_relativa"
             elif tipo_archivo == "foto_subseccion":
-                # Determinar qué foto actualizar basado en el lineedit que activó la función
-                sender = self.sender()
-                if sender == self.btnBuscarFoto1:
-                    campo = "foto1_ruta_relativa"
-                elif sender == self.btnBuscarFoto2:
-                    campo = "foto2_ruta_relativa"
-                elif sender == self.btnBuscarFoto3:
-                    campo = "foto3_ruta_relativa"
-                elif sender == self.btnBuscarFoto4:
-                    campo = "foto4_ruta_relativa"
-                else:
-                    campo = "imagen_ruta_relativa"
-            else:
-                campo = "imagen_ruta_relativa"
+                # Determinar qué foto actualizar basado en el lineedit
+                if lineedit_obj:
+                    if lineedit_obj == self.lineEdit_foto_1:
+                        campo = "foto1_ruta_relativa"
+                    elif lineedit_obj == self.lineEdit_foto_2:
+                        campo = "foto2_ruta_relativa"
+                    elif lineedit_obj == self.lineEdit_foto_3:
+                        campo = "foto3_ruta_relativa"
+                    elif lineedit_obj == self.lineEdit_foto_4:
+                        campo = "foto4_ruta_relativa"
             
             cursor.execute(f"""
                 UPDATE sub_secciones
@@ -376,9 +394,11 @@ class VentanaSubSecciones(QWidget):
             conexion.commit()
             conexion.close()
             
+            print(f"✅ {campo} actualizado en BD: {ruta_relativa}")
+            
         except Exception as e:
-            print(f"Error actualizando BD: {e}")
-
+            print(f"❌ Error actualizando BD: {e}")
+            QMessageBox.warning(self, "Error BD", f"No se pudo actualizar la ruta en la base de datos:\n{e}")
     # -------------------------
     # CARGA DE SUBSECCIONES
     # -------------------------

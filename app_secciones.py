@@ -26,6 +26,17 @@ def convertir_ruta_produccion(ruta_absoluta):
     
     nombre_archivo = os.path.basename(ruta_absoluta)
     
+    # ✅ MEJORADO: Detectar si ya es una ruta relativa
+    if ruta_absoluta.startswith('assets/') or ruta_absoluta.startswith('/assets/'):
+        return ruta_absoluta.lstrip('/')
+    
+    # ✅ MEJORADO: Detectar si está en la carpeta correcta
+    if 'public/assets/imagenes/iconos' in ruta_absoluta:
+        # Extraer la parte relativa desde public/
+        partes = ruta_absoluta.split('public' + os.sep)
+        if len(partes) > 1:
+            return partes[1].replace(os.sep, '/')
+    
     # Para secciones, usar estructura específica de iconos
     return f"assets/imagenes/iconos/{nombre_archivo}"
 
@@ -178,7 +189,7 @@ class VentanaSecciones(QWidget):
             self.limpiar_formulario()
         except Exception as e:
             QMessageBox.critical(self, "Error", f"No se pudo agregar sección:\n{str(e)}")
-
+            
     def modificar_seccion(self):
         if not hasattr(self, 'seccion_seleccionada_id') or not self.seccion_seleccionada_id:
             QMessageBox.warning(self, "Modificar", "Seleccione una sección para modificar.")
@@ -324,9 +335,11 @@ class VentanaSecciones(QWidget):
         ruta_destino = os.path.join(carpeta_destino, nombre_archivo)
 
         try:
-            if os.path.exists(ruta_destino) and os.path.samefile(ruta_origen, ruta_destino):
-                ruta_final = ruta_destino
+            # ✅ Verificamos si el archivo ya está en la carpeta destino
+            if os.path.abspath(ruta_origen) == os.path.abspath(ruta_destino):
+                ruta_final = ruta_destino  # ya está en la carpeta correcta, no copiamos nada
             else:
+                # Si existe y es distinto → renombrar
                 def hash_archivo(path):
                     hasher = hashlib.md5()
                     with open(path, "rb") as f:
@@ -345,6 +358,7 @@ class VentanaSecciones(QWidget):
                                 break
                             contador += 1
 
+                # Copiar archivo
                 shutil.copy(ruta_origen, ruta_destino)
                 ruta_final = ruta_destino
 
@@ -355,7 +369,7 @@ class VentanaSecciones(QWidget):
         # ✅ CORREGIDO: Usar función helper para ruta de producción
         ruta_relativa = convertir_ruta_produccion(ruta_final)
         
-        # Mostrar ruta absoluta en el lineEdit (para visualización)
+        # Mostrar ruta absoluta en el lineEdit (para visualización local)
         self.lineEdit_icono_seccion.setText(ruta_final)
 
         # Mostrar icono
@@ -375,9 +389,12 @@ class VentanaSecciones(QWidget):
                 """, (ruta_relativa, self.seccion_seleccionada_id))
                 conexion.commit()
                 conexion.close()
+                print(f"✅ Icono actualizado en BD: {ruta_relativa}")
             except Exception as e:
                 QMessageBox.warning(self, "Error", f"No se pudo actualizar el icono en BD:\n{e}")
-
+        else:
+            # Si no hay sección seleccionada, solo mostrar mensaje informativo
+            print(f"ℹ️  Icono preparado para nueva sección: {ruta_relativa}")
     # ------------------ Función reusable para imágenes -------------------
     def cargar_imagen_en_label(self, ruta_imagen, label=None, size=75, circular=True, center=True):
         """

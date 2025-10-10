@@ -26,9 +26,19 @@ def convertir_ruta_produccion(ruta_absoluta):
     
     nombre_archivo = os.path.basename(ruta_absoluta)
     
+    # ✅ MEJORADO: Detectar si ya es una ruta relativa
+    if ruta_absoluta.startswith('assets/') or ruta_absoluta.startswith('/assets/'):
+        return ruta_absoluta.lstrip('/')
+    
+    # ✅ MEJORADO: Detectar si está en la carpeta correcta
+    if 'public/assets/imagenes/regiones_zonas' in ruta_absoluta:
+        # Extraer la parte relativa desde public/
+        partes = ruta_absoluta.split('public' + os.sep)
+        if len(partes) > 1:
+            return partes[1].replace(os.sep, '/')
+    
     # Para regiones/zonas, usar estructura específica
     return f"assets/imagenes/regiones_zonas/{nombre_archivo}"
-
 
 class VentanaRegionesZonas(QWidget):
     def __init__(self, parent=None):
@@ -170,13 +180,16 @@ class VentanaRegionesZonas(QWidget):
             QMessageBox.warning(self, "Campos obligatorios", "Debes ingresar un nombre de región/zona.")
             return
 
+        # ✅ CORREGIDO: Convertir ruta absoluta a relativa para producción
+        ruta_relativa = convertir_ruta_produccion(imagen) if imagen else None
+
         try:
             conexion = conectar_base_datos()
             cursor = conexion.cursor()
             cursor.execute("""
                 INSERT INTO regiones_zonas (nombre_region_zona, imagen_region_zona_ruta_relativa, orden, habilitar)
                 VALUES (%s, %s, %s, 1)
-            """, (nombre, imagen or None, orden))
+            """, (nombre, ruta_relativa, orden))  # ✅ Usar SOLO ruta relativa
             conexion.commit()
             conexion.close()
             QMessageBox.information(self, "Región/Zona", "Región/Zona agregada correctamente.")
@@ -184,7 +197,7 @@ class VentanaRegionesZonas(QWidget):
             self.limpiar_formulario()
         except Exception as e:
             QMessageBox.critical(self, "Error", f"No se pudo agregar Región/Zona:\n{e}")
-
+    
     def modificar_region_zona(self):
         if not self.region_zona_seleccionada_id:
             QMessageBox.warning(self, "Modificar", "Seleccione una región/zona para modificar.")
@@ -334,15 +347,26 @@ class VentanaRegionesZonas(QWidget):
             else:
                 # Si existe y es distinto → renombrar
                 if os.path.exists(ruta_destino):
-                    base, ext = os.path.splitext(nombre_archivo)
-                    contador = 1
-                    while True:
-                        nuevo_nombre = f"{base}_{contador}{ext}"
-                        nueva_ruta = os.path.join(carpeta_destino, nuevo_nombre)
-                        if not os.path.exists(nueva_ruta):
-                            ruta_destino = nueva_ruta
-                            break
-                        contador += 1
+                    def hash_archivo(path):
+                        hasher = hashlib.md5()
+                        with open(path, "rb") as f:
+                            while chunk := f.read(8192):
+                                hasher.update(chunk)
+                        return hasher.hexdigest()
+
+                    # Verificar si son archivos diferentes
+                    if hash_archivo(ruta_destino) != hash_archivo(ruta_origen):
+                        base, ext = os.path.splitext(nombre_archivo)
+                        contador = 1
+                        while True:
+                            nuevo_nombre = f"{base}_{contador}{ext}"
+                            nueva_ruta = os.path.join(carpeta_destino, nuevo_nombre)
+                            if not os.path.exists(nueva_ruta):
+                                ruta_destino = nueva_ruta
+                                break
+                            contador += 1
+                
+                # Copiar archivo
                 shutil.copy(ruta_origen, ruta_destino)
                 ruta_final = ruta_destino
 
@@ -353,7 +377,7 @@ class VentanaRegionesZonas(QWidget):
         # ✅ CORREGIDO: Usar función helper para ruta de producción
         ruta_relativa = convertir_ruta_produccion(ruta_final)
         
-        # Mostrar ruta absoluta en el lineEdit (para visualización)
+        # Mostrar ruta absoluta en el lineEdit (para visualización local)
         self.lineEdit_ruta_imagen_region_zona.setText(ruta_final)
 
         # Cargar imagen en el label
@@ -373,9 +397,12 @@ class VentanaRegionesZonas(QWidget):
                 """, (ruta_relativa, self.region_zona_seleccionada_id))
                 conexion.commit()
                 conexion.close()
+                print(f"✅ Imagen actualizada en BD: {ruta_relativa}")
             except Exception as e:
                 QMessageBox.warning(self, "Error", f"No se pudo actualizar la imagen en BD:\n{e}")
-
+        else:
+            # Si no hay región seleccionada, solo mostrar mensaje informativo
+            print(f"ℹ️  Imagen preparada para nueva región/zona: {ruta_relativa}")
     def cargar_imagen_en_label(self, ruta_imagen, label=None, size=75, circular=True, center=True):
         pixmap = QPixmap(ruta_imagen)
         if pixmap.isNull():
