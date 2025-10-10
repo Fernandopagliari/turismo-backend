@@ -30,6 +30,8 @@ class BuildDeployThread(QThread):
         # Rutas posibles del proyecto
         self.possible_paths = [
             project_path,  # Raíz del proyecto
+            os.path.join(project_path, "turismo-frontend"),  # ✅ NUEVA RUTA
+            os.path.join(project_path, "turismo-frontend", "src"),
             os.path.join(project_path, "src"),
             os.path.join(project_path, "frontend"),
         ]
