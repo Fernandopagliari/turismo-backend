@@ -1,4 +1,3 @@
-# api.py - VERSIÓN COMPLETA Y CORREGIDA
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 import mysql.connector
@@ -7,6 +6,23 @@ import os
 
 app = Flask(__name__, static_folder='react-build', static_url_path='')
 CORS(app)
+
+def limpiar_columnas_absolutas(item):
+    """Convierte rutas absolutas de Windows en rutas relativas"""
+    if not item:
+        return item
+        
+    for key, value in item.items():
+        if isinstance(value, str) and 'E:/Sistemas' in value:
+            # Extraer solo el nombre del archivo
+            if '/' in value:
+                nombre_archivo = value.split('/')[-1]
+            else:
+                nombre_archivo = value.split('\\')[-1]
+            item[key] = f"assets/imagenes/{nombre_archivo}"
+            print(f"🔄 Limpiando ruta: {value} → {item[key]}")
+    
+    return item
 
 # =========================
 # CONFIGURACIÓN BÁSICA
@@ -35,7 +51,6 @@ def conectar_bd():
 def servir_frontend():
     return send_from_directory(REACT_BUILD_PATH, 'index.html')
 
-# ✅ CORREGIDO: Cambiar de "/assets/" a "/static-assets/" para evitar conflicto con React Router
 @app.route("/static-assets/<path:filename>")
 def servir_assets(filename):
     assets_path = os.path.join(os.path.dirname(__file__), 'assets')
@@ -53,7 +68,7 @@ def servir_react(path):
         return send_from_directory(REACT_BUILD_PATH, 'index.html')
 
 # =========================
-# APIs PRINCIPALES
+# APIs PRINCIPALES (RUTAS ORIGINALES)
 # =========================
 @app.route("/api/health")
 def health():
@@ -73,7 +88,7 @@ def info_servidor():
         "frontend_react": os.path.exists(os.path.join(REACT_BUILD_PATH, 'index.html'))
     })
 
-@app.route("/api/configuracion")
+@app.route("/api/configuracion_original")
 def get_configuracion():
     conn = conectar_bd()
     if not conn:
@@ -116,7 +131,7 @@ def get_configuracion():
         print(f"❌ API Config - Error: {e}")
         return jsonify({"error": str(e)}), 500
 
-@app.route("/api/usuarios")
+@app.route("/api/usuarios_original")
 def get_usuarios():
     conn = conectar_bd()
     if not conn:
@@ -149,8 +164,8 @@ def get_usuarios():
         print(f"❌ API Usuarios - Error: {e}")
         return jsonify({"error": str(e)}), 500
 
-@app.route("/api/regiones")
-@app.route("/api/regiones_zonas")
+@app.route("/api/regiones_original")
+@app.route("/api/regiones_zonas_original")
 def get_regiones():
     conn = conectar_bd()
     if not conn:
@@ -176,34 +191,80 @@ def get_regiones():
         print(f"❌ API Regiones - Error: {e}")
         return jsonify({"error": str(e)}), 500
 
-@app.route("/api/secciones")
+@app.route("/api/secciones_original", methods=["GET"])
 def get_secciones():
     conn = conectar_bd()
     if not conn:
-        return jsonify({"error": "No hay conexión a BD"}), 500
-    
+        return jsonify({"error": "No se pudo conectar a la base de datos"}), 500
+        
     try:
         cursor = conn.cursor(dictionary=True)
         cursor.execute("""
-            SELECT 
-                id_seccion,
-                nombre_seccion,
-                icono_seccion,
-                orden,
-                habilitar
+            SELECT id_seccion, nombre_seccion,
+                   icono_seccion, habilitar, orden
             FROM secciones WHERE habilitar = 1 ORDER BY orden
         """)
         secciones = cursor.fetchall()
+        
+        print(f"🔍 DEBUG: Encontradas {len(secciones)} secciones")
+
+        for i, seccion in enumerate(secciones):
+            print(f"🔍 Procesando sección {seccion['id_seccion']}: {seccion['nombre_seccion']}")
+            
+            cursor.execute("""
+                SELECT id_sub_seccion, id_seccion, id_region_zona, nombre_sub_seccion,
+                    domicilio, latitud, longitud, distancia, numero_telefono,
+                    imagen_ruta_relativa, icono_ruta_relativa, itinerario_maps,
+                    habilitar, fecha_desactivacion, orden, destacado,
+                    foto1_ruta_relativa, foto2_ruta_relativa, foto3_ruta_relativa,
+                    foto4_ruta_relativa
+                FROM sub_secciones WHERE id_seccion = %s AND habilitar = 1 ORDER BY orden
+            """, (seccion["id_seccion"],))
+            
+            subsecciones = cursor.fetchall()
+            print(f"   📊 Subsecciones encontradas: {len(subsecciones)}")
+            
+            seccion["subsecciones"] = subsecciones
+            secciones[i] = seccion
+
         conn.close()
         
-        print(f"✅ API Secciones - {len(secciones)} secciones")
+        total_subsecciones = sum(len(s.get('subsecciones', [])) for s in secciones)
+        print(f"✅ FINAL: {len(secciones)} secciones con {total_subsecciones} subsecciones")
+        
         return jsonify(secciones)
+        
     except Exception as e:
-        print(f"❌ API Secciones - Error: {e}")
+        print(f"❌ Error: {e}")
         return jsonify({"error": str(e)}), 500
 
-@app.route("/api/sub-secciones")
-def get_sub_secciones():
+# =========================
+# RUTAS EXACTAS QUE EL FRONTEND NECESITA
+# =========================
+
+@app.route("/api/configuracion")
+def api_configuracion():
+    """Ruta exacta que el frontend espera"""
+    return get_configuracion()
+
+@app.route("/api/regiones")  
+def api_regiones():
+    """Ruta exacta que el frontend espera"""
+    return get_regiones()
+
+@app.route("/api/secciones")
+def api_secciones():
+    """Ruta exacta que el frontend espera"""
+    return get_secciones()
+
+@app.route("/api/usuarios")
+def api_usuarios():
+    """Ruta exacta que el frontend espera"""
+    return get_usuarios()
+
+@app.route("/api/subsecciones")
+def api_subsecciones():
+    """Ruta para todas las subsecciones"""
     conn = conectar_bd()
     if not conn:
         return jsonify({"error": "No hay conexión a BD"}), 500
@@ -211,33 +272,28 @@ def get_sub_secciones():
     try:
         cursor = conn.cursor(dictionary=True)
         cursor.execute("""
-            SELECT 
-                id_sub_seccion,
-                id_seccion,
-                id_region_zona,
-                nombre_sub_seccion,
-                domicilio,
-                latitud,
-                longitud,
-                distancia,
-                numero_telefono,
-                imagen_ruta_relativa,
-                icono_ruta_relativa,
-                itinerario_maps,
-                habilitar,
-                orden,
-                destacado
+            SELECT id_sub_seccion, id_seccion, id_region_zona, nombre_sub_seccion,
+                domicilio, latitud, longitud, distancia, numero_telefono,
+                imagen_ruta_relativa, icono_ruta_relativa, itinerario_maps,
+                habilitar, fecha_desactivacion, orden, destacado,
+                foto1_ruta_relativa, foto2_ruta_relativa, foto3_ruta_relativa,
+                foto4_ruta_relativa
             FROM sub_secciones WHERE habilitar = 1 ORDER BY orden
         """)
-        sub_secciones = cursor.fetchall()
+        subsecciones = cursor.fetchall()
         conn.close()
         
-        print(f"✅ API Sub-Secciones - {len(sub_secciones)} sub-secciones")
-        return jsonify(sub_secciones)
+        print(f"✅ API Subsecciones - {len(subsecciones)} subsecciones")
+        return jsonify(subsecciones)
     except Exception as e:
-        print(f"❌ API Sub-Secciones - Error: {e}")
+        print(f"❌ API Subsecciones - Error: {e}")
         return jsonify({"error": str(e)}), 500
-    
+
+@app.route("/api/regiones_zonas")
+def api_regiones_zonas():
+    """Alias para compatibilidad"""
+    return get_regiones()
+
 # =========================
 # MANEJO DE ERRORES
 # =========================
