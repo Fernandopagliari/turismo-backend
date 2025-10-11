@@ -44,32 +44,10 @@ def conectar_bd():
         print(f"❌ Error BD: {e}")
         return None
 
-# =========================
-# RUTAS PARA FRONTEND REACT
-# =========================
-@app.route("/")
-def servir_frontend():
-    return send_from_directory(REACT_BUILD_PATH, 'index.html')
+# =================================================================
+# 1. PRIMERO - TODAS LAS RUTAS API (CRÍTICO: DEBEN IR PRIMERO)
+# =================================================================
 
-@app.route("/static-assets/<path:filename>")
-def servir_assets(filename):
-    assets_path = os.path.join(os.path.dirname(__file__), 'assets')
-    return send_from_directory(assets_path, filename)
-
-@app.route("/<path:path>")
-def servir_react(path):
-    try:
-        file_path = os.path.join(REACT_BUILD_PATH, path)
-        if os.path.exists(file_path):
-            return send_from_directory(REACT_BUILD_PATH, path)
-        else:
-            return send_from_directory(REACT_BUILD_PATH, 'index.html')
-    except:
-        return send_from_directory(REACT_BUILD_PATH, 'index.html')
-
-# =========================
-# APIs PRINCIPALES (RUTAS ORIGINALES)
-# =========================
 @app.route("/api/health")
 def health():
     return jsonify({"status": "ok", "message": "Servidor funcionando"})
@@ -88,7 +66,7 @@ def info_servidor():
         "frontend_react": os.path.exists(os.path.join(REACT_BUILD_PATH, 'index.html'))
     })
 
-@app.route("/api/configuracion_original")
+# Funciones originales
 def get_configuracion():
     conn = conectar_bd()
     if not conn:
@@ -131,7 +109,6 @@ def get_configuracion():
         print(f"❌ API Config - Error: {e}")
         return jsonify({"error": str(e)}), 500
 
-@app.route("/api/usuarios_original")
 def get_usuarios():
     conn = conectar_bd()
     if not conn:
@@ -164,8 +141,6 @@ def get_usuarios():
         print(f"❌ API Usuarios - Error: {e}")
         return jsonify({"error": str(e)}), 500
 
-@app.route("/api/regiones_original")
-@app.route("/api/regiones_zonas_original")
 def get_regiones():
     conn = conectar_bd()
     if not conn:
@@ -191,7 +166,6 @@ def get_regiones():
         print(f"❌ API Regiones - Error: {e}")
         return jsonify({"error": str(e)}), 500
 
-@app.route("/api/secciones_original", methods=["GET"])
 def get_secciones():
     conn = conectar_bd()
     if not conn:
@@ -238,10 +212,7 @@ def get_secciones():
         print(f"❌ Error: {e}")
         return jsonify({"error": str(e)}), 500
 
-# =========================
 # RUTAS EXACTAS QUE EL FRONTEND NECESITA
-# =========================
-
 @app.route("/api/configuracion")
 def api_configuracion():
     """Ruta exacta que el frontend espera"""
@@ -293,6 +264,30 @@ def api_subsecciones():
 def api_regiones_zonas():
     """Alias para compatibilidad"""
     return get_regiones()
+
+# =================================================================
+# 2. AL FINAL - RUTAS PARA SERVIR EL FRONTEND REACT
+# =================================================================
+
+@app.route("/static-assets/<path:filename>")
+def servir_assets(filename):
+    assets_path = os.path.join(os.path.dirname(__file__), 'assets')
+    return send_from_directory(assets_path, filename)
+
+@app.route("/")
+def servir_frontend():
+    return send_from_directory(REACT_BUILD_PATH, 'index.html')
+
+@app.route("/<path:path>")
+def servir_react(path):
+    try:
+        file_path = os.path.join(REACT_BUILD_PATH, path)
+        if os.path.exists(file_path):
+            return send_from_directory(REACT_BUILD_PATH, path)
+        else:
+            return send_from_directory(REACT_BUILD_PATH, 'index.html')
+    except:
+        return send_from_directory(REACT_BUILD_PATH, 'index.html')
 
 # =========================
 # MANEJO DE ERRORES
