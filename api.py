@@ -90,6 +90,7 @@ def obtener_configuracion_desde_bd(tipo='local'):
         
         print(f"🔌 Conectando a BD LOCAL: {config_conexion_local['host']}:{config_conexion_local['port']}")
         
+        # ✅ CONEXIÓN A BD LOCAL
         conn = mysql.connector.connect(**config_conexion_local)
         cursor = conn.cursor(dictionary=True)
         
@@ -98,6 +99,8 @@ def obtener_configuracion_desde_bd(tipo='local'):
             tabla = 'datos_host_local'
         else:
             tabla = 'datos_hosting'  # Esta tabla está en tu BD LOCAL
+        
+        print(f"📊 Consultando tabla: {tabla}")
         
         cursor.execute(f"""
             SELECT host, usuario, password, base_datos, puerto, base_url
@@ -112,6 +115,10 @@ def obtener_configuracion_desde_bd(tipo='local'):
         
         if config_db:
             print(f"✅ Configuración encontrada en tabla '{tabla}'")
+            print(f"   📍 Host: {config_db['host']}")
+            print(f"   👤 Usuario: {config_db['usuario']}")
+            print(f"   🗃️  Base: {config_db['base_datos']}")
+            print(f"   🔌 Puerto: {config_db['puerto']}")
             
             config_final = {
                 'host': config_db['host'],
@@ -129,12 +136,13 @@ def obtener_configuracion_desde_bd(tipo='local'):
             
         else:
             print(f"⚠️ Tabla '{tabla}' existe pero NO tiene registros activos")
-            return obtener_config_harcodeada(tipo, 'sin_datos')
+            return {'fuente': f'harcodeado_{tipo}_sin_datos'}
             
     except Exception as e:
-        print(f"❌ Error obteniendo configuración {tipo}: {e}")
-        return obtener_config_harcodeada(tipo, 'error_conexion')
-
+        print(f"❌ ERROR CRÍTICO obteniendo configuración {tipo}: {str(e)}")
+        print(f"   Tipo de error: {type(e).__name__}")
+        return {'fuente': f'harcodeado_{tipo}_error'}
+    
 def conectar_bd():
     """Conexión simplificada a la BD"""
     try:
@@ -254,6 +262,37 @@ def estado_sistema():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/debug-config-detallado', methods=['GET'])
+def debug_config_detallado():
+    """Debug detallado del proceso de configuración"""
+    try:
+        entorno = detectar_entorno()
+        print(f"🎯 INICIANDO DEBUG - Entorno: {entorno}")
+        
+        # 1. Obtener configuración paso a paso
+        print("📋 Paso 1: Obteniendo configuración...")
+        config = obtener_configuracion_desde_bd(entorno)
+        
+        print(f"✅ Configuración obtenida: {config}")
+        
+        # 2. Mostrar qué se obtuvo
+        safe_config = config.copy()
+        if 'password' in safe_config:
+            safe_config['password'] = '***'
+        
+        return jsonify({
+            'estado': 'debug_completado',
+            'entorno': entorno,
+            'configuracion_obtenida': safe_config,
+            'fuente': config.get('fuente', 'desconocida')
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'estado': 'error_debug',
+            'error': str(e)
+        }), 500
+        
 # =========================
 # ENDPOINTS DE LA APLICACIÓN
 # =========================
