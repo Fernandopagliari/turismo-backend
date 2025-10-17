@@ -292,7 +292,65 @@ def debug_config_detallado():
             'estado': 'error_debug',
             'error': str(e)
         }), 500
+
+@app.route('/api/debug-config-hosting', methods=['GET'])
+def debug_config_hosting():
+    """Debug específico para la configuración de hosting"""
+    try:
+        print("🔍 DEBUG: Iniciando obtención de configuración hosting...")
         
+        # 1. Primero probar conexión directa a Railway
+        print("🔌 Probando conexión directa a Railway...")
+        try:
+            conn_direct = mysql.connector.connect(
+                host='shinkansen.proxy.rlwy.net',
+                user='root',
+                password='modwetYgGSblbVwIoVyvOoYQMPacXSjZ',
+                database='railway',
+                port=44292
+            )
+            conn_direct.close()
+            print("✅ Conexión directa a Railway: EXITOSA")
+            conexion_directa = "exitosa"
+        except Exception as e:
+            print(f"❌ Conexión directa a Railway: FALLIDA - {e}")
+            conexion_directa = f"fallida - {e}"
+        
+        # 2. Ahora probar obtener configuración desde BD local
+        print("📊 Probando obtener configuración desde BD local...")
+        config = obtener_configuracion_desde_bd('hosting')
+        
+        print(f"🎯 Resultado de obtener_configuracion_desde_bd(): {config}")
+        
+        # 3. Probar conexión con la configuración obtenida
+        conexion_config = "no_se_probo"
+        if config and 'host' in config:
+            print("🔌 Probando conexión con configuración obtenida...")
+            try:
+                conn_config = mysql.connector.connect(
+                    host=config['host'],
+                    user=config['user'],
+                    password=config['password'],
+                    database=config['database'],
+                    port=config['port']
+                )
+                conn_config.close()
+                print("✅ Conexión con configuración obtenida: EXITOSA")
+                conexion_config = "exitosa"
+            except Exception as e:
+                print(f"❌ Conexión con configuración obtenida: FALLIDA - {e}")
+                conexion_config = f"fallida - {e}"
+        
+        return jsonify({
+            'conexion_directa_railway': conexion_directa,
+            'configuracion_obtenida': config,
+            'conexion_con_configuracion': conexion_config,
+            'estado': 'debug_completado'
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 # =========================
 # ENDPOINTS DE LA APLICACIÓN
 # =========================
