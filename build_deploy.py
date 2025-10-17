@@ -117,20 +117,40 @@ class BuildDeployThread(QThread):
     # -------------------------
     def find_project_root(self):
         """Buscar carpeta donde exista package.json"""
-        for p in self.possible_paths:
+        # ✅ RUTAS ACTUALIZADAS para tu estructura de proyecto
+        posibles_rutas = [
+            self.requested_path,
+            os.path.join(self.requested_path, "frontend"),
+            os.path.join(self.requested_path, "turismo-frontend"),
+            os.path.join(self.requested_path, "src"),
+            # Rutas específicas para tu proyecto
+            r"E:\Sistemas de app para androide\turismo-app\frontend",
+            r"E:\Sistemas de app para androide\frontend",
+            os.path.join(os.path.dirname(self.requested_path), "frontend"),
+            os.path.join(os.path.dirname(os.path.dirname(self.requested_path)), "frontend"),
+        ]
+        
+        for ruta in posibles_rutas:
             try:
-                p = os.path.abspath(p)
-                package_json = os.path.join(p, "package.json")
+                ruta_abs = os.path.abspath(ruta)
+                package_json = os.path.join(ruta_abs, "package.json")
+                self.log(f"Buscando package.json en: {ruta_abs}", "DEBUG")
+                
                 if os.path.exists(package_json):
-                    self.log(f"Encontrado package.json en: {p}")
-                    return p
-                else:
-                    self.log(f"No hay package.json en: {p}", "DEBUG")
+                    self.log(f"✅ Encontrado package.json en: {ruta_abs}")
+                    return ruta_abs
             except Exception as e:
-                self.log(f"Error comprobando {p}: {e}", "WARN")
-        self.log("No se encontró la raíz del proyecto React (package.json).", "WARN")
+                self.log(f"Error comprobando {ruta}: {e}", "DEBUG")
+        
+        # ✅ SI NO ENCUENTRA, MOSTRAR RUTAS DISPONIBLES
+        self.log("❌ No se encontró package.json. Rutas disponibles:", "ERROR")
+        for ruta in posibles_rutas:
+            ruta_abs = os.path.abspath(ruta)
+            existe = os.path.exists(ruta_abs)
+            self.log(f"   {'✅' if existe else '❌'} {ruta_abs}")
+        
         return None
-
+    
     def find_backend_path(self):
         """Intentar localizar backend Flask (api.py) en rutas probables"""
         posibles = [
