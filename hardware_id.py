@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # hardware_id.py
 import uuid
 import hashlib

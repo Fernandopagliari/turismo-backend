@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # src/backend/seguridad.py
 import os
 from cryptography.fernet import Fernet

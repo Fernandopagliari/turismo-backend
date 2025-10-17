@@ -1,7 +1,10 @@
+# -*- coding: utf-8 -*-
 # dialogo_config_bd.py
+
+# ⚠️ ELIMINADO: Parche removido - Solo database_local.py controla el charset
+import mysql.connector
 from PyQt5.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QMessageBox, QSpinBox
 from PyQt5.QtCore import Qt
-import mysql.connector
 from mysql.connector import Error
 
 class DialogoConfigBD(QDialog):
@@ -93,8 +96,16 @@ class DialogoConfigBD(QDialog):
             )
             
             if conexion.is_connected():
+                # Verificar charset de la conexión
+                cursor = conexion.cursor()
+                cursor.execute("SHOW VARIABLES LIKE 'character_set_connection'")
+                charset_result = cursor.fetchone()
+                cursor.close()
+                
                 conexion.close()
-                QMessageBox.information(self, "Conexión exitosa", "¡Conexión a la base de datos exitosa!")
+                QMessageBox.information(self, "Conexión exitosa", 
+                                      f"¡Conexión a la base de datos exitosa!\n"
+                                      f"Charset: {charset_result[1] if charset_result else 'No detectado'}")
                 return True
                 
         except Error as e:
@@ -120,7 +131,10 @@ class DialogoConfigBD(QDialog):
             # ✅ PASAR base_url a la función
             if guardar_configuracion_hosting(host, usuario, password, base_datos, puerto, base_url, self):
                 QMessageBox.information(self, "Configuración guardada", 
-                                    "Configuración del hosting guardada exitosamente.")
+                                    "Configuración del hosting guardada exitosamente.\n\n"
+                                    "✅ Conexión UTF-8 asegurada\n"
+                                    "✅ Base URL configurada\n"
+                                    "✅ Configuración lista para sincronización")
                 self.accept()
             else:
                 QMessageBox.critical(self, "Error", "No se pudo guardar la configuración.")

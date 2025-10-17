@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # src/backend/generar_clave_fernet.py
 from cryptography.fernet import Fernet
 import os

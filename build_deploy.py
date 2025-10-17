@@ -1,844 +1,749 @@
-# build_deploy.py - CON INTEGRACIÓN FLASK REACT - VERSIÓN MEJORADA
+# build_deploy.py - VERSIÓN CORREGIDA Y OPTIMIZADA
+# -*- coding: utf-8 -*-
 import os
 import subprocess
-import sys
 import shutil
 import time
-from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
-                             QPushButton, QTextEdit, QProgressBar, QMessageBox,
-                             QGroupBox, QComboBox, QScrollArea, QWidget)
+import platform
+import json
+from pathlib import Path
+
+from PyQt5.QtWidgets import (
+    QDialog, QVBoxLayout, QHBoxLayout, QLabel,
+    QPushButton, QTextEdit, QProgressBar, QMessageBox,
+    QGroupBox, QScrollArea, QWidget
+)
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 
-# Importar la conexión a la base de datos
+# Optional imports (no crash if faltan)
 try:
-    from database_local import conectar_local, obtener_configuracion_hosting
-    BD_DISPONIBLE = True
+    import requests
 except ImportError:
-    BD_DISPONIBLE = False
+    requests = None
 
+# Intentar importar helpers DB si existen
+try:
+    from database_local import obtener_configuracion_hosting
+    BD_DISPONIBLE = True
+except Exception:
+    BD_DISPONIBLE = False
+    obtener_configuracion_hosting = None  # ✅ AGREGADO para evitar errores
+
+
+# -------------------------
+# UTILIDADES COMUNES
+# -------------------------
+def is_windows():
+    return platform.system().lower().startswith("win")
+
+
+def run_subprocess(cmd, cwd=None, timeout=300):
+    """
+    Ejecuta un comando seguro (lista) y devuelve (ok, stdout, stderr, returncode).
+    Nunca usar shell=True con comandos construidos dinámicamente.
+    """
+    try:
+        # Asegurarse de que cmd sea lista
+        if isinstance(cmd, str):
+            cmd = cmd.split()
+        result = subprocess.run(
+            cmd,
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            shell=False
+        )
+        return (result.returncode == 0, result.stdout or "", result.stderr or "", result.returncode)
+    except subprocess.TimeoutExpired as e:
+        return (False, "", f"TimeoutExpired: {str(e)}", -1)
+    except FileNotFoundError as e:
+        return (False, "", f"FileNotFoundError: {str(e)}", -2)
+    except Exception as e:
+        return (False, "", f"Exception: {str(e)}", -3)
+
+
+# -------------------------
+# HILO PRINCIPAL
+# -------------------------
 class BuildDeployThread(QThread):
-    """Hilo para ejecutar build y deploy sin bloquear la UI - CON FLASK INTEGRADO"""
+    """
+    Hilo para ejecutar build y deploy sin bloquear la UI.
+    Emite logs (texto), progreso (0-100) y finished_signal(exito:bool, mensaje:str).
+    """
     log_signal = pyqtSignal(str)
     progress_signal = pyqtSignal(int)
     finished_signal = pyqtSignal(bool, str)
-    
+
     def __init__(self, project_path, deploy_config=None):
         super().__init__()
-        self.project_path = project_path
+        self.requested_path = project_path or os.getcwd()
         self.deploy_config = deploy_config or {}
-        
-        # Rutas posibles del proyecto
+
+        # Rutas candidatas para buscar el proyecto React
         self.possible_paths = [
-            project_path,  # Raíz del proyecto
-            os.path.join(project_path, "turismo-frontend"),  # ✅ NUEVA RUTA
-            os.path.join(project_path, "turismo-frontend", "src"),
-            os.path.join(project_path, "src"),
-            os.path.join(project_path, "frontend"),
+            self.requested_path,
+            os.path.join(self.requested_path, "turismo-frontend"),
+            os.path.join(self.requested_path, "frontend"),
+            os.path.join(self.requested_path, "src"),
         ]
-        
-        self.project_root = self.encontrar_project_root()
+
+        self.project_root = self.find_project_root()
         self.dist_path = os.path.join(self.project_root, "dist") if self.project_root else None
-        
-        # ✅ Ruta del backend Flask para integración
-        self.backend_path = self.encontrar_backend_path()
-        self.react_build_dest = os.path.join(self.backend_path, "react-build") if self.backend_path else None
-        
-        # ✅ Encontrar npm y node
-        self.npm_path = self.encontrar_npm()
-        self.node_path = self.encontrar_node()
-        
-    def encontrar_backend_path(self):
-        """Encontrar la ruta del backend Flask"""
-        # Buscar en diferentes ubicaciones posibles
-        posibles_backends = [
-            # ✅ RUTA CORRECTA - Dentro de turismo-app
-            r"E:\Sistemas de app para androide\turismo-app\turismo-backend",
-            # Otras rutas posibles
-            os.path.join(self.project_path, "turismo-backend"),
-            os.path.join(os.path.dirname(self.project_path), "turismo-backend"),
-            r"E:\Sistemas de app para androide\turismo-backend",  # Vieja ruta
-        ]
-        
-        for backend_path in posibles_backends:
-            if os.path.exists(backend_path):
-                # Verificar que tiene api.py (backend Flask)
-                api_py = os.path.join(backend_path, "api.py")
-                if os.path.exists(api_py):
-                    print(f"✅ Backend Flask encontrado en: {backend_path}")
-                    return backend_path
-                else:
-                    print(f"⚠️  Carpeta encontrada pero sin api.py: {backend_path}")
-        
-        print("❌ Backend Flask no encontrado")
-        return None
-    
-    def encontrar_npm(self):
-        """Encontrar la ruta de npm"""
-        # Buscar npm en diferentes ubicaciones
-        posibles_rutas = [
-            "npm",  # En PATH
-            r"C:\Program Files\nodejs\npm.cmd",
-            r"C:\Program Files (x86)\nodejs\npm.cmd",
-            os.path.join(os.environ.get('APPDATA', ''), "npm", "npm.cmd"),
-        ]
-        
-        for ruta in posibles_rutas:
+
+        # Intentar localizar backend Flask para integración
+        self.backend_path = self.find_backend_path()
+        # ✅ CORREGIDO: react-build -> build para Flask estándar
+        self.react_build_dest = os.path.join(self.backend_path, "build") if self.backend_path else None
+
+        # Rutas de node/npm (pueden ser 'node'/'npm' si están en PATH)
+        self.npm_cmd = self.find_npm()
+        self.node_cmd = self.find_node()
+
+        # Estado interno
+        self._stopped = False
+
+    # -------------------------
+    # UTILIDADES DE LOG
+    # -------------------------
+    def log(self, mensaje, nivel="INFO"):
+        """Formatea y emite logs"""
+        ts = time.strftime("%Y-%m-%d %H:%M:%S")
+        texto = f"[{ts}] [{nivel}] {mensaje}"
+        self.log_signal.emit(texto)
+
+    # -------------------------
+    # DETECCIÓN RUTAS
+    # -------------------------
+    def find_project_root(self):
+        """Buscar carpeta donde exista package.json"""
+        for p in self.possible_paths:
             try:
-                result = subprocess.run([ruta, "--version"], capture_output=True, text=True, timeout=10)
-                if result.returncode == 0:
-                    print(f"✅ npm encontrado en: {ruta}")
-                    return ruta
-            except subprocess.TimeoutExpired:
-                print(f"⚠️  Timeout verificando npm en: {ruta}")
-                continue
-            except:
-                continue
-        
-        print("❌ npm no encontrado")
-        return None
-    
-    def encontrar_node(self):
-        """Encontrar la ruta de node"""
-        # Buscar node en diferentes ubicaciones
-        posibles_rutas = [
-            "node",  # En PATH
-            r"C:\Program Files\nodejs\node.exe",
-            r"C:\Program Files (x86)\nodejs\node.exe",
-        ]
-        
-        for ruta in posibles_rutas:
-            try:
-                result = subprocess.run([ruta, "--version"], capture_output=True, text=True, timeout=10)
-                if result.returncode == 0:
-                    print(f"✅ node encontrado en: {ruta}")
-                    return ruta
-            except subprocess.TimeoutExpired:
-                print(f"⚠️  Timeout verificando node en: {ruta}")
-                continue
-            except:
-                continue
-        
-        print("❌ node no encontrado")
-        return None
-        
-    def encontrar_project_root(self):
-        """Encontrar la raíz del proyecto React (donde está package.json)"""
-        for path in self.possible_paths:
-            if os.path.exists(path):
-                package_json = os.path.join(path, "package.json")
+                p = os.path.abspath(p)
+                package_json = os.path.join(p, "package.json")
                 if os.path.exists(package_json):
-                    print(f"✅ Encontrado package.json en: {path}")
-                    return path
+                    self.log(f"Encontrado package.json en: {p}")
+                    return p
                 else:
-                    print(f"❌ package.json no encontrado en: {path}")
-        
+                    self.log(f"No hay package.json en: {p}", "DEBUG")
+            except Exception as e:
+                self.log(f"Error comprobando {p}: {e}", "WARN")
+        self.log("No se encontró la raíz del proyecto React (package.json).", "WARN")
         return None
-        
-    def run(self):
-        try:
-            self.log_signal.emit("🚀 INICIANDO PROCESO DE BUILD & DEPLOY CON FLASK")
-            self.log_signal.emit("=" * 50)
-            
-            # Paso 1: Verificar que encontramos el proyecto
-            if not self.project_root:
-                error_msg = f"❌ No se pudo encontrar el proyecto React.\n"
-                error_msg += f"Buscado en:\n"
-                for path in self.possible_paths:
-                    error_msg += f"  - {path}\n"
-                error_msg += f"💡 Asegúrate de que package.json existe en una de estas rutas"
-                self.finished_signal.emit(False, error_msg)
-                return
-                
-            self.log_signal.emit(f"✅ Proyecto encontrado en: {self.project_root}")
-            
-            # Paso 2: Verificar npm y node
-            if not self.npm_path or not self.node_path:
-                error_msg = "❌ Node.js o npm no encontrados.\n"
-                error_msg += "💡 Instala Node.js desde: https://nodejs.org/\n"
-                error_msg += "💡 O asegúrate de que están en el PATH del sistema"
-                self.finished_signal.emit(False, error_msg)
-                return
-                
-            self.log_signal.emit(f"✅ Node.js encontrado: {self.node_path}")
-            self.log_signal.emit(f"✅ npm encontrado: {self.npm_path}")
-            
-            # Paso 3: Verificar backend Flask
-            if self.backend_path:
-                self.log_signal.emit(f"✅ Backend Flask encontrado: {self.backend_path}")
-            else:
-                self.log_signal.emit("⚠️  Backend Flask no encontrado - Solo generando build")
-                
-            # Paso 4: Navegar al directorio del proyecto
-            os.chdir(self.project_root)
-            self.log_signal.emit(f"📁 Directorio de trabajo: {self.project_root}")
-            
-            # Paso 5: Mostrar configuración de deploy
-            if self.deploy_config:
-                self.log_signal.emit(f"🌐 Configuración de deploy: {self.deploy_config.get('base_url', 'No configurado')}")
-            
-            # Paso 6: Instalar dependencias si es necesario
-            self.log_signal.emit("📦 Verificando dependencias...")
-            self.progress_signal.emit(10)
-            
-            if not self.verificar_dependencias():
-                self.log_signal.emit("⚠️ Instalando dependencias...")
-                if not self.instalar_dependencias():
-                    self.finished_signal.emit(False, "Error instalando dependencias")
-                    return
-            
-            self.progress_signal.emit(30)
-            
-            # Paso 7: Ejecutar build
-            self.log_signal.emit("🔨 Ejecutando build...")
-            if not self.ejecutar_build():
-                self.finished_signal.emit(False, "Error en el build")
-                return
-                
-            self.progress_signal.emit(70)
-            
-            # ✅ PASO NUEVO: Copiar build a Flask
-            if self.backend_path and self.dist_path and os.path.exists(self.dist_path):
-                self.log_signal.emit("📦 Integrando con Flask...")
-                if self.copiar_build_a_flask():
-                    self.log_signal.emit("🎯 Frontend React integrado con backend Flask")
-                    self.progress_signal.emit(80)
-                else:
-                    self.log_signal.emit("⚠️  Build generado pero no integrado con Flask")
-                    self.progress_signal.emit(75)
-            else:
-                self.log_signal.emit("ℹ️  Build generado (sin integración Flask)")
-                self.progress_signal.emit(75)
-            
-            # Paso 8: Deploy (solo si hay configuración)
-            if self.deploy_config and self.deploy_config.get('base_url'):
-                self.log_signal.emit("☁️ Realizando deploy...")
-                if not self.ejecutar_deploy():
-                    self.finished_signal.emit(False, "Error en el deploy")
-                    return
-            else:
-                self.log_signal.emit("ℹ️  Solo build - No hay configuración de deploy")
-                
-            self.progress_signal.emit(100)
-            
-            # Mensaje final según integración
-            if self.backend_path and os.path.exists(self.react_build_dest):
-                mensaje_final = "✅ Build & Deploy completado + Flask integrado!"
-            else:
-                mensaje_final = "✅ Build & Deploy completado!"
-                
-            self.finished_signal.emit(True, mensaje_final)
-            
-        except Exception as e:
-            self.finished_signal.emit(False, f"❌ Error: {str(e)}")
-    
-    def copiar_build_a_flask(self):
-        """Copiar el build de React a la carpeta del backend Flask"""
-        try:
-            self.log_signal.emit(f"📦 Copiando build a Flask...")
-            self.log_signal.emit(f"📍 Origen: {self.dist_path}")
-            self.log_signal.emit(f"📍 Destino: {self.react_build_dest}")
-            
-            # Verificar que existe el build
-            if not os.path.exists(self.dist_path):
-                self.log_signal.emit("❌ No se encontró la carpeta dist del build")
-                return False
-            
-            # Limpiar destino anterior
-            if os.path.exists(self.react_build_dest):
-                shutil.rmtree(self.react_build_dest)
-                self.log_signal.emit("🗑️ Build anterior eliminado")
-            
-            # Copiar nuevo build
-            shutil.copytree(self.dist_path, self.react_build_dest)
-            self.log_signal.emit(f"✅ Build copiado a Flask")
-            
-            # Mostrar información del build copiado
-            if os.path.exists(self.react_build_dest):
-                tamaño = self.get_folder_size(self.react_build_dest)
-                self.log_signal.emit(f"📊 Tamaño del build en Flask: {tamaño}")
-                
-                # Verificar archivos críticos
-                archivos_criticos = ['index.html', 'assets/', 'static/']
-                archivos_existentes = os.listdir(self.react_build_dest)
-                
-                for critico in archivos_criticos:
-                    if critico.replace('/', '') in archivos_existentes:
-                        self.log_signal.emit(f"✅ {critico} encontrado")
-                    else:
-                        self.log_signal.emit(f"⚠️  {critico} no encontrado")
-            
-            return True
-            
-        except Exception as e:
-            self.log_signal.emit(f"❌ Error copiando build a Flask: {str(e)}")
-            return False
-    
-    def verificar_dependencias(self):
-        """Verificar si node_modules existe"""
-        node_modules_path = os.path.join(self.project_root, "node_modules")
-        existe = os.path.exists(node_modules_path)
-        self.log_signal.emit(f"📦 node_modules existe: {existe}")
+
+    def find_backend_path(self):
+        """Intentar localizar backend Flask (api.py) en rutas probables"""
+        posibles = [
+            os.path.join(self.requested_path, "turismo-backend"),
+            os.path.join(os.path.dirname(self.requested_path), "turismo-backend"),
+            os.path.join(self.requested_path, "backend"),
+            os.path.join(self.requested_path, "turismo-app", "turismo-backend"),
+            # rutas absolutas comunes - puedes personalizarlas
+            r"E:\Sistemas de app para androide\turismo-app\turismo-backend",
+            r"E:\Sistemas de app para androide\turismo-backend",
+        ]
+        for b in posibles:
+            try:
+                if os.path.exists(b) and os.path.exists(os.path.join(b, "api.py")):
+                    self.log(f"Backend Flask detectado en: {b}")
+                    return os.path.abspath(b)
+            except Exception:
+                continue
+        self.log("Backend Flask no detectado automáticamente.", "INFO")
+        return None
+
+    def find_npm(self):
+        """Detectar npm de forma portable"""
+        candidates = ["npm"]
+        if is_windows():
+            candidates += [
+                r"C:\Program Files\nodejs\npm.cmd",
+                r"C:\Program Files (x86)\nodejs\npm.cmd",
+                os.path.join(os.environ.get("APPDATA", ""), "npm", "npm.cmd"),
+            ]
+        else:
+            candidates += ["/usr/bin/npm", "/usr/local/bin/npm"]
+
+        for cmd in candidates:
+            ok, out, err, rc = run_subprocess([cmd, "--version"], timeout=8)
+            if ok:
+                self.log(f"npm encontrado: {cmd} ({out.strip()})")
+                return cmd
+        self.log("npm no encontrado en el sistema PATH o rutas comunes.", "WARN")
+        return None
+
+    def find_node(self):
+        """Detectar node de forma portable"""
+        candidates = ["node"]
+        if is_windows():
+            candidates += [
+                r"C:\Program Files\nodejs\node.exe",
+                r"C:\Program Files (x86)\nodejs\node.exe",
+            ]
+        else:
+            candidates += ["/usr/bin/node", "/usr/local/bin/node"]
+
+        for cmd in candidates:
+            ok, out, err, rc = run_subprocess([cmd, "--version"], timeout=8)
+            if ok:
+                self.log(f"node encontrado: {cmd} ({out.strip()})")
+                return cmd
+        self.log("node no encontrado en el sistema PATH o rutas comunes.", "WARN")
+        return None
+
+    # -------------------------
+    # VERIFICACIONES
+    # -------------------------
+    def verify_environment(self):
+        """Verificar que lo mínimo esté presente"""
+        if not self.project_root:
+            raise RuntimeError("No se encontró la raíz del proyecto (package.json).")
+        if not self.node_cmd or not self.npm_cmd:
+            raise RuntimeError("Node.js o npm no están instalados / no están en PATH.")
+        self.log(f"Entorno verificado: project_root={self.project_root}", "DEBUG")
+
+    # -------------------------
+    # INSTALAR DEPENDENCIAS
+    # -------------------------
+    def verify_dependencies(self):
+        """Comprobar si node_modules existe"""
+        nm = os.path.join(self.project_root, "node_modules")
+        existe = os.path.exists(nm)
+        self.log(f"node_modules existe: {existe}", "DEBUG")
         return existe
-    
-    def instalar_dependencias(self):
+
+    def install_dependencies(self):
         """Ejecutar npm install"""
-        try:
-            self.log_signal.emit("📥 Instalando dependencias con npm install...")
-            
-            # Usar la ruta completa de npm
-            comando = [self.npm_path, "install"]
-            
-            result = subprocess.run(comando, 
-                                  capture_output=True, text=True, 
-                                  timeout=300,  # 5 minutos
-                                  shell=True)  # ✅ Usar shell para acceso a PATH
-            
-            if result.returncode == 0:
-                self.log_signal.emit("✅ Dependencias instaladas correctamente")
-                if result.stdout:
-                    # Mostrar solo las últimas líneas relevantes
-                    lineas = result.stdout.split('\n')
-                    lineas_relevantes = [l for l in lineas if 'added' in l.lower() or 'audit' in l.lower() or 'funding' in l.lower()]
-                    for linea in lineas_relevantes[-5:]:  # Últimas 5 líneas relevantes
-                        if linea.strip():
-                            self.log_signal.emit(f"   📋 {linea.strip()}")
-                return True
-            else:
-                self.log_signal.emit(f"❌ Error instalando dependencias")
-                if result.stderr:
-                    # Mostrar solo las primeras líneas de error
-                    lineas_error = result.stderr.split('\n')[:10]
-                    for linea in lineas_error:
-                        if linea.strip():
-                            self.log_signal.emit(f"   🔴 {linea.strip()}")
-                return False
-                
-        except subprocess.TimeoutExpired:
-            self.log_signal.emit("❌ Timeout instalando dependencias (5 minutos)")
+        self.log("Instalando dependencias (npm install)...")
+        ok, out, err, rc = run_subprocess([self.npm_cmd, "install"], cwd=self.project_root, timeout=600)
+        if ok:
+            self.log("Dependencias instaladas correctamente")
+            # Mostrar algunos mensajes útiles del output si existen
+            if out:
+                for l in out.splitlines()[-8:]:
+                    self.log(l, "DEBUG")
+            return True
+        else:
+            self.log(f"Error instalando dependencias: {err[:1000]}", "ERROR")
             return False
-        except Exception as e:
-            self.log_signal.emit(f"❌ Error: {str(e)}")
-            return False
-    
-    def ejecutar_build(self):
+
+    # -------------------------
+    # EJECUTAR BUILD
+    # -------------------------
+    def run_build(self):
         """Ejecutar npm run build"""
-        try:
-            self.log_signal.emit("🏗️ Ejecutando npm run build...")
-            
-            # Limpiar dist anterior si existe
+        self.log("Iniciando build de React (npm run build)...")
+        # Asegurarnos de usar npm_cmd con run build
+        ok, out, err, rc = run_subprocess([self.npm_cmd, "run", "build"], cwd=self.project_root, timeout=900)
+        if ok:
+            self.log("Build completado correctamente")
+            # Info de tamaño y archivos
             if os.path.exists(self.dist_path):
-                shutil.rmtree(self.dist_path)
-                self.log_signal.emit("🗑️ Carpeta dist anterior eliminada")
-            
-            # Usar la ruta completa de npm
-            comando = [self.npm_path, "run", "build"]
-            
-            result = subprocess.run(comando, 
-                                  capture_output=True, text=True, 
-                                  timeout=300,  # 5 minutos
-                                  shell=True)  # ✅ Usar shell para acceso a PATH
-            
-            if result.returncode == 0:
-                self.log_signal.emit("✅ Build completado exitosamente")
-                self.log_signal.emit(f"📂 Carpeta dist creada en: {self.dist_path}")
-                
-                # Mostrar información del build
-                if os.path.exists(self.dist_path):
-                    tamaño = self.get_folder_size(self.dist_path)
-                    self.log_signal.emit(f"📊 Tamaño del build: {tamaño}")
-                    
-                    # Mostrar archivos generados
-                    archivos = self.listar_archivos_dist()
-                    self.log_signal.emit(f"📄 Archivos generados: {', '.join(archivos[:8])}...")
-                    
-                return True
-            else:
-                self.log_signal.emit(f"❌ Error en build")
-                if result.stderr:
-                    # Mostrar solo las primeras líneas de error
-                    lineas_error = result.stderr.split('\n')[:10]
-                    for linea in lineas_error:
-                        if linea.strip():
-                            self.log_signal.emit(f"   🔴 {linea.strip()}")
-                return False
-                
-        except subprocess.TimeoutExpired:
-            self.log_signal.emit("❌ Timeout en build (5 minutos)")
+                size = self.get_folder_size(self.dist_path)
+                self.log(f"Carpeta dist creada: {self.dist_path} (tamaño: {size})")
+            return True
+        else:
+            self.log(f"Error ejecutando build: {err[:2000] or out[:2000]}", "ERROR")
             return False
-        except Exception as e:
-            self.log_signal.emit(f"❌ Error: {str(e)}")
+
+    # -------------------------
+    # COPIAR BUILD A FLASK
+    # -------------------------
+    def copy_build_to_flask(self):
+        """Copia dist -> backend/build limpiando destino previo"""
+        if not self.backend_path:
+            self.log("No hay backend configurado; se omite integración Flask", "INFO")
             return False
-    
-    def ejecutar_deploy(self):
-        """Ejecutar deploy basado en la configuración de la BD"""
+
+        if not self.dist_path or not os.path.exists(self.dist_path):
+            self.log("No se encontró la carpeta dist; asegúrate de que el build se generó correctamente.", "ERROR")
+            return False
+
+        destino = self.react_build_dest
         try:
-            base_url = self.deploy_config.get('base_url', '')
+            if os.path.exists(destino):
+                self.log(f"Limpiando destino anterior: {destino}")
+                shutil.rmtree(destino, ignore_errors=True)
+                time.sleep(0.2)
+
+            self.log(f"Copiando build desde {self.dist_path} -> {destino}")
+            shutil.copytree(self.dist_path, destino)
+            size = self.get_folder_size(destino)
+            self.log(f"Build copiado al backend: {destino} (tamaño: {size})")
             
-            if not base_url:
-                self.log_signal.emit("⚠️  No hay base_url configurado para deploy")
-                return True
+            # ✅ CORREGIDO: Verificar archivos críticos para Flask
+            existentes = os.listdir(destino)
+            checks = []
+            for crit in ("index.html", "assets", "static"):
+                checks.append((crit, crit in existentes or any(x.startswith(crit) for x in existentes)))
+            for crit, ok in checks:
+                self.log(f"{'✅' if ok else '⚠️'} {crit} {'encontrado' if ok else 'no encontrado'}", "DEBUG")
             
-            # Determinar el tipo de deploy basado en el base_url
-            if 'railway' in base_url:
-                return self.deploy_railway()
-            elif 'netlify' in base_url:
-                return self.deploy_netlify()
-            elif 'vercel' in base_url:
-                return self.deploy_vercel()
-            elif 'github' in base_url or 'pages' in base_url:
-                return self.deploy_github_pages()
-            else:
-                # Deploy genérico (FTP, SSH, etc.)
-                return self.deploy_generico()
-                
-        except Exception as e:
-            self.log_signal.emit(f"❌ Error en deploy: {str(e)}")
-            return False
-    
-    def deploy_railway(self):
-        """Deploy automático a Railway"""
-        try:
-            self.log_signal.emit("🚂 Desplegando a Railway...")
+            # ✅ AGREGADO: Actualizar Flask para servir build
+            self.update_flask_for_build()
             
-            # Verificar que railway CLI está instalado
-            result = subprocess.run(["railway", "--version"], 
-                                  capture_output=True, text=True,
-                                  shell=True,
-                                  timeout=30)  # ✅ Timeout de 30 segundos
-            
-            if result.returncode != 0:
-                self.log_signal.emit("❌ Railway CLI no encontrado. Instala con: npm install -g @railway/cli")
-                self.log_signal.emit("💡 Deploy manual requerido")
-                return True  # No es error crítico, solo build
-            
-            # Deploy con railway
-            result = subprocess.run(["railway", "deploy"], 
-                                  capture_output=True, text=True, 
-                                  timeout=600,  # 10 minutos para deploy
-                                  shell=True)
-            
-            if result.returncode == 0:
-                self.log_signal.emit("✅ Deploy a Railway completado")
-                self.log_signal.emit(f"🌐 Aplicación disponible en: {self.deploy_config.get('base_url')}")
-                return True
-            else:
-                self.log_signal.emit(f"❌ Error en deploy Railway: {result.stderr[:500]}...")  # Limitar output
-                self.log_signal.emit("💡 Deploy manual requerido")
-                return True  # No es error crítico, solo build
-                
-        except subprocess.TimeoutExpired:
-            self.log_signal.emit("❌ Timeout en deploy Railway (10 minutos)")
             return True
         except Exception as e:
-            self.log_signal.emit(f"❌ Error: {str(e)}")
+            self.log(f"Error copiando build a Flask: {e}", "ERROR")
+            return False
+
+    def update_flask_for_build(self):
+        """Actualizar Flask para servir el build de React"""
+        try:
+            if not self.backend_path:
+                return
+                
+            api_path = os.path.join(self.backend_path, "api.py")
+            if not os.path.exists(api_path):
+                self.log("No se encontró api.py para actualizar", "WARN")
+                return
+            
+            # Leer contenido actual
+            with open(api_path, 'r', encoding='utf-8') as f:
+                contenido = f.read()
+            
+            # Verificar si ya tiene la configuración para servir build
+            if 'static_folder=' in contenido and 'build' in contenido:
+                self.log("Flask ya configurado para servir build", "DEBUG")
+                return
+            
+            # Buscar la línea de creación de la app Flask
+            lines = contenido.split('\n')
+            updated_lines = []
+            app_created = False
+            
+            for line in lines:
+                updated_lines.append(line)
+                # Buscar donde se crea la app Flask
+                if 'Flask(' in line and 'app =' in line and not app_created:
+                    # Agregar configuración para servir build
+                    updated_lines.append('')
+                    updated_lines.append('# ✅ Configuración para servir build de React')
+                    updated_lines.append('app.static_folder = os.path.join(os.path.dirname(__file__), "build")')
+                    updated_lines.append('app.static_url_path = ""')
+                    updated_lines.append('')
+                    app_created = True
+            
+            # Si no se encontró donde insertar, agregar al final del archivo
+            if not app_created:
+                updated_lines.append('')
+                updated_lines.append('# ✅ Configuración para servir build de React')
+                updated_lines.append('app.static_folder = os.path.join(os.path.dirname(__file__), "build")')
+                updated_lines.append('app.static_url_path = ""')
+            
+            # Escribir archivo actualizado
+            with open(api_path, 'w', encoding='utf-8') as f:
+                f.write('\n'.join(updated_lines))
+            
+            self.log("✅ Flask actualizado para servir build de React", "INFO")
+            
+        except Exception as e:
+            self.log(f"⚠️  No se pudo actualizar Flask automáticamente: {e}", "WARN")
+
+    # -------------------------
+    # DEPLOYS
+    # -------------------------
+    def deploy_via_railway(self):
+        """Deploy automático con railway CLI"""
+        self.log("Intentando deploy a Railway (railway deploy)...")
+        ok, out, err, rc = run_subprocess(["railway", "--version"], timeout=12)
+        if not ok:
+            self.log("Railway CLI no está instalado. Instalalo con: npm i -g @railway/cli", "WARN")
+            return True  # no es crítico para terminar; build ya hecho
+
+        # Ejecutar deploy
+        ok, out, err, rc = run_subprocess(["railway", "deploy"], cwd=self.project_root, timeout=1200)
+        if ok:
+            self.log("Deploy a Railway completado")
             return True
+        else:
+            self.log(f"Railway deploy falló: {err[:800] or out[:800]}", "WARN")
+            return True  # no fatal, sugerimos revisar logs
 
     def deploy_github_pages(self):
-        """Deploy a GitHub Pages"""
+        """Deploy usando gh-pages (npm run deploy) si está configurado"""
+        self.log("Intentando deploy a GitHub Pages (si está configurado)...")
+        # Si gh-pages está en package.json scripts, intentar npm run deploy
         try:
-            self.log_signal.emit("🐙 Configuración GitHub Pages detectada")
-            
-            # Verificar si es un repositorio git
-            if not os.path.exists(os.path.join(self.project_root, ".git")):
-                self.log_signal.emit("❌ No es un repositorio Git")
-                self.log_signal.emit("💡 Deploy manual requerido para GitHub Pages")
-                return True
-            
-            # Intentar deploy automático con gh-pages si está instalado
-            result = subprocess.run([self.npm_path, "list", "gh-pages"], 
-                                  capture_output=True, text=True,
-                                  shell=True)
-            
-            if "gh-pages" in result.stdout:
-                self.log_signal.emit("📦 Ejecutando deploy con gh-pages...")
-                deploy_result = subprocess.run([self.npm_path, "run", "deploy"], 
-                                             capture_output=True, text=True,
-                                             timeout=300,
-                                             shell=True)
-                
-                if deploy_result.returncode == 0:
-                    self.log_signal.emit("✅ Deploy a GitHub Pages completado")
-                    return True
-                else:
-                    self.log_signal.emit("❌ Error en deploy automático")
-            
-            self.log_signal.emit("💡 Instrucciones para deploy manual:")
-            self.log_signal.emit("   1. Sube la carpeta 'dist' a la rama gh-pages")
-            self.log_signal.emit("   2. O configura GitHub Actions para deploy automático")
-            return True
-            
+            pjson = os.path.join(self.project_root, "package.json")
+            if os.path.exists(pjson):
+                with open(pjson, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                scripts = data.get("scripts", {})
+                if "deploy" in scripts:
+                    ok, out, err, rc = run_subprocess([self.npm_cmd, "run", "deploy"], cwd=self.project_root, timeout=900)
+                    if ok:
+                        self.log("Deploy a GitHub Pages completado")
+                        return True
+                    else:
+                        self.log("Error en deploy gh-pages: " + (err or out)[:1000], "WARN")
+                        return True
         except Exception as e:
-            self.log_signal.emit(f"⚠️  Error en deploy GitHub Pages: {str(e)}")
-            return True
-    
-    def deploy_netlify(self):
-        """Deploy a Netlify"""
-        self.log_signal.emit("☁️  Configuración Netlify detectada")
-        self.log_signal.emit("💡 Instrucciones para deploy:")
-        self.log_signal.emit("   1. Ve a https://app.netlify.com/")
-        self.log_signal.emit("   2. Arrastra la carpeta 'dist' a la zona de deploy")
-        self.log_signal.emit("   3. O conecta tu repositorio GitHub")
-        self.log_signal.emit(f"🔗 Tu app estará en: {self.deploy_config.get('base_url')}")
+            self.log(f"Error comprobando package.json para gh-pages: {e}", "WARN")
+        # Sugerir instrucciones manuales
+        self.log("gh-pages no configurado o deploy automático falló. Usar instrucciones manuales.", "INFO")
         return True
-    
-    def deploy_vercel(self):
-        """Deploy a Vercel"""
-        self.log_signal.emit("▲ Configuración Vercel detectada")
-        self.log_signal.emit("💡 Instrucciones para deploy:")
-        self.log_signal.emit("   1. Instala Vercel CLI: npm i -g vercel")
-        self.log_signal.emit("   2. Ejecuta: vercel --prod en la carpeta del proyecto")
-        self.log_signal.emit("   3. O conecta tu repositorio en vercel.com")
-        self.log_signal.emit(f"🔗 Tu app estará en: {self.deploy_config.get('base_url')}")
-        return True
-    
-    def deploy_generico(self):
-        """Deploy genérico"""
-        self.log_signal.emit("🌐 Configuración de deploy genérico")
-        self.log_signal.emit(f"🔗 URL de producción: {self.deploy_config.get('base_url')}")
-        self.log_signal.emit("💡 Instrucciones para deploy manual:")
-        self.log_signal.emit("   1. Sube manualmente la carpeta 'dist' a tu servidor")
-        self.log_signal.emit("   2. Configura tu servidor web (Apache/Nginx)")
-        self.log_signal.emit("   3. Asegúrate de que index.html sea la página principal")
-        return True
-    
-    def get_folder_size(self, folder_path):
-        """Calcular tamaño de carpeta en MB"""
-        try:
-            total_size = 0
-            for dirpath, dirnames, filenames in os.walk(folder_path):
-                for filename in filenames:
-                    filepath = os.path.join(dirpath, filename)
-                    total_size += os.path.getsize(filepath)
-            
-            size_mb = total_size / (1024 * 1024)
-            return f"{size_mb:.2f} MB"
-        except:
-            return "Desconocido"
-    
-    def listar_archivos_dist(self):
-        """Listar archivos principales en dist"""
-        try:
-            if not os.path.exists(self.dist_path):
-                return ["No existe dist"]
-            
-            archivos = []
-            for item in os.listdir(self.dist_path):
-                if os.path.isfile(os.path.join(self.dist_path, item)):
-                    archivos.append(item)
-                elif os.path.isdir(os.path.join(self.dist_path, item)):
-                    archivos.append(f"{item}/")
-            
-            return archivos
-        except:
-            return ["Error listando archivos"]
 
+    def deploy_netlify(self):
+        self.log("Instrucciones Netlify: arrastrar carpeta dist o conectar repo GitHub.")
+        return True
+
+    def deploy_vercel(self):
+        self.log("Instrucciones Vercel: instalar Vercel CLI y ejecutar `vercel --prod` o conectar repo.")
+        return True
+
+    def deploy_generic(self):
+        self.log("Deploy genérico: subir carpeta 'dist' al servidor (FTP/SCP) o configurar CI/CD", "INFO")
+        return True
+
+    def perform_deploy(self):
+        """Decidir y ejecutar el deploy basado en deploy_config/base_url"""
+        base_url = (self.deploy_config or {}).get("base_url", "") if self.deploy_config else ""
+        if not base_url:
+            self.log("No hay base_url configurada: se omitirá el deploy automático (solo build).", "INFO")
+            return True
+
+        base_url = base_url.lower()
+
+        if "railway" in base_url:
+            return self.deploy_via_railway()
+        elif "netlify" in base_url:
+            return self.deploy_netlify()
+        elif "vercel" in base_url:
+            return self.deploy_vercel()
+        elif "github" in base_url or "pages" in base_url:
+            return self.deploy_github_pages()
+        else:
+            # Si contiene 'ssh' o 'ftp' podríamos implementar lógica adicional
+            return self.deploy_generic()
+
+    # -------------------------
+    # VERIFICACIÓN POST-DEPLOY
+    # -------------------------
+    def verify_production(self):
+        """Comprobar endpoints básicos (si requests está disponible y base_url existe)"""
+        if not requests:
+            self.log("requests no está instalado: no puedo verificar endpoints HTTP.", "WARN")
+            return True
+
+        base_url = (self.deploy_config or {}).get("base_url", "")
+        if not base_url:
+            self.log("No hay base_url para verificación.", "DEBUG")
+            return True
+
+        # ✅ CORREGIDO: Endpoints actualizados para tu API
+        endpoints = ["/api/health", "/api/configuracion", "/"]
+        todos_ok = True
+        for ep in endpoints:
+            url = base_url.rstrip("/") + ep
+            try:
+                self.log(f"Verificando {url} ...")
+                r = requests.get(url, timeout=12)
+                if r.status_code == 200:
+                    self.log(f"✅ {ep} - OK")
+                else:
+                    self.log(f"⚠️ {ep} - status {r.status_code}", "WARN")
+                    todos_ok = False
+            except Exception as e:
+                self.log(f"❌ {ep} - no responde: {e}", "WARN")
+                todos_ok = False
+        return todos_ok
+
+    # -------------------------
+    # HERRAMIENTAS AUX
+    # -------------------------
+    def get_folder_size(self, folder_path):
+        """Tamaño aproximado de carpeta en MB"""
+        try:
+            total = 0
+            for dirpath, dirnames, filenames in os.walk(folder_path):
+                for f in filenames:
+                    fp = os.path.join(dirpath, f)
+                    try:
+                        total += os.path.getsize(fp)
+                    except Exception:
+                        pass
+            return f"{total / (1024 * 1024):.2f} MB"
+        except Exception:
+            return "Desconocido"
+
+    # -------------------------
+    # RUN PRINCIPAL
+    # -------------------------
+    def run(self):
+        """Secuencia principal: verificar -> deps -> build -> copiar -> deploy -> verificar"""
+        try:
+            self.progress_signal.emit(2)
+            self.log("==== INICIANDO BUILD & DEPLOY ====")
+
+            # 1) Verificar entorno mínimo
+            try:
+                self.verify_environment()
+            except Exception as e:
+                self.log(f"Entorno inválido: {e}", "ERROR")
+                self.finished_signal.emit(False, str(e))
+                return
+
+            self.progress_signal.emit(8)
+
+            # 2) Instalar dependencias si hace falta
+            if not self.verify_dependencies():
+                self.log("No se detectaron node_modules; se instalarán dependencias...")
+                if not self.install_dependencies():
+                    self.finished_signal.emit(False, "Error instalando dependencias. Revisá los logs.")
+                    return
+
+            self.progress_signal.emit(18)
+
+            # 3) Ejecutar build
+            if not self.run_build():
+                self.finished_signal.emit(False, "Error en el build. Revisá los logs.")
+                return
+
+            self.progress_signal.emit(70)
+
+            # 4) Integrar con Flask (copiar dist)
+            integrated = False
+            if self.backend_path:
+                try:
+                    integrated = self.copy_build_to_flask()
+                    if integrated:
+                        self.progress_signal.emit(82)
+                    else:
+                        self.progress_signal.emit(78)
+                except Exception as e:
+                    self.log(f"Error integrando con Flask: {e}", "ERROR")
+                    self.progress_signal.emit(78)
+
+            # 5) Ejecutar deploy (si corresponde)
+            deploy_ok = self.perform_deploy()
+            if deploy_ok:
+                self.progress_signal.emit(92)
+            else:
+                self.progress_signal.emit(85)
+
+            # 6) Verificación final (ping a endpoints)
+            try:
+                ok_prod = self.verify_production()
+                if ok_prod:
+                    self.progress_signal.emit(97)
+                    self.log("Verificación final OK", "INFO")
+                else:
+                    self.log("Algunos endpoints no respondieron correctamente", "WARN")
+            except Exception as e:
+                self.log(f"Error en verificación final: {e}", "WARN")
+
+            # Mensaje final
+            final_msg = "Build & Deploy completado"
+            if integrated:
+                final_msg += " + Integración Flask realizada"
+            else:
+                final_msg += " (sin integración Flask)" if self.backend_path else " (no se integró con Flask)"
+
+            self.progress_signal.emit(100)
+            self.finished_signal.emit(True, final_msg)
+            self.log("==== PROCESO FINALIZADO ====")
+        except Exception as e:
+            self.log(f"Error crítico: {e}", "ERROR")
+            self.finished_signal.emit(False, f"Error crítico: {e}")
+
+
+# -------------------------
+# DIÁLOGO PyQt (UI)
+# -------------------------
 class DialogoBuildDeploy(QDialog):
     """Diálogo para build y deploy automático - CON FLASK INTEGRADO"""
-    
     def __init__(self, parent=None, project_path=None):
         super().__init__(parent)
-        # ✅ CORREGIDO: Apuntar a la raíz del proyecto (donde está package.json)
-        self.project_path = project_path or r"E:\Sistemas de app para androide\turismo-app"
+        self.project_path = project_path or os.getcwd()
         self.deploy_config = None
+        self.build_thread = None
         self.setup_ui()
-        self.cargar_configuracion_desde_bd()
-        
+        self.load_config_from_db()
+
     def setup_ui(self):
         self.setWindowTitle("🚀 Build & Deploy Automático + Flask")
-        self.setFixedSize(750, 650)
-        
+        self.setFixedSize(800, 700)
+
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll_content = QWidget()
         layout = QVBoxLayout(scroll_content)
         layout.setSpacing(10)
         layout.setContentsMargins(12, 12, 12, 12)
-        
-        # Título
+
         titulo = QLabel("🚀 Sistema Automático de Build & Deploy + Flask")
-        titulo.setStyleSheet("font-size: 16px; font-weight: bold; color: #2c3e50; margin: 8px 0px;")
+        titulo.setStyleSheet("font-size: 16px; font-weight: bold;")
         layout.addWidget(titulo)
-        
-        # Información del proyecto
+
         info_group = QGroupBox("📋 Información del Sistema")
         info_layout = QVBoxLayout()
-        
         self.lbl_proyecto = QLabel(f"📁 Proyecto React: {self.project_path}")
-        self.lbl_proyecto.setStyleSheet("font-size: 11px; color: #2c3e50;")
-        
         self.lbl_deploy = QLabel("🌐 Deploy: Cargando configuración...")
-        self.lbl_deploy.setStyleSheet("font-size: 11px; color: #2c3e50;")
-        
         self.lbl_url = QLabel("🔗 URL: Cargando...")
-        self.lbl_url.setStyleSheet("font-size: 11px; color: #2c3e50;")
-        
         self.lbl_flask = QLabel("🐍 Flask: Verificando...")
-        self.lbl_flask.setStyleSheet("font-size: 11px; color: #2c3e50;")
-        
         self.lbl_node = QLabel("📦 Node.js: Verificando...")
-        self.lbl_node.setStyleSheet("font-size: 11px; color: #2c3e50;")
-        
         info_layout.addWidget(self.lbl_proyecto)
         info_layout.addWidget(self.lbl_deploy)
         info_layout.addWidget(self.lbl_url)
         info_layout.addWidget(self.lbl_flask)
         info_layout.addWidget(self.lbl_node)
-        
         info_group.setLayout(info_layout)
         layout.addWidget(info_group)
-        
-        # Log output
+
         lbl_log = QLabel("📝 Log de ejecución:")
-        lbl_log.setStyleSheet("font-size: 11px; font-weight: bold;")
         layout.addWidget(lbl_log)
-        
+
         self.log_output = QTextEdit()
-        self.log_output.setMaximumHeight(200)
+        self.log_output.setMaximumHeight(300)
         self.log_output.setReadOnly(True)
-        self.log_output.setStyleSheet("font-family: 'Consolas'; font-size: 9px; background-color: #f8f9fa;")
         layout.addWidget(self.log_output)
-        
-        # Progress bar
+
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
-        self.progress_bar.setMaximumHeight(10)
+        self.progress_bar.setMaximumHeight(12)
         layout.addWidget(self.progress_bar)
-        
-        # Botones
+
         botones_layout = QHBoxLayout()
-        botones_layout.setSpacing(8)
-        
         self.btn_build_only = QPushButton("🔨 Solo Build + Flask")
-        self.btn_build_only.setStyleSheet("""
-            QPushButton {
-                background-color: #3498db;
-                color: white;
-                padding: 8px 15px;
-                border: none;
-                border-radius: 4px;
-                font-weight: bold;
-                font-size: 11px;
-                min-width: 150px;
-            }
-            QPushButton:hover { background-color: #2980b9; }
-            QPushButton:disabled { background-color: #bdc3c7; }
-        """)
-        
         self.btn_build_deploy = QPushButton("🚀 Build + Deploy")
-        self.btn_build_deploy.setStyleSheet("""
-            QPushButton {
-                background-color: #27ae60;
-                color: white;
-                padding: 8px 15px;
-                border: none;
-                border-radius: 4px;
-                font-weight: bold;
-                font-size: 11px;
-                min-width: 150px;
-            }
-            QPushButton:hover { background-color: #219a52; }
-            QPushButton:disabled { background-color: #bdc3c7; }
-        """)
-        
         self.btn_verificar = QPushButton("🔍 Verificar")
-        self.btn_verificar.setStyleSheet("""
-            QPushButton {
-                background-color: #f39c12;
-                color: white;
-                padding: 8px 15px;
-                border: none;
-                border-radius: 4px;
-                font-weight: bold;
-                font-size: 11px;
-                min-width: 100px;
-            }
-            QPushButton:hover { background-color: #e67e22; }
-        """)
-        
         self.btn_limpiar = QPushButton("🗑️ Limpiar")
-        self.btn_limpiar.setStyleSheet("""
-            QPushButton {
-                background-color: #95a5a6;
-                color: white;
-                padding: 8px 15px;
-                border: none;
-                border-radius: 4px;
-                font-weight: bold;
-                font-size: 11px;
-                min-width: 100px;
-            }
-            QPushButton:hover { background-color: #7f8c8d; }
-        """)
-        
         self.btn_cerrar = QPushButton("❌ Cerrar")
-        self.btn_cerrar.setStyleSheet("""
-            QPushButton {
-                background-color: #e74c3c;
-                color: white;
-                padding: 8px 15px;
-                border: none;
-                border-radius: 4px;
-                font-weight: bold;
-                font-size: 11px;
-                min-width: 100px;
-            }
-            QPushButton:hover { background-color: #c0392b; }
-        """)
-        
+
         botones_layout.addWidget(self.btn_build_only)
         botones_layout.addWidget(self.btn_build_deploy)
         botones_layout.addWidget(self.btn_verificar)
         botones_layout.addWidget(self.btn_limpiar)
         botones_layout.addWidget(self.btn_cerrar)
-        
         layout.addLayout(botones_layout)
-        
+
         scroll.setWidget(scroll_content)
         main_layout = QVBoxLayout(self)
         main_layout.addWidget(scroll)
-        
-        self.btn_build_only.clicked.connect(lambda: self.iniciar_proceso(None))
-        self.btn_build_deploy.clicked.connect(lambda: self.iniciar_proceso(self.deploy_config))
-        self.btn_verificar.clicked.connect(self.verificar_sistema)
-        self.btn_limpiar.clicked.connect(self.limpiar_log)
+
+        # conexiones
+        self.btn_build_only.clicked.connect(lambda: self.start_process(None))
+        self.btn_build_deploy.clicked.connect(lambda: self.start_process(self.deploy_config))
+        self.btn_verificar.clicked.connect(self.verify_system)
+        self.btn_limpiar.clicked.connect(self.clear_log)
         self.btn_cerrar.clicked.connect(self.close)
-        
-        self.build_thread = None
-        
-        # Verificar sistema inicialmente
-        self.verificar_sistema()
-    
-    def verificar_sistema(self):
-        """Verificar estado del sistema completo"""
-        try:
-            # Verificar Flask
-            posibles_backends = [
-                r"E:\Sistemas de app para androide\turismo-app\turismo-backend",
-                os.path.join(os.path.dirname(self.project_path), "turismo-backend"),
-            ]
-            
-            flask_encontrado = False
-            for backend_path in posibles_backends:
-                if os.path.exists(backend_path) and os.path.exists(os.path.join(backend_path, "api.py")):
-                    self.lbl_flask.setText(f"🐍 Flask: ✅ CONECTADO - {os.path.basename(backend_path)}")
-                    flask_encontrado = True
-                    break
-            
-            if not flask_encontrado:
-                self.lbl_flask.setText("🐍 Flask: ❌ NO ENCONTRADO")
-            
-            # Verificar Node.js y npm
-            thread_temp = BuildDeployThread(self.project_path)
-            node_path = thread_temp.encontrar_node()
-            npm_path = thread_temp.encontrar_npm()
-            
-            if node_path and npm_path:
-                self.lbl_node.setText(f"📦 Node.js: ✅ INSTALADO")
-            else:
-                self.lbl_node.setText("📦 Node.js: ❌ NO INSTALADO")
-            
-            self.log("🔍 Verificación del sistema completada")
-            
-        except Exception as e:
-            self.lbl_flask.setText(f"🐍 Flask: ⚠️ ERROR - {str(e)}")
-            self.lbl_node.setText("📦 Node.js: ⚠️ ERROR")
-    
-    def cargar_configuracion_desde_bd(self):
-        """Cargar configuración de deploy desde la base de datos"""
+
+        # Estado inicial
+        self.verify_system()
+
+    # -------------------------
+    # LOG UI
+    # -------------------------
+    def append_log(self, mensaje):
+        """Agregar mensaje al QTextEdit (desde señales)"""
+        self.log_output.append(mensaje)
+        self.log_output.moveCursor(self.log_output.textCursor().End)
+
+    def clear_log(self):
+        self.log_output.clear()
+        self.append_log("🗑️ Log limpiado")
+
+    # -------------------------
+    # CARGAR CONFIG DB
+    # -------------------------
+    def load_config_from_db(self):
+        """Cargar configuración de deploy desde la BD local si está"""
         try:
             if not BD_DISPONIBLE:
-                self.actualizar_ui_configuracion(None, "Base de datos no disponible")
+                self.deploy_config = {}
+                self.lbl_deploy.setText("🌐 Deploy: DB no disponible")
+                self.lbl_url.setText("🔗 URL: No configurado")
                 return
-            
-            config = obtener_configuracion_hosting()
-            if config:
-                self.deploy_config = config
-                base_url = config.get('base_url', 'No configurado')
-                host = config.get('host', 'Desconocido')
-                
-                self.actualizar_ui_configuracion(base_url, host)
-                self.log(f"✅ Configuración cargada desde BD: {base_url}")
+            cfg = obtener_configuracion_hosting()
+            if cfg:
+                self.deploy_config = cfg
+                base_url = cfg.get("base_url", "No configurado")
+                host_info = cfg.get("host", "Servidor")
+                self.lbl_deploy.setText(f"🌐 Deploy: {host_info}")
+                self.lbl_url.setText(f"🔗 URL: {base_url}")
+                self.append_log(f"✅ Configuración cargada desde DB: {base_url}")
             else:
-                self.actualizar_ui_configuracion(None, "No hay configuración de hosting")
-                self.log("⚠️  No se encontró configuración de deploy en la BD")
-                
+                self.deploy_config = {}
+                self.lbl_deploy.setText("🌐 Deploy: No configurado")
+                self.lbl_url.setText("🔗 URL: No configurado")
         except Exception as e:
-            self.actualizar_ui_configuracion(None, f"Error: {str(e)}")
-            self.log(f"❌ Error cargando configuración: {str(e)}")
-    
-    def actualizar_ui_configuracion(self, base_url, host_info):
-        """Actualizar la UI con la configuración cargada"""
-        if base_url and base_url != 'No configurado':
-            self.lbl_deploy.setText(f"🌐 Deploy: {host_info}")
-            self.lbl_url.setText(f"🔗 URL: {base_url}")
-            self.btn_build_deploy.setEnabled(True)
-        else:
-            self.lbl_deploy.setText("🌐 Deploy: No configurado")
-            self.lbl_url.setText("🔗 URL: No configurado")
-            self.btn_build_deploy.setEnabled(False)
-    
-    def limpiar_log(self):
-        self.log_output.clear()
-        self.log("🗑️ Log limpiado")
-    
-    def log(self, mensaje):
-        """Agregar mensaje al log"""
-        self.log_output.append(f"{mensaje}")
-        self.log_output.moveCursor(self.log_output.textCursor().End)
-    
-    def iniciar_proceso(self, deploy_config):
-        """Iniciar proceso de build/deploy"""
-        # Deshabilitar botones
+            self.append_log(f"❌ Error cargando configuración desde DB: {e}")
+
+    # -------------------------
+    # VERIFICACIONES LOCALES
+    # -------------------------
+    def verify_system(self):
+        """Verificar estado local: Flask + Node"""
+        try:
+            # Verificar backend Flask
+            if self._detect_flask():
+                self.lbl_flask.setText("🐍 Flask: ✅ Detectado")
+            else:
+                self.lbl_flask.setText("🐍 Flask: ❌ No detectado")
+
+            # Verificar Node/npm
+            thread_probe = BuildDeployThread(self.project_path)
+            node_ok = bool(thread_probe.node_cmd)
+            npm_ok = bool(thread_probe.npm_cmd)
+            self.lbl_node.setText(f"📦 Node.js: {'✅' if node_ok and npm_ok else '❌'}")
+            self.append_log("🔍 Verificación del sistema completada")
+        except Exception as e:
+            self.append_log(f"❌ Error verificando sistema: {e}")
+
+    def _detect_flask(self):
+        """Detecta si existe un backend con api.py"""
+        poss = [
+            os.path.join(self.project_path, "turismo-backend"),
+            os.path.join(os.path.dirname(self.project_path), "turismo-backend"),
+            os.path.join(self.project_path, "backend"),
+        ]
+        for p in poss:
+            if os.path.exists(p) and os.path.exists(os.path.join(p, "api.py")):
+                return True
+        return False
+
+    # -------------------------
+    # INICIAR PROCESO
+    # -------------------------
+    def start_process(self, deploy_cfg):
+        """Inicia hilo de build/deploy"""
         self.btn_build_only.setEnabled(False)
         self.btn_build_deploy.setEnabled(False)
-        
-        # Mostrar progress bar
         self.progress_bar.setVisible(True)
         self.progress_bar.setValue(0)
-        
-        # Limpiar log anterior
         self.log_output.clear()
-        
-        # Crear y ejecutar thread
-        self.build_thread = BuildDeployThread(self.project_path, deploy_config)
-        self.build_thread.log_signal.connect(self.log)
+        self.append_log("🚀 INICIANDO PROCESO BUILD & DEPLOY...")
+
+        # Preparar configuración
+        cfg = deploy_cfg or self.deploy_config or {}
+
+        self.build_thread = BuildDeployThread(self.project_path, cfg)
+        self.build_thread.log_signal.connect(self.append_log)
         self.build_thread.progress_signal.connect(self.progress_bar.setValue)
-        self.build_thread.finished_signal.connect(self.proceso_finalizado)
+        self.build_thread.finished_signal.connect(self.process_finished)
         self.build_thread.start()
-    
-    def proceso_finalizado(self, exito, mensaje):
-        """Callback cuando termina el proceso"""
-        # Habilitar botones
+
+    def process_finished(self, success, mensaje):
+        """Callback cuando termina el hilo"""
         self.btn_build_only.setEnabled(True)
         self.btn_build_deploy.setEnabled(True)
-        
-        # Ocultar progress bar
         self.progress_bar.setVisible(False)
-        
-        # Mostrar mensaje final
-        self.log(mensaje)
-        
-        # Actualizar estado del sistema
-        self.verificar_sistema()
-        
-        if exito:
-            QMessageBox.information(self, "✅ Éxito", 
-                                  f"{mensaje}\n\n"
-                                  f"✅ Build de React completado\n"
-                                  f"✅ Integración con Flask exitosa\n"
-                                  f"✅ Deploy configurado para producción")
+        self.append_log(mensaje)
+        self.verify_system()
+
+        if success:
+            QMessageBox.information(self, "✅ Éxito", f"{mensaje}")
         else:
-            QMessageBox.critical(self, "❌ Error", mensaje)
+            QMessageBox.critical(self, "❌ Error", f"{mensaje}")
 
-def mostrar_dialogo_build_deploy(parent=None):
-    """Función para mostrar el diálogo de build & deploy"""
-    dialogo = DialogoBuildDeploy(parent)
-    dialogo.exec_()
 
-# Para probar directamente
+# -------------------------
+# ENTRYPOINT para pruebas
+# -------------------------
 if __name__ == "__main__":
     from PyQt5.QtWidgets import QApplication
     app = QApplication([])
-    dialogo = DialogoBuildDeploy()
-    dialogo.show()
+    dlg = DialogoBuildDeploy(project_path=os.getcwd())
+    dlg.show()
     app.exec_()

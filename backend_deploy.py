@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import os
 import subprocess
 import sys
@@ -30,7 +31,7 @@ class BackendDeployThread(QThread):
             if self.datos_hosting:
                 self.log_signal.emit(f"🌐 Host: {self.datos_hosting.get('host', 'N/A')}")
                 self.log_signal.emit(f"🔗 URL: {self.datos_hosting.get('base_url', 'N/A')}")
-                self.log_signal.emit(f"👤 Usuario: {self.datos_hosting.get('usuario', 'N/A')}")
+                self.log_signal.emit(f"👤 Usuario: {self.datos_hosting.get('user', 'N/A')}")
                 self.log_signal.emit("-" * 30)
             
             # Paso 1: Verificar que existe el backend
@@ -131,14 +132,23 @@ type = "web"
             self.log_signal.emit(f"❌ Error creando railway.toml: {str(e)}")
             return False
         
-        # ✅ 4. VERIFICAR ARCHIVOS ESENCIALES
+        # ✅ 4. CREAR runtime.txt si no existe
+        runtime_path = os.path.join(self.backend_path, "runtime.txt")
+        if not os.path.exists(runtime_path):
+            try:
+                with open(runtime_path, 'w', encoding='utf-8') as f:
+                    f.write("python-3.9.0")
+                self.log_signal.emit("✅ runtime.txt creado")
+            except Exception as e:
+                self.log_signal.emit(f"⚠️  Error creando runtime.txt: {str(e)}")
+        
+        # ✅ 5. VERIFICAR ARCHIVOS ESENCIALES
         archivos_esenciales = {
             "api.py": "Servidor Flask principal",
             "requirements.txt": "Dependencias Python", 
             "database_hosting.py": "Conexión BD",
             "railway.toml": "Configuración Railway",
-            "Procfile": "Configuración proceso",
-            "runtime.txt": "Versión Python"
+            "Procfile": "Configuración proceso"
         }
         
         todos_encontrados = True
@@ -156,17 +166,27 @@ type = "web"
     def copiar_assets_al_repositorio(self):
         """Copiar assets desde turismo-app/public/assets al repositorio"""
         try:
-            base_dir = os.path.dirname(self.backend_path)
-            assets_origen = os.path.join(base_dir, "public", "assets")
-            assets_origen = os.path.abspath(assets_origen)
+            # Buscar assets en diferentes ubicaciones posibles
+            posibles_rutas_assets = [
+                os.path.join(os.path.dirname(self.backend_path), "..", "frontend", "public", "assets"),
+                os.path.join(os.path.dirname(self.backend_path), "..", "public", "assets"),
+                os.path.join(os.path.dirname(self.backend_path), "public", "assets"),
+            ]
+            
+            assets_origen = None
+            for ruta in posibles_rutas_assets:
+                ruta_abs = os.path.abspath(ruta)
+                if os.path.exists(ruta_abs):
+                    assets_origen = ruta_abs
+                    break
+            
+            if not assets_origen:
+                self.log_signal.emit("⚠️  No se encontraron assets en las ubicaciones esperadas")
+                return True
             
             assets_destino = os.path.join(self.backend_path, "assets")
             
-            self.log_signal.emit(f"📁 Buscando assets en: {assets_origen}")
-            
-            if not os.path.exists(assets_origen):
-                self.log_signal.emit("⚠️  No se encontraron assets en public/assets")
-                return True
+            self.log_signal.emit(f"📁 Assets encontrados en: {assets_origen}")
             
             try:
                 contenido = os.listdir(assets_origen)
@@ -178,8 +198,11 @@ type = "web"
                 for item in contenido:
                     ruta_item = os.path.join(assets_origen, item)
                     if os.path.isdir(ruta_item):
-                        subitems = os.listdir(ruta_item)
-                        self.log_signal.emit(f"   📂 {item}/ ({len(subitems)} elementos)")
+                        try:
+                            subitems = os.listdir(ruta_item)
+                            self.log_signal.emit(f"   📂 {item}/ ({len(subitems)} elementos)")
+                        except:
+                            self.log_signal.emit(f"   📂 {item}/")
                     else:
                         self.log_signal.emit(f"   📄 {item}")
                         
@@ -339,8 +362,11 @@ type = "web"
                 ruta = os.path.join(self.backend_path, archivo)
                 if os.path.exists(ruta):
                     if os.path.isdir(ruta):
-                        num_items = len(os.listdir(ruta))
-                        self.log_signal.emit(f"   ✅ {archivo} ({num_items} elementos)")
+                        try:
+                            num_items = len(os.listdir(ruta))
+                            self.log_signal.emit(f"   ✅ {archivo} ({num_items} elementos)")
+                        except:
+                            self.log_signal.emit(f"   ✅ {archivo} (carpeta)")
                     else:
                         self.log_signal.emit(f"   ✅ {archivo}")
                 else:
@@ -488,7 +514,7 @@ type = "web"
             self.log_signal.emit(f"🌐 URL: {base_url}")
             
             endpoints = [
-                "/api/info-servidor",
+                "/api/health",
                 "/api/configuracion",
                 "/"
             ]
@@ -500,11 +526,9 @@ type = "web"
                     response = requests.get(url, timeout=15)
                     if response.status_code == 200:
                         self.log_signal.emit(f"✅ {endpoint} - FUNCIONA")
-                        if endpoint == "/api/info-servidor":
+                        if endpoint == "/api/health":
                             try:
                                 data = response.json()
-                                if 'mensaje' in data:
-                                    self.log_signal.emit(f"   💬 {data['mensaje']}")
                                 if 'entorno' in data:
                                     self.log_signal.emit(f"   🏭 Entorno: {data['entorno']}")
                             except:
@@ -536,7 +560,7 @@ type = "web"
                 capture_output=True, 
                 text=True,
                 shell=True,
-                timeout=10  # Agregado timeout de 10 segundos
+                timeout=10
             )
             return result.returncode == 0
         except subprocess.TimeoutExpired:
@@ -566,9 +590,9 @@ class DialogoBackendDeploy(QDialog):
                 host = self.datos_hosting.get('host', 'N/A')
                 base_url = self.datos_hosting.get('base_url', 'No configurada')
                 
-                usuario = self.datos_hosting.get('usuario') or self.datos_hosting.get('user') or 'N/A'
-                base_datos = self.datos_hosting.get('base_datos') or self.datos_hosting.get('database') or 'N/A'
-                puerto = self.datos_hosting.get('puerto') or self.datos_hosting.get('port') or 'N/A'
+                usuario = self.datos_hosting.get('user', 'N/A')
+                base_datos = self.datos_hosting.get('database', 'N/A')
+                puerto = self.datos_hosting.get('port', 'N/A')
                 
                 info_text = (
                     f"🌐 Host: {host}\n"
@@ -748,11 +772,10 @@ class DialogoBackendDeploy(QDialog):
                     mensaje += "❌ Gunicorn - Faltante para producción\n"
             
             # Verificar assets
-            base_dir = os.path.dirname(self.backend_path)
-            assets_origen = os.path.join(base_dir, "public", "assets")
-            if os.path.exists(assets_origen):
+            assets_path = os.path.join(self.backend_path, "assets")
+            if os.path.exists(assets_path):
                 try:
-                    num_assets = len(os.listdir(assets_origen))
+                    num_assets = len(os.listdir(assets_path))
                     mensaje += f"✅ Assets: {num_assets} archivos listos\n"
                 except:
                     mensaje += "✅ Assets: Carpeta encontrada\n"

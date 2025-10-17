@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # ventana_licencia.py
 from PyQt5.QtWidgets import QDialog, QMessageBox
 from PyQt5 import uic

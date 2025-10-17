@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # ventana_principal.py
 import os
 import sys

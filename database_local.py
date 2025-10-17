@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # database_local.py - EXCLUSIVO para base de datos LOCAL
 import mysql.connector
 from mysql.connector import Error
@@ -6,6 +7,45 @@ from PyQt5.QtCore import Qt
 import sys
 import json
 import os
+
+# ✅ SOLUCIÓN DEFINITIVA PARA WINDOWS UPDATE
+_original_connect = mysql.connector.connect
+
+def conectar_compatible(**kwargs):
+    """
+    Conexión compatible con cualquier configuración de Windows Update
+    """
+    # HACER UNA PRUEBA CON charset=utf8 primero (el más compatible)
+    try:
+        kwargs_compatible = kwargs.copy()
+        kwargs_compatible['charset'] = 'utf8'
+        kwargs_compatible['use_unicode'] = True
+        print(f"🔧 Intentando conexión COMPATIBLE (utf8)...")
+        return _original_connect(**kwargs_compatible)
+    except Error as e:
+        if "utf8" in str(e).lower():
+            # Si falla con utf8, intentar SIN charset
+            try:
+                kwargs_clean = kwargs.copy()
+                kwargs_clean.pop('charset', None)
+                kwargs_clean.pop('use_unicode', None)
+                print(f"🔧 Intentando conexión SIN charset...")
+                return _original_connect(**kwargs_clean)
+            except Error as e2:
+                # Si todo falla, intentar con latin1 (más compatible)
+                try:
+                    kwargs_latin = kwargs.copy()
+                    kwargs_latin['charset'] = 'latin1'
+                    print(f"🔧 Intentando conexión LATIN1...")
+                    return _original_connect(**kwargs_latin)
+                except:
+                    raise e2
+        else:
+            raise e
+
+# Aplicar el método compatible
+mysql.connector.connect = conectar_compatible
+print("🛡️  Modo COMPATIBILIDAD Windows Update activado")
 
 # ✅ VARIABLE GLOBAL TEMPORAL solo para primera instalación
 CREDENCIALES_LOCALES_TEMPORALES = None
@@ -24,7 +64,7 @@ class DialogoCredencialesMySQL(QDialog):
             else:
                 self.setWindowTitle("🔧 Configuración MySQL Local - Primera Instalación")
             
-        self.setFixedSize(450, 420)  # ✅ Aumentado para base_url
+        self.setFixedSize(450, 420)
         self.setWindowModality(Qt.ApplicationModal)
         
         layout = QVBoxLayout()
@@ -186,15 +226,14 @@ class DialogoCredencialesMySQL(QDialog):
             return False
         
         try:
-            # ✅ FILTRAR parámetros válidos para MySQL
-            parametros_conexion = {
-                'host': host,
-                'user': usuario,
-                'password': password,
-                'port': int(puerto),
-                'connect_timeout': 8
-            }
-            conexion = mysql.connector.connect(**parametros_conexion)
+            # ✅ USAR la conexión compatible
+            conexion = mysql.connector.connect(
+                host=host,
+                user=usuario,
+                password=password,
+                port=int(puerto),
+                connect_timeout=8
+            )
             
             if conexion.is_connected():
                 info_servidor = conexion.get_server_info()
@@ -221,7 +260,7 @@ class DialogoCredencialesMySQL(QDialog):
                 'user': self.usuario_input.text().strip(),
                 'password': self.password_input.text(),
                 'port': int(self.puerto_input.text().strip()),
-                'base_url': self.base_url_input.text().strip()  # ✅ NUEVO CAMPO
+                'base_url': self.base_url_input.text().strip()
             }
             self.accept()
 
@@ -259,7 +298,7 @@ def guardar_configuracion_externa(credenciales):
             'password': credenciales['password'],
             'port': credenciales['port'],
             'database': 'databaseapp',
-            'base_url': credenciales.get('base_url', 'http://localhost:5000')  # ✅ NUEVO
+            'base_url': credenciales.get('base_url', 'http://localhost:5000'),
         }
         with open(CONFIG_FILE, 'w') as f:
             json.dump(config, f, indent=4)
@@ -368,10 +407,13 @@ def conectar_y_guardar_configuracion(credenciales, parent=None):
         
         # Primero conectar sin base de datos para crearla
         print("[DEBUG] Conectando sin base de datos...")
-        # ✅ FILTRAR parámetros válidos para MySQL
-        parametros_conexion = {k: v for k, v in credenciales.items() 
-                             if k in ['host', 'user', 'password', 'port']}
-        conexion = mysql.connector.connect(**parametros_conexion, connect_timeout=5)
+        conexion = mysql.connector.connect(
+            host=credenciales['host'],
+            user=credenciales['user'],
+            password=credenciales['password'],
+            port=credenciales['port'],
+            connect_timeout=5
+        )
         
         cursor = conexion.cursor()
         print("[DEBUG] Creando base de datos si no existe...")
@@ -379,9 +421,14 @@ def conectar_y_guardar_configuracion(credenciales, parent=None):
         
         # Ahora conectar a la base de datos específica
         print("[DEBUG] Conectando a databaseapp...")
-        parametros_con_db = parametros_conexion.copy()
-        parametros_con_db['database'] = "databaseapp"
-        conexion_db = mysql.connector.connect(**parametros_con_db, connect_timeout=5)
+        conexion_db = mysql.connector.connect(
+            host=credenciales['host'],
+            user=credenciales['user'],
+            password=credenciales['password'],
+            database="databaseapp",
+            port=credenciales['port'],
+            connect_timeout=5
+        )
         
         # Crear tablas si no existen
         print("[DEBUG] Creando/verificando tablas...")
@@ -406,7 +453,7 @@ def conectar_y_guardar_configuracion(credenciales, parent=None):
             credenciales['password'],
             "databaseapp",
             credenciales['port'],
-            credenciales.get('base_url', 'http://localhost:5000'),  # ✅ NUEVO
+            credenciales.get('base_url', 'http://localhost:5000'),
             True
         ))
         
@@ -449,10 +496,14 @@ def obtener_configuracion_automatica():
     if config_externa:
         print(f"[DEBUG] ✅ Configuración externa encontrada: {config_externa['user']}@{config_externa['host']}")
         try:
-            # ✅ FILTRAR parámetros válidos para MySQL
-            parametros_conexion = {k: v for k, v in config_externa.items() 
-                                 if k in ['host', 'user', 'password', 'database', 'port']}
-            conexion = mysql.connector.connect(**parametros_conexion, connect_timeout=5)
+            conexion = mysql.connector.connect(
+                host=config_externa['host'],
+                user=config_externa['user'],
+                password=config_externa['password'],
+                database=config_externa['database'],
+                port=config_externa['port'],
+                connect_timeout=5
+            )
             if conexion.is_connected():
                 print("[SUCCESS] ✅ Conexión desde archivo externo EXITOSA")
                 conexion.close()
@@ -472,16 +523,14 @@ def obtener_configuracion_automatica():
     for config in configuraciones_prueba:
         try:
             print(f"[DEBUG] 🔄 Probando: {config['user']}@{config['host']}")
-            # ✅ FILTRAR parámetros válidos para MySQL
-            parametros_conexion = {
-                'host': config['host'],
-                'user': config['user'], 
-                'password': config['password'],
-                'database': config['database'],
-                'port': config['port'],
-                'connect_timeout': 3
-            }
-            conexion = mysql.connector.connect(**parametros_conexion)
+            conexion = mysql.connector.connect(
+                host=config['host'],
+                user=config['user'], 
+                password=config['password'],
+                database=config['database'],
+                port=config['port'],
+                connect_timeout=3
+            )
             cursor = conexion.cursor()
             
             # Leer configuración de tabla
@@ -496,16 +545,20 @@ def obtener_configuracion_automatica():
                     'password': password,
                     'database': database,
                     'port': port,
-                    'base_url': base_url or "http://localhost:5000"  # ✅ NUEVO
+                    'base_url': base_url or "http://localhost:5000"
                 }
                 print(f"[DEBUG] 📋 Configuración de tabla: {user}@{host} - URL: {config_tabla['base_url']}")
                 
                 # Probar si funciona
                 try:
-                    # ✅ FILTRAR parámetros válidos para MySQL
-                    parametros_tabla = {k: v for k, v in config_tabla.items() 
-                                      if k in ['host', 'user', 'password', 'database', 'port']}
-                    conexion_tabla = mysql.connector.connect(**parametros_tabla, connect_timeout=3)
+                    conexion_tabla = mysql.connector.connect(
+                        host=config_tabla['host'],
+                        user=config_tabla['user'],
+                        password=config_tabla['password'],
+                        database=config_tabla['database'],
+                        port=config_tabla['port'],
+                        connect_timeout=3
+                    )
                     if conexion_tabla.is_connected():
                         print("[SUCCESS] ✅ Configuración de tabla FUNCIONA")
                         
@@ -530,25 +583,29 @@ def obtener_configuracion_automatica():
 
 def conectar_local(parent=None):
     """
-    Conexión DIRECTA a MySQL LOCAL para 'databaseapp'
+    Conexión DIRECTA a MySQL LOCAL para 'databaseapp' - MODO COMPATIBILIDAD
     """
     print("\n" + "="*50)
-    print("[DEBUG] 🚀 INICIANDO CONEXIÓN LOCAL")
+    print("[DEBUG] 🚀 INICIANDO CONEXIÓN LOCAL - MODO COMPATIBILIDAD")
     print("="*50)
     
     global CREDENCIALES_LOCALES_TEMPORALES
     
-    # PRIMERO: Intentar conexión automática (archivo -> tabla)
+    # PRIMERO: Intentar conexión automática
     print("[DEBUG] 1. Intentando conexión automática...")
     config_automatica = obtener_configuracion_automatica()
     
     if config_automatica:
         print(f"[DEBUG] ✅ Configuración automática obtenida: {config_automatica['user']}@{config_automatica['host']}")
         try:
-            # ✅ FILTRAR parámetros válidos para MySQL
-            parametros_conexion = {k: v for k, v in config_automatica.items() 
-                                 if k in ['host', 'user', 'password', 'database', 'port']}
-            conexion = mysql.connector.connect(**parametros_conexion, connect_timeout=8)
+            conexion = mysql.connector.connect(
+                host=config_automatica['host'],
+                user=config_automatica['user'],
+                password=config_automatica['password'],
+                database=config_automatica['database'],
+                port=config_automatica['port'],
+                connect_timeout=8
+            )
             if conexion.is_connected():
                 print("[SUCCESS] 🎉 Conexión automática EXITOSA")
                 # Actualizar variables globales
@@ -557,16 +614,15 @@ def conectar_local(parent=None):
                     'user': config_automatica['user'],
                     'password': config_automatica['password'],
                     'port': config_automatica['port'],
-                    'base_url': config_automatica.get('base_url', 'http://localhost:5000')  # ✅ NUEVO
+                    'base_url': config_automatica.get('base_url', 'http://localhost:5000')
                 }
                 return conexion
         except Error as e:
             print(f"[DEBUG] ❌ Conexión automática falló: {e}")
     
-    # SEGUNDO: Si no funciona automático, es primera instalación o necesita reconfiguración
-    print("[DEBUG] 2. Primera instalación o reconfiguración necesaria...")
+    # SEGUNDO: Intentar configuraciones automáticas rápidas
+    print("[DEBUG] 2. Probando configuraciones rápidas...")
     
-    # Intentar configuraciones automáticas rápidas
     configuraciones_rapidas = [
         {'host': "localhost", 'user': "root", 'password': "", 'database': "databaseapp", 'port': 3306, 'base_url': "http://localhost:5000"},
         {'host': "localhost", 'user': "root", 'password': "root", 'database': "databaseapp", 'port': 3306, 'base_url': "http://localhost:5000"},
@@ -575,10 +631,14 @@ def conectar_local(parent=None):
     for config in configuraciones_rapidas:
         try:
             print(f"[DEBUG] 🔄 Probando rápida: {config['user']}@{config['host']}")
-            # ✅ FILTRAR parámetros válidos para MySQL
-            parametros_conexion = {k: v for k, v in config.items() 
-                                 if k in ['host', 'user', 'password', 'database', 'port']}
-            conexion = mysql.connector.connect(**parametros_conexion, connect_timeout=3)
+            conexion = mysql.connector.connect(
+                host=config['host'],
+                user=config['user'],
+                password=config['password'],
+                database=config['database'],
+                port=config['port'],
+                connect_timeout=3
+            )
             if conexion.is_connected():
                 print(f"[SUCCESS] ✅ Conexión rápida exitosa")
                 
@@ -595,14 +655,18 @@ def conectar_local(parent=None):
                         'user': config['user'],
                         'password': config['password'],
                         'port': config['port'],
-                        'base_url': config['base_url']  # ✅ NUEVO
+                        'base_url': config['base_url']
                     }
                     if conectar_y_guardar_configuracion(credenciales, parent):
                         conexion.close()
-                        # ✅ FILTRAR parámetros válidos para MySQL
-                        parametros_conexion = {k: v for k, v in config.items() 
-                                             if k in ['host', 'user', 'password', 'database', 'port']}
-                        return mysql.connector.connect(**parametros_conexion, connect_timeout=5)
+                        return mysql.connector.connect(
+                            host=config['host'],
+                            user=config['user'],
+                            password=config['password'],
+                            database=config['database'],
+                            port=config['port'],
+                            connect_timeout=5
+                        )
                 
                 conexion.close()
                 break
@@ -625,12 +689,14 @@ def conectar_local(parent=None):
     
     if conectar_y_guardar_configuracion(credenciales, parent):
         print("[SUCCESS] ✅ Configuración guardada exitosamente")
-        credenciales_con_db = credenciales.copy()
-        credenciales_con_db['database'] = "databaseapp"
-        # ✅ FILTRAR parámetros válidos para MySQL
-        parametros_conexion = {k: v for k, v in credenciales_con_db.items() 
-                             if k in ['host', 'user', 'password', 'database', 'port']}
-        return mysql.connector.connect(**parametros_conexion, connect_timeout=5)
+        return mysql.connector.connect(
+            host=credenciales['host'],
+            user=credenciales['user'],
+            password=credenciales['password'],
+            database="databaseapp",
+            port=credenciales['port'],
+            connect_timeout=5
+        )
     else:
         print("[ERROR] ❌ No se pudo guardar la configuración")
     
@@ -680,7 +746,7 @@ def obtener_configuracion_hosting(parent=None):
                     'password': password,
                     'database': database,
                     'port': port,
-                    'base_url': base_url or ""  # ✅ NUEVO
+                    'base_url': base_url or ""
                 }
             else:
                 print("[DEBUG] ❌ Host HOSTING está vacío")
@@ -727,7 +793,7 @@ def mostrar_dialogo_configuracion_hosting(parent=None):
             password = dialogo.password_input.text()
             base_datos = dialogo.bd_input.text().strip()
             puerto = dialogo.puerto_input.value()
-            base_url = dialogo.base_url_input.text().strip() if hasattr(dialogo, 'base_url_input') else ""  # ✅ NUEVO
+            base_url = dialogo.base_url_input.text().strip() if hasattr(dialogo, 'base_url_input') else ""
             
             print(f"[DEBUG] Datos hosting a guardar: {usuario}@{host}:{puerto}/{base_datos} - URL: {base_url}")
             
@@ -776,7 +842,7 @@ def obtener_configuracion_hosting_sin_dialogo(parent=None):
                 'password': password,
                 'database': database,
                 'port': port,
-                'base_url': base_url or ""  # ✅ NUEVO
+                'base_url': base_url or ""
             }
         return None
         

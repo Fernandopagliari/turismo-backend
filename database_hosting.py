@@ -1,8 +1,11 @@
+# -*- coding: utf-8 -*-
 # database_hosting.py - EXCLUSIVO para base de datos del HOSTING
+
+# ⚠️ ELIMINADO: Parche removido - Solo database_local.py controla el charset
 import mysql.connector
 from mysql.connector import Error
 from PyQt5.QtWidgets import QMessageBox
-from database_local import obtener_configuracion_hosting  # ← NUEVA IMPORTACIÓN
+from database_local import obtener_configuracion_hosting
 
 def conectar_hosting(parent=None):
     """
@@ -84,7 +87,6 @@ def inicializar_base_datos_hosting(parent=None):
     finally:
         cerrar_conexion(conexion)
 
-# ... (el resto de las funciones se mantienen igual)
 # -----------------Verificacion campos base64-------------------------
 def verificar_y_agregar_campos_base64(conexion):
     """Verifica y agrega campos Base64 faltantes a todas las tablas en HOSTING"""

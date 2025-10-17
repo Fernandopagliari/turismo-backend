@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # generar_clave_encriptada.py
 import bcrypt
 

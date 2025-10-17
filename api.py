@@ -1,317 +1,501 @@
-from flask import Flask, jsonify, request, send_from_directory
+# -*- coding: utf-8 -*-
+from flask import Flask, jsonify, send_from_directory
 from flask_cors import CORS
 import mysql.connector
-from mysql.connector import Error
 import os
+from datetime import datetime
 
-app = Flask(__name__, static_folder='react-build', static_url_path='')
+# ⚠️ ELIMINAR el parche de aquí - solo debe estar en database_local.py
+# El parche se aplicará automáticamente cuando database_local.py lo active
+
+app = Flask(__name__, static_folder='../frontend/build', static_url_path='')
 CORS(app)
 
-def limpiar_columnas_absolutas(item):
-    """Convierte rutas absolutas de Windows en rutas relativas"""
-    if not item:
-        return item
-        
-    for key, value in item.items():
-        if isinstance(value, str) and 'E:/Sistemas' in value:
-            # Extraer solo el nombre del archivo
-            if '/' in value:
-                nombre_archivo = value.split('/')[-1]
-            else:
-                nombre_archivo = value.split('\\')[-1]
-            item[key] = f"assets/imagenes/{nombre_archivo}"
-            print(f"🔄 Limpiando ruta: {value} → {item[key]}")
-    
-    return item
+# =========================
+# CONFIGURACIONES HARCODEADAS DE RESPALDO
+# =========================
+CONFIG_LOCAL = {
+    'host': 'localhost',
+    'user': 'root',
+    'password': 'Perroponce@4472801',
+    'database': 'databaseapp', 
+    'port': 3306,
+    'base_url': 'http://localhost:5000'
+}
+
+CONFIG_HOSTING = {
+    'host': 'shinkansen.proxy.rlwy.net',
+    'user': 'root',
+    'password': 'tu_password_railway',  # Reemplaza con tu password real
+    'database': 'railway',
+    'port': 44292,
+    'base_url': 'https://turismo-regional.up.railway.app'
+}
 
 # =========================
-# CONFIGURACIÓN BÁSICA
+# RUTAS PARA SERVIR ARCHIVOS ESTÁTICOS - NUEVO
 # =========================
-REACT_BUILD_PATH = os.path.join(os.path.dirname(__file__), 'react-build')
+
+@app.route("/static-assets/<path:filename>")
+def servir_assets(filename):
+    """Servir archivos estáticos desde la carpeta assets"""
+    assets_path = os.path.join(os.path.dirname(__file__), 'assets')
+    print(f"📁 Sirviendo archivo estático: {filename}")
+    print(f"📁 Desde carpeta: {assets_path}")
+    
+    # Verificar si el archivo existe
+    full_path = os.path.join(assets_path, filename)
+    if not os.path.exists(full_path):
+        print(f"❌ Archivo no encontrado: {full_path}")
+        return jsonify({"error": "Archivo no encontrado"}), 404
+    
+    print(f"✅ Archivo encontrado, sirviendo: {filename}")
+    return send_from_directory(assets_path, filename)
+
+@app.route('/api/test-assets')
+def test_assets():
+    """Endpoint para probar assets"""
+    assets_path = os.path.join(os.path.dirname(__file__), 'assets')
+    test_file = os.path.join(assets_path, 'imagenes/lugares/Astica2.jpg')
+    
+    return jsonify({
+        'assets_path': assets_path,
+        'test_file': test_file,
+        'file_exists': os.path.exists(test_file),
+        'current_directory': os.path.dirname(__file__),
+        'message': 'Prueba la imagen en: http://localhost:5000/static-assets/imagenes/lugares/Astica2.jpg'
+    })
+
+# =========================
+# FUNCIONES DE CONEXIÓN A BD (igual que antes)
+# =========================
+
+def obtener_configuracion_desde_bd(tipo='local'):
+    """
+    PRIMERO intenta leer de las tablas de BD
+    SI FALLA → usa configuraciones harcodeadas
+    """
+    try:
+        print(f"🔍 Buscando configuración en tabla BD para: {tipo}")
+        
+        # ✅ CONFIGURACIÓN PARA CONECTAR A LA BD DE CONFIGURACIÓN
+        if tipo == 'local':
+            config_conexion = {
+                'host': CONFIG_LOCAL['host'],
+                'user': CONFIG_LOCAL['user'],
+                'password': CONFIG_LOCAL['password'],
+                'database': CONFIG_LOCAL['database'],
+                'port': CONFIG_LOCAL['port']
+            }
+        else:
+            config_conexion = {
+                'host': CONFIG_HOSTING['host'],
+                'user': CONFIG_HOSTING['user'],
+                'password': CONFIG_HOSTING['password'],
+                'database': CONFIG_HOSTING['database'],
+                'port': CONFIG_HOSTING['port']
+            }
+        
+        # ✅ CONEXIÓN DIRECTA - sin parche forzado
+        conn = mysql.connector.connect(**config_conexion)
+        cursor = conn.cursor(dictionary=True)
+        
+        # ✅ Buscar en la tabla correspondiente
+        if tipo == 'local':
+            tabla = 'datos_host_local'
+        else:
+            tabla = 'datos_hosting'
+        
+        cursor.execute(f"""
+            SELECT host, usuario, password, base_datos, puerto, base_url
+            FROM {tabla} 
+            WHERE activo = TRUE 
+            ORDER BY fecha_creacion DESC 
+            LIMIT 1
+        """)
+        
+        config_db = cursor.fetchone()
+        conn.close()
+        
+        if config_db:
+            print(f"✅ Configuración encontrada en tabla '{tabla}'")
+            
+            # ✅ CORREGIDO: Retornar solo los parámetros necesarios para conexión
+            config_final = {
+                'host': config_db['host'],
+                'user': config_db['usuario'],
+                'password': config_db['password'],
+                'database': config_db['base_datos'],
+                'port': config_db['puerto'],
+                'fuente': f'tabla_{tabla}'
+            }
+            
+            # ✅ Agregar base_url como metadata separada (no para conexión)
+            if config_db.get('base_url'):
+                config_final['base_url'] = config_db['base_url']
+                
+            return config_final
+            
+        else:
+            print(f"⚠️ Tabla '{tabla}' existe pero NO tiene registros activos")
+            return obtener_config_harcodeada(tipo, 'sin_datos')
+            
+    except Exception as e:
+        print(f"❌ Error obteniendo configuración {tipo}: {e}")
+        return obtener_config_harcodeada(tipo, 'error_conexion')
+
+def obtener_config_harcodeada(tipo, motivo):
+    """Obtener configuración harcodeada - CORREGIDO"""
+    if tipo == 'local':
+        config = {
+            'host': CONFIG_LOCAL['host'],
+            'user': CONFIG_LOCAL['user'],
+            'password': CONFIG_LOCAL['password'],
+            'database': CONFIG_LOCAL['database'],
+            'port': CONFIG_LOCAL['port'],
+            'base_url': 'http://localhost:5000',
+            'fuente': f'harcodeado_local_{motivo}'
+        }
+    else:
+        config = {
+            'host': CONFIG_HOSTING['host'],
+            'user': CONFIG_HOSTING['user'],
+            'password': CONFIG_HOSTING['password'],
+            'database': CONFIG_HOSTING['database'],
+            'port': CONFIG_HOSTING['port'],
+            'base_url': 'https://turismo-regional.up.railway.app',
+            'fuente': f'harcodeado_hosting_{motivo}'
+        }
+    
+    print(f"   Usando configuración harcodeada para {tipo} ({motivo})")
+    return config
+
+def detectar_entorno():
+    """Detecta automáticamente si estamos en local o producción"""
+    if os.environ.get('RAILWAY_ENVIRONMENT') or os.environ.get('DATABASE_URL'):
+        return 'hosting'
+    elif os.environ.get('RENDER'):
+        return 'hosting'
+    else:
+        return 'local'
+
+def get_db_config():
+    """Obtiene la configuración con sistema de fallback inteligente"""
+    entorno = detectar_entorno()
+    print(f"🌍 Entorno detectado: {entorno}")
+    
+    # Obtener configuración (primero de BD, luego harcodeada)
+    config = obtener_configuracion_desde_bd(entorno)
+    
+    print(f"📊 Fuente de configuración: {config.get('fuente', 'desconocida')}")
+    return config
 
 def conectar_bd():
-    """Conexión simple a la base de datos"""
+    """Conexión con múltiples niveles de fallback"""
     try:
-        config = {
-            'host': os.environ.get('MYSQLHOST'),
-            'user': os.environ.get('MYSQLUSER'),
-            'password': os.environ.get('MYSQLPASSWORD'),
-            'database': os.environ.get('MYSQLDATABASE'),
-            'port': int(os.environ.get('MYSQLPORT', 3306)),
+        config = get_db_config()
+        
+        # Log seguro
+        safe_config = {k: v for k, v in config.items() if k != 'password'}
+        safe_config['password'] = '***'
+        print(f"🔌 Intentando conexión con: {safe_config}")
+        
+        # Conexión principal
+        connection_config = {
+            'host': config['host'],
+            'user': config['user'],
+            'password': config['password'],
+            'database': config['database'],
+            'port': config['port']
         }
-        return mysql.connector.connect(**config)
+        
+        # ✅ CONEXIÓN DIRECTA - sin parche forzado
+        connection = mysql.connector.connect(**connection_config)
+        print("✅ Conexión a BD exitosa")
+        return connection
+        
     except Exception as e:
-        print(f"❌ Error BD: {e}")
-        return None
+        print(f"❌ Error en conexión principal: {str(e)}")
+        
+        # ✅ FALLBACK: Intentar con configuración local directa
+        print("🔄 Intentando fallback a conexión local...")
+        try:
+            # ✅ CONEXIÓN DIRECTA - sin parche forzado
+            connection = mysql.connector.connect(
+                host='localhost',
+                user='root',
+                password='Perroponce@4472801',
+                database='databaseapp',
+                port=3306
+            )
+            print("✅ Conexión de fallback exitosa")
+            return connection
+        except Exception as fallback_error:
+            print(f"❌ Fallback también falló: {fallback_error}")
+            return None
 
-# =================================================================
-# 1. PRIMERO - TODAS LAS RUTAS API (CRÍTICO: DEBEN IR PRIMERO)
-# =================================================================
-
-@app.route("/api/health")
-def health():
-    return jsonify({"status": "ok", "message": "Servidor funcionando"})
-
-@app.route("/api/info-servidor")
-def info_servidor():
+# =========================
+# ENDPOINTS DE DIAGNÓSTICO
+# =========================
+@app.route('/api/debug/config', methods=['GET'])
+def debug_config():
+    """Endpoint para debug de configuración"""
+    entorno = detectar_entorno()
+    config = get_db_config()
+    
+    # Info segura para mostrar
+    safe_config = config.copy()
+    if 'password' in safe_config:
+        safe_config['password'] = '***'
+    
+    # Probar conexión
     conn = conectar_bd()
-    bd_conectada = conn is not None
+    estado_conexion = "conectada" if conn else "desconectada"
     if conn:
         conn.close()
     
     return jsonify({
-        "status": "servidor_activo",
-        "mensaje": "API funcionando correctamente", 
-        "conexion_bd": bd_conectada,
-        "frontend_react": os.path.exists(os.path.join(REACT_BUILD_PATH, 'index.html'))
+        'entorno': entorno,
+        'configuracion': safe_config,
+        'estado_conexion': estado_conexion,
+        'timestamp': datetime.now().isoformat()
     })
 
-# Funciones originales
-def get_configuracion():
+@app.route('/api/debug/tablas', methods=['GET'])
+def debug_tablas():
+    """Verificar existencia de tablas de configuración - COMPLETAMENTE CORREGIDO"""
+    try:
+        # Configuración de conexión corregida
+        config_conexion = {
+            'host': CONFIG_LOCAL['host'],
+            'user': CONFIG_LOCAL['user'],
+            'password': CONFIG_LOCAL['password'],
+            'database': CONFIG_LOCAL['database'],
+            'port': CONFIG_LOCAL['port']
+        }
+        
+        # ✅ CONEXIÓN DIRECTA - sin parche forzado
+        conn = mysql.connector.connect(**config_conexion)
+        cursor = conn.cursor()
+        
+        tablas = ['datos_host_local', 'datos_hosting']
+        resultado = {}
+        
+        for tabla in tablas:
+            try:
+                # ✅ CORREGIDO: Verificar si la tabla existe usando INFORMATION_SCHEMA
+                cursor.execute("""
+                    SELECT COUNT(*) 
+                    FROM INFORMATION_SCHEMA.TABLES 
+                    WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s
+                """, (CONFIG_LOCAL['database'], tabla))
+                
+                tabla_existe = cursor.fetchone()[0] > 0
+                
+                if tabla_existe:
+                    # ✅ CORREGIDO: Contar registros activos con cursor nuevo
+                    cursor2 = conn.cursor()
+                    cursor2.execute(f"SELECT COUNT(*) as count FROM {tabla} WHERE activo = TRUE")
+                    count = cursor2.fetchone()[0]
+                    cursor2.close()
+                    
+                    resultado[tabla] = {'existe': True, 'registros_activos': count}
+                else:
+                    resultado[tabla] = {'existe': False, 'registros_activos': 0}
+                    
+            except mysql.connector.Error as e:
+                # Si hay error, asumimos que la tabla no existe o hay problema
+                resultado[tabla] = {'existe': False, 'registros_activos': 0, 'error': str(e)}
+        
+        cursor.close()
+        conn.close()
+        return jsonify({'tablas': resultado})
+        
+    except Exception as e:
+        return jsonify({'error': f'No se pudo verificar tablas: {str(e)}'}), 500
+
+# =========================
+# ENDPOINTS PRINCIPALES
+# =========================
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    config = get_db_config()
+    entorno = detectar_entorno()
+    
+    conn = conectar_bd()
+    bd_status = "conectada" if conn else "desconectada"
+    if conn:
+        conn.close()
+    
+    return jsonify({
+        "status": "ok",
+        "entorno": entorno,
+        "base_datos": bd_status,
+        "fuente_configuracion": config.get('fuente', 'desconocida'),
+        "configuracion": {
+            "host": config['host'],
+            "base_datos": config['database'],
+            "puerto": config['port']
+        }
+    })
+
+@app.route('/api/info-conexion', methods=['GET'])
+def info_conexion():
+    """Información detallada de la conexión (sin passwords)"""
+    config = get_db_config()
+    entorno = detectar_entorno()
+    
+    # Info segura (sin password)
+    info_segura = {
+        'entorno': entorno,
+        'host': config['host'],
+        'usuario': config['user'],
+        'base_datos': config['database'],
+        'puerto': config['port'],
+        'base_url': config.get('base_url', 'No configurada')
+    }
+    
+    return jsonify(info_segura)
+
+@app.route('/api/configuracion', methods=['GET'])
+def obtener_configuracion():
+    """Obtener configuración de la aplicación"""
     conn = conectar_bd()
     if not conn:
-        return jsonify({"error": "No hay conexión a BD"}), 500
+        return jsonify({"error": "No se pudo conectar a la base de datos"}), 500
     
     try:
         cursor = conn.cursor(dictionary=True)
+        
         cursor.execute("""
             SELECT 
-                id_config,
-                titulo_app,
-                logo_app,
-                logo_app_ruta_relativa,
-                icono_hamburguesa,
+                id_config, titulo_app, logo_app_ruta_relativa,
                 icono_hamburguesa_ruta_relativa,
-                icono_cerrar, 
                 icono_cerrar_ruta_relativa,
-                hero_titulo,
-                hero_imagen,
-                hero_imagen_ruta_relativa,
-                footer_texto,
-                direccion_facebook,
-                direccion_instagram,
-                direccion_twitter,
-                direccion_youtube,
-                correo_electronico,
-                habilitar
-            FROM configuracion_app WHERE habilitar = 1 LIMIT 1
+                hero_titulo, hero_imagen_ruta_relativa,
+                footer_texto, direccion_facebook, direccion_instagram,
+                direccion_twitter, direccion_youtube, correo_electronico, habilitar
+            FROM configuracion_app 
+            WHERE habilitar = 1 
+            LIMIT 1
         """)
+        
         config = cursor.fetchone()
         conn.close()
         
         if config:
-            print("✅ API Config - Configuración cargada")
+            return jsonify(config)
         else:
-            print("⚠️ API Config - No hay configuración activa")
+            return jsonify({})
             
-        return jsonify(config if config else {})
     except Exception as e:
-        print(f"❌ API Config - Error: {e}")
-        return jsonify({"error": str(e)}), 500
+        print(f"❌ Error en configuración: {str(e)}")
+        return jsonify({"error": f"Error del servidor: {str(e)}"}), 500
 
-def get_usuarios():
-    conn = conectar_bd()
-    if not conn:
-        return jsonify({"error": "No hay conexión a BD"}), 500
-    
-    try:
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("""
-            SELECT 
-                id_usuario,
-                apellido_nombres_usuario,
-                dni_usuario,
-                domicilio_usuario,
-                localidad_usuario,
-                provincia_usuario,
-                telefono_usuario,
-                email_usuario,
-                nombre_usuario_acceso,
-                foto_usuario,
-                rol_usuario,
-                activo
-            FROM usuarios WHERE activo = 1 ORDER BY apellido_nombres_usuario
-        """)
-        usuarios = cursor.fetchall()
-        conn.close()
-        
-        print(f"✅ API Usuarios - {len(usuarios)} usuarios activos")
-        return jsonify(usuarios)
-    except Exception as e:
-        print(f"❌ API Usuarios - Error: {e}")
-        return jsonify({"error": str(e)}), 500
-
-def get_regiones():
-    conn = conectar_bd()
-    if not conn:
-        return jsonify({"error": "No hay conexión a BD"}), 500
-    
-    try:
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("""
-            SELECT 
-                id_region_zona,
-                nombre_region_zona,
-                imagen_region_zona_ruta_relativa,
-                habilitar,
-                orden
-            FROM regiones_zonas WHERE habilitar = 1 ORDER BY orden ASC
-        """)
-        regiones = cursor.fetchall()
-        conn.close()
-        
-        print(f"✅ API Regiones - {len(regiones)} regiones")
-        return jsonify(regiones)
-    except Exception as e:
-        print(f"❌ API Regiones - Error: {e}")
-        return jsonify({"error": str(e)}), 500
-
-def get_secciones():
+@app.route('/api/secciones', methods=['GET'])
+def obtener_secciones():
+    """Obtener secciones con sus subsecciones"""
     conn = conectar_bd()
     if not conn:
         return jsonify({"error": "No se pudo conectar a la base de datos"}), 500
-        
-    try:
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("""
-            SELECT id_seccion, nombre_seccion,
-                   icono_seccion, habilitar, orden
-            FROM secciones WHERE habilitar = 1 ORDER BY orden
-        """)
-        secciones = cursor.fetchall()
-        
-        print(f"🔍 DEBUG: Encontradas {len(secciones)} secciones")
-
-        for i, seccion in enumerate(secciones):
-            print(f"🔍 Procesando sección {seccion['id_seccion']}: {seccion['nombre_seccion']}")
-            
-            cursor.execute("""
-                SELECT id_sub_seccion, id_seccion, id_region_zona, nombre_sub_seccion,
-                    domicilio, latitud, longitud, distancia, numero_telefono,
-                    imagen_ruta_relativa, icono_ruta_relativa, itinerario_maps,
-                    habilitar, fecha_desactivacion, orden, destacado,
-                    foto1_ruta_relativa, foto2_ruta_relativa, foto3_ruta_relativa,
-                    foto4_ruta_relativa
-                FROM sub_secciones WHERE id_seccion = %s AND habilitar = 1 ORDER BY orden
-            """, (seccion["id_seccion"],))
-            
-            subsecciones = cursor.fetchall()
-            print(f"   📊 Subsecciones encontradas: {len(subsecciones)}")
-            
-            seccion["subsecciones"] = subsecciones
-            secciones[i] = seccion
-
-        conn.close()
-        
-        total_subsecciones = sum(len(s.get('subsecciones', [])) for s in secciones)
-        print(f"✅ FINAL: {len(secciones)} secciones con {total_subsecciones} subsecciones")
-        
-        return jsonify(secciones)
-        
-    except Exception as e:
-        print(f"❌ Error: {e}")
-        return jsonify({"error": str(e)}), 500
-
-# RUTAS EXACTAS QUE EL FRONTEND NECESITA
-@app.route("/api/configuracion")
-def api_configuracion():
-    """Ruta exacta que el frontend espera"""
-    return get_configuracion()
-
-@app.route("/api/regiones")  
-def api_regiones():
-    """Ruta exacta que el frontend espera"""
-    return get_regiones()
-
-@app.route("/api/secciones")
-def api_secciones():
-    """Ruta exacta que el frontend espera"""
-    return get_secciones()
-
-@app.route("/api/usuarios")
-def api_usuarios():
-    """Ruta exacta que el frontend espera"""
-    return get_usuarios()
-
-@app.route("/api/subsecciones")
-def api_subsecciones():
-    """Ruta para todas las subsecciones"""
-    conn = conectar_bd()
-    if not conn:
-        return jsonify({"error": "No hay conexión a BD"}), 500
     
     try:
         cursor = conn.cursor(dictionary=True)
+        
         cursor.execute("""
-            SELECT id_sub_seccion, id_seccion, id_region_zona, nombre_sub_seccion,
-                domicilio, latitud, longitud, distancia, numero_telefono,
-                imagen_ruta_relativa, icono_ruta_relativa, itinerario_maps,
-                habilitar, fecha_desactivacion, orden, destacado,
-                foto1_ruta_relativa, foto2_ruta_relativa, foto3_ruta_relativa,
-                foto4_ruta_relativa
-            FROM sub_secciones WHERE habilitar = 1 ORDER BY orden
+            SELECT 
+                id_seccion, nombre_seccion, icono_seccion, habilitar, orden
+            FROM secciones 
+            WHERE habilitar = 1 
+            ORDER BY orden
         """)
-        subsecciones = cursor.fetchall()
+        
+        secciones = cursor.fetchall()
+        
+        for seccion in secciones:
+            cursor.execute("""
+                SELECT 
+                    id_sub_seccion, id_seccion, id_region_zona, nombre_sub_seccion,
+                    domicilio, latitud, longitud, distancia, numero_telefono,
+                    imagen_ruta_relativa, icono_ruta_relativa, itinerario_maps,
+                    habilitar, fecha_desactivacion, orden, destacado,
+                    foto1_ruta_relativa, foto2_ruta_relativa, 
+                    foto3_ruta_relativa, foto4_ruta_relativa
+                FROM sub_secciones 
+                WHERE id_seccion = %s AND habilitar = 1 
+                ORDER BY orden
+            """, (seccion['id_seccion'],))
+            
+            subsecciones = cursor.fetchall()
+            seccion['subsecciones'] = subsecciones
+        
+        conn.close()
+        return jsonify(secciones)
+        
+    except Exception as e:
+        print(f"❌ Error en secciones: {str(e)}")
+        return jsonify({"error": f"Error del servidor: {str(e)}"}), 500
+
+@app.route('/api/regiones', methods=['GET'])
+def obtener_regiones():
+    """Obtener todas las regiones/zonas habilitadas"""
+    conn = conectar_bd()
+    if not conn:
+        return jsonify({"error": "No se pudo conectar a la base de datos"}), 500
+    
+    try:
+        cursor = conn.cursor(dictionary=True)
+        
+        cursor.execute("""
+            SELECT 
+                id_region_zona, nombre_region_zona, 
+                imagen_region_zona_ruta_relativa, habilitar, orden
+            FROM regiones_zonas 
+            WHERE habilitar = 1 
+            ORDER BY orden ASC
+        """)
+        
+        regiones = cursor.fetchall()
         conn.close()
         
-        print(f"✅ API Subsecciones - {len(subsecciones)} subsecciones")
-        return jsonify(subsecciones)
+        print(f"✅ {len(regiones)} regiones encontradas")
+        return jsonify(regiones)
+        
     except Exception as e:
-        print(f"❌ API Subsecciones - Error: {e}")
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/api/regiones_zonas")
-def api_regiones_zonas():
-    """Alias para compatibilidad"""
-    return get_regiones()
-
-# =================================================================
-# 2. AL FINAL - RUTAS PARA SERVIR EL FRONTEND REACT
-# =================================================================
-
-@app.route("/static-assets/<path:filename>")
-def servir_assets(filename):
-    assets_path = os.path.join(os.path.dirname(__file__), 'assets')
-    return send_from_directory(assets_path, filename)
-
-@app.route("/")
-def servir_frontend():
-    return send_from_directory(REACT_BUILD_PATH, 'index.html')
-
-@app.route("/<path:path>")
-def servir_react(path):
-    try:
-        file_path = os.path.join(REACT_BUILD_PATH, path)
-        if os.path.exists(file_path):
-            return send_from_directory(REACT_BUILD_PATH, path)
-        else:
-            return send_from_directory(REACT_BUILD_PATH, 'index.html')
-    except:
-        return send_from_directory(REACT_BUILD_PATH, 'index.html')
+        print(f"❌ Error en regiones: {str(e)}")
+        return jsonify({"error": f"Error del servidor: {str(e)}"}), 500
 
 # =========================
-# MANEJO DE ERRORES
+# INICIALIZACIÓN MEJORADA
 # =========================
-@app.errorhandler(404)
-def not_found(error):
-    if request.path.startswith('/api/'):
-        return jsonify({
-            "error": "Endpoint no encontrado",
-            "mensaje": "La ruta API solicitada no existe"
-        }), 404
-    else:
-        return send_from_directory(REACT_BUILD_PATH, 'index.html')
-
-@app.errorhandler(500)
-def internal_error(error):
-    return jsonify({
-        "error": "Error interno del servidor",
-        "mensaje": "Ocurrió un error inesperado"
-    }), 500
-
-# =========================
-# INICIO DE LA APLICACIÓN
-# =========================
-if __name__ == "__main__":
+if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
-    app.run(debug=False, host='0.0.0.0', port=port)
+    
+    print("=" * 60)
+    print("🚀 API UNIVERSAL - SISTEMA DE FALLBACK INTELIGENTE")
+    print("=" * 60)
+    
+    # Mostrar información de configuración
+    entorno = detectar_entorno()
+    config = get_db_config()
+    
+    print(f"🌍 Entorno detectado: {entorno}")
+    print(f"📊 Fuente de configuración: {config.get('fuente', 'desconocida')}")
+    print(f"🔌 Host: {config['host']}:{config['port']}")
+    print(f"🗃️ Base de datos: {config['database']}")
+    print(f"👤 Usuario: {config['user']}")
+    print("=" * 60)
+    
+    # Probar conexión
+    print("🔌 Probando conexión...")
+    conn = conectar_bd()
+    if conn:
+        conn.close()
+        print("✅ Sistema de conexión verificado")
+    else:
+        print("❌ Sistema de conexión falló")
+        print("💡 Sugerencia: Verifica que MySQL esté ejecutándose")
+    
+    # Iniciar servidor
+    debug_mode = (entorno == 'local')
+    app.run(host='0.0.0.0', port=port, debug=debug_mode)

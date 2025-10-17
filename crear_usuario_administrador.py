@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # Script para insertar un usuario administrador manualmente (una sola vez)
 from basededatos import conectar
 
