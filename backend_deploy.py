@@ -48,7 +48,7 @@ class BackendDeployThread(QThread):
             
             self.progress_signal.emit(20)
             
-            # Paso 3: Copiar assets
+            # Paso 3: Copiar assets MANTENIENDO ESTRUCTURA
             if not self.copiar_assets_al_repositorio():
                 return
             
@@ -164,7 +164,7 @@ type = "web"
         return todos_encontrados
     
     def copiar_assets_al_repositorio(self):
-        """Copiar assets desde turismo-app/public/assets al repositorio"""
+        """Copiar assets desde turismo-app/public/assets al repositorio MANTENIENDO ESTRUCTURA"""
         try:
             # Buscar assets en diferentes ubicaciones posibles
             posibles_rutas_assets = [
@@ -210,46 +210,86 @@ type = "web"
                 self.log_signal.emit(f"⚠️  Error listando assets: {str(e)}")
                 return True
             
-            self.log_signal.emit("🔄 Copiando assets al repositorio...")
+            self.log_signal.emit("🔄 Copiando assets al repositorio MANTENIENDO ESTRUCTURA...")
             
-            if not os.path.exists(assets_destino):
-                os.makedirs(assets_destino)
-                self.log_signal.emit("✅ Carpeta assets creada en repositorio")
-            
-            items_copiados = 0
-            for item in contenido:
-                origen_item = os.path.join(assets_origen, item)
-                destino_item = os.path.join(assets_destino, item)
+            # ✅ FUNCIÓN RECURSIVA PARA COPIAR MANTENIENDO ESTRUCTURA
+            def copiar_recursivo(origen, destino):
+                """Copia recursivamente manteniendo estructura de carpetas"""
+                if not os.path.exists(destino):
+                    os.makedirs(destino)
                 
-                try:
-                    if os.path.isdir(origen_item):
-                        if os.path.exists(destino_item):
-                            shutil.rmtree(destino_item)
-                        shutil.copytree(origen_item, destino_item)
-                        self.log_signal.emit(f"   ✅ Carpeta: {item}")
-                    else:
-                        shutil.copy2(origen_item, destino_item)
-                        self.log_signal.emit(f"   ✅ Archivo: {item}")
+                items_copiados = 0
+                for item in os.listdir(origen):
+                    origen_item = os.path.join(origen, item)
+                    destino_item = os.path.join(destino, item)
                     
-                    items_copiados += 1
-                except Exception as e:
-                    self.log_signal.emit(f"   ⚠️  Error copiando {item}: {str(e)}")
-                    continue
+                    try:
+                        if os.path.isdir(origen_item):
+                            # Crear subcarpeta y copiar contenido recursivamente
+                            if not os.path.exists(destino_item):
+                                os.makedirs(destino_item)
+                            
+                            # Llamada recursiva para subcarpetas
+                            sub_items = copiar_recursivo(origen_item, destino_item)
+                            items_copiados += sub_items
+                            self.log_signal.emit(f"   📁 Carpeta: {item}/ ({sub_items} archivos)")
+                            
+                        else:
+                            # Copiar archivo individual
+                            shutil.copy2(origen_item, destino_item)
+                            items_copiados += 1
+                            # Solo mostrar algunos archivos para no saturar el log
+                            if items_copiados <= 10:  # Mostrar primeros 10 archivos
+                                self.log_signal.emit(f"   📄 {item}")
+                                
+                    except Exception as e:
+                        self.log_signal.emit(f"   ⚠️  Error copiando {item}: {str(e)}")
+                        continue
+                
+                return items_copiados
             
-            self.log_signal.emit(f"✅ {items_copiados} assets copiados exitosamente")
+            # ✅ USAR LA FUNCIÓN RECURSIVA MEJORADA
+            total_copiados = copiar_recursivo(assets_origen, assets_destino)
             
+            self.log_signal.emit(f"✅ {total_copiados} assets copiados manteniendo estructura")
+            
+            # ✅ VERIFICAR ESTRUCTURA COPIADA
             if os.path.exists(assets_destino):
                 try:
-                    assets_copiados = len(os.listdir(assets_destino))
-                    self.log_signal.emit(f"📊 Verificación: {assets_copiados} assets en repositorio")
-                except:
-                    self.log_signal.emit("✅ Assets copiados al repositorio")
+                    self.log_signal.emit("🔍 Verificando estructura copiada...")
+                    self.mostrar_estructura_assets(assets_destino)
+                except Exception as e:
+                    self.log_signal.emit(f"✅ Assets copiados (error en verificación: {str(e)})")
             
             return True
             
         except Exception as e:
             self.log_signal.emit(f"❌ Error copiando assets: {str(e)}")
             return False
+
+    def mostrar_estructura_assets(self, ruta_assets):
+        """Mostrar estructura de assets copiada"""
+        try:
+            for root, dirs, files in os.walk(ruta_assets):
+                # Calcular nivel de indentación
+                nivel = root.replace(ruta_assets, '').count(os.sep)
+                indentacion = "    " * nivel
+                
+                # Mostrar carpeta actual
+                carpeta = os.path.basename(root)
+                if carpeta:  # No mostrar la carpeta raíz
+                    self.log_signal.emit(f"{indentacion}📂 {carpeta}/")
+                
+                # Mostrar archivos en esta carpeta (máximo 5 por carpeta)
+                for i, archivo in enumerate(files):
+                    if i < 5:  # Mostrar solo primeros 5 archivos por carpeta
+                        self.log_signal.emit(f"{indentacion}    📄 {archivo}")
+                    elif i == 5:
+                        self.log_signal.emit(f"{indentacion}    ... y {len(files) - 5} más")
+                        break
+                    
+        except Exception as e:
+            self.log_signal.emit(f"⚠️  Error mostrando estructura: {str(e)}")
     
     def ejecutar_deploy(self, tipo, servidor, comando_personalizado=""):
         """Ejecutar deploy según el tipo de servidor"""
@@ -341,7 +381,7 @@ type = "web"
             else:
                 instrucciones = [
                     "1. Subir manualmente los archivos al servidor",
-                    "2. Asegurar que requirements.txt tenga gunicorn",
+                    "2. Asegurar que requirements.txt tiene gunicorn",
                     "3. Configurar Procfile para producción",
                     "4. Reiniciar servicio web"
                 ]
