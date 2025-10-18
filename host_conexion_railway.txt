@@ -1,6 +1,6 @@
 # Conexión modo remoto
 
-         host: "shinkansen.proxy.rlwy.net",
+         host: "shinkansen.proxy.rlwy.net",  "mysql.railway.internal"
          usuario: "root", 
          password:"modwetYgGSblbVwIoVyvOoYQMPacXSjZ",
          base_datos:"railway",
