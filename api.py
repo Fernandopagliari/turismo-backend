@@ -9,7 +9,7 @@ app = Flask(__name__)
 CORS(app)
 
 # =========================
-# CONFIGURACIÓN DESDE BD LOCAL databaseapp
+# CONFIGURACIÓN MEJORADA - BD LOCAL Y REMOTA
 # =========================
 
 def detectar_entorno():
@@ -19,50 +19,49 @@ def detectar_entorno():
     return 'local'
 
 def conectar_a_bd_local():
-    """✅ CONEXIÓN a BD LOCAL desde datos_host_local"""
+    """✅ CONEXIÓN SIMPLIFICADA a BD LOCAL usando variables de entorno"""
     try:
-        # Conexión INICIAL para leer configuración local
-        conn_temp = mysql.connector.connect(
-            host='localhost',
-            user='root',
-            password='Perroponce@4472801',
-            database='databaseapp',
-            port=3306
-        )
-        
-        cursor = conn_temp.cursor(dictionary=True)
-        cursor.execute("""
-            SELECT host, usuario, password, base_datos, puerto 
-            FROM datos_host_local 
-            WHERE activo = 1 
-            LIMIT 1
-        """)
-        config = cursor.fetchone()
-        conn_temp.close()
-        
-        if not config:
-            raise Exception("No hay configuración local activa")
-        
-        # Conexión REAL con datos de la tabla
         conn = mysql.connector.connect(
-            host=config['host'],
-            user=config['usuario'],
-            password=config['password'],
-            database=config['base_datos'],
-            port=config['puerto']
+            host=os.environ.get('LOCAL_DB_HOST', 'localhost'),
+            user=os.environ.get('LOCAL_DB_USER', 'root'),
+            password=os.environ.get('LOCAL_DB_PASSWORD', ''),
+            database=os.environ.get('LOCAL_DB_NAME', 'databaseapp'),
+            port=int(os.environ.get('LOCAL_DB_PORT', 3306))
         )
         return conn
-        
     except Exception as e:
         print(f"❌ Error conectando a BD local: {e}")
         return None
 
-def obtener_config_desde_tabla(tabla):
-    """✅ Obtiene configuración ACTIVA desde tabla específica"""
+def conectar_a_bd_remota():
+    """✅ CONEXIÓN a BD REMOTA usando variables de entorno"""
     try:
-        conn = conectar_a_bd_local()
+        conn = mysql.connector.connect(
+            host=os.environ.get('DATABASE_HOST', 'mysql.railway.internal'),
+            user=os.environ.get('DATABASE_USER', 'root'),
+            password=os.environ.get('DATABASE_PASSWORD', ''),
+            database=os.environ.get('DATABASE_NAME', 'railway'),
+            port=int(os.environ.get('DATABASE_PORT', 3306))
+        )
+        return conn
+    except Exception as e:
+        print(f"❌ Error conectando a BD remota: {e}")
+        return None
+
+def obtener_config_desde_tabla(tabla):
+    """✅ Obtiene configuración ACTIVA desde tabla específica (local o remota)"""
+    try:
+        if detectar_entorno() == 'local':
+            # ✅ Local: leer de BD local
+            conn = conectar_a_bd_local()
+            fuente = 'local'
+        else:
+            # ✅ Hosting: leer de BD remota
+            conn = conectar_a_bd_remota()
+            fuente = 'remota'
+        
         if not conn:
-            raise Exception("No se pudo conectar a BD local")
+            raise Exception("No se pudo conectar a BD")
         
         cursor = conn.cursor(dictionary=True)
         
@@ -78,7 +77,7 @@ def obtener_config_desde_tabla(tabla):
         conn.close()
         
         if not config:
-            raise Exception(f"No hay registros ACTIVOS en {tabla}")
+            raise Exception(f"No hay registros ACTIVOS en {tabla} ({fuente})")
         
         return {
             'host': config['host'],
@@ -87,7 +86,7 @@ def obtener_config_desde_tabla(tabla):
             'database': config['base_datos'],
             'port': config['puerto'],
             'base_url': config.get('base_url', ''),
-            'fuente': f'tabla_{tabla}'
+            'fuente': f'tabla_{tabla}_{fuente}'
         }
         
     except Exception as e:
@@ -95,17 +94,17 @@ def obtener_config_desde_tabla(tabla):
         raise e
 
 def get_db_config():
-    """✅ Obtiene configuración desde tablas locales"""
+    """✅ Obtiene configuración desde tablas (local o remota)"""
     entorno = detectar_entorno()
     print(f"🌍 Entorno detectado: {entorno}")
     
     try:
         if entorno == 'local':
-            # ✅ Usar datos_host_local (activo=1)
+            # ✅ Usar datos_host_local (activo=1) desde BD local
             config = obtener_config_desde_tabla('datos_host_local')
             print(f"📍 Config local: {config['host']}:{config['port']}")
         else:
-            # ✅ Usar datos_hosting (activo=1) 
+            # ✅ Usar datos_hosting (activo=1) desde BD remota
             config = obtener_config_desde_tabla('datos_hosting')
             print(f"📍 Config hosting: {config['host']}:{config['port']}")
         
@@ -176,12 +175,17 @@ def health_check():
             "error": str(e)
         }), 500
 
-# ✅ NUEVO ENDPOINT PARA FRONTEND
+# ✅ ENDPOINT MEJORADO PARA FRONTEND
 @app.route('/api/config/frontend', methods=['GET'])
 def config_frontend():
-    """✅ Devuelve configuración para frontend desde BD LOCAL"""
+    """✅ Devuelve configuración para frontend desde BD CORRECTA"""
     try:
-        config = obtener_config_desde_tabla('datos_hosting')
+        if detectar_entorno() == 'local':
+            # ✅ Local: leer de datos_hosting en BD local
+            config = obtener_config_desde_tabla('datos_hosting')
+        else:
+            # ✅ Hosting: leer de datos_hosting en BD remota
+            config = obtener_config_desde_tabla('datos_hosting')
         
         return jsonify({
             'api_base_url': config['base_url'],
@@ -195,7 +199,7 @@ def config_frontend():
             'api_base_url': '',
             'entorno': 'local',
             'status': 'error',
-            'message': 'No existen datos para conectar local'
+            'message': 'No se pudo obtener configuración'
         })
 
 @app.route('/api/configuracion', methods=['GET'])
@@ -304,7 +308,7 @@ if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     
     print("=" * 50)
-    print("🚀 SISTEMA - SOLO RUTAS RELATIVAS (ESTRUCTURA REAL)")
+    print("🚀 SISTEMA - CONEXIÓN DUAL (LOCAL/REMOTA)")
     print("=" * 50)
     
     entorno = detectar_entorno()

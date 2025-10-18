@@ -7,6 +7,81 @@ from mysql.connector import Error
 from PyQt5.QtWidgets import QMessageBox
 from database_local import obtener_configuracion_hosting
 
+# =========================
+# FUNCIONES NUEVAS - SIN MODIFICAR LAS EXISTENTES
+# =========================
+
+def crear_tabla_datos_hosting(conexion):
+    """Crear tabla datos_hosting en el servidor remoto - NUEVA FUNCIÓN"""
+    cursor = conexion.cursor()
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS datos_hosting (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                host VARCHAR(255) NOT NULL,
+                usuario VARCHAR(255) NOT NULL,
+                password VARCHAR(255) NOT NULL,
+                base_datos VARCHAR(255) NOT NULL,
+                puerto INT NOT NULL DEFAULT 3306,
+                base_url VARCHAR(255) NULL,
+                activo BOOLEAN NOT NULL DEFAULT TRUE,
+                fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB;
+        """)
+        
+        conexion.commit()
+        print("[OK] Tabla 'datos_hosting' creada/verificada en HOSTING")
+        
+    except Exception as e:
+        print(f"Error al crear tabla 'datos_hosting' en hosting: {e}")
+    finally:
+        cursor.close()
+
+def copiar_configuracion_a_hosting(conexion, parent=None):
+    """COPIAR configuración desde BD local a BD remota - NUEVA FUNCIÓN"""
+    try:
+        # Obtener configuración desde BD local
+        config_local = obtener_configuracion_hosting(parent)
+        
+        if not config_local:
+            print("[ERROR] No se pudo obtener configuración local para copiar")
+            return False
+        
+        cursor = conexion.cursor()
+        
+        # Limpiar configuraciones anteriores en hosting
+        cursor.execute("UPDATE datos_hosting SET activo = 0")
+        
+        # Insertar nueva configuración COPIADA desde local
+        cursor.execute("""
+            INSERT INTO datos_hosting (host, usuario, password, base_datos, puerto, base_url, activo)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """, (
+            config_local['host'],
+            config_local['user'], 
+            config_local['password'],
+            config_local['database'],
+            config_local['port'],
+            config_local.get('base_url', ''),
+            True
+        ))
+        
+        conexion.commit()
+        cursor.close()
+        
+        print("[OK] ✅ Configuración COPIADA de BD local a hosting")
+        print(f"[DEBUG] Configuración copiada: {config_local['user']}@{config_local['host']} - URL: {config_local.get('base_url', '')}")
+        
+        return True
+        
+    except Exception as e:
+        print(f"[ERROR] Error copiando configuración a hosting: {e}")
+        return False
+
+# =========================
+# FUNCIONES ORIGINALES (SIN MODIFICACIONES)
+# =========================
+
 def conectar_hosting(parent=None):
     """
     Conectar a la base de datos del hosting usando configuración de la tabla local
@@ -61,15 +136,17 @@ def inicializar_base_datos_hosting(parent=None):
     try:
         print("Inicializando base de datos del hosting...")
         
-        # Lista de funciones para crear tablas
+        # Lista de funciones para crear tablas (AGREGAR LAS NUEVAS)
         funciones = [
             crear_tabla_configuraciones,
             crear_tabla_regiones_zona, 
             crear_tabla_secciones,
             crear_tabla_sub_secciones,
             crear_tabla_usuarios,
+            crear_tabla_datos_hosting,  # ✅ NUEVA - crear tabla
             verificar_y_agregar_campos_base64,
-            insert_initial_users
+            insert_initial_users,
+            lambda conn: copiar_configuracion_a_hosting(conn, parent)  # ✅ NUEVA - copiar datos
         ]
         
         for funcion in funciones:
