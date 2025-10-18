@@ -19,18 +19,42 @@ def detectar_entorno():
     return 'local'
 
 def conectar_a_bd_local():
-    """✅ CONEXIÓN FIJA a la BD LOCAL databaseapp"""
+    """✅ CONEXIÓN a BD LOCAL desde datos_host_local"""
     try:
-        conn = mysql.connector.connect(
+        # Conexión INICIAL para leer configuración local
+        conn_temp = mysql.connector.connect(
             host='localhost',
             user='root',
             password='Perroponce@4472801',
             database='databaseapp',
             port=3306
         )
+        
+        cursor = conn_temp.cursor(dictionary=True)
+        cursor.execute("""
+            SELECT host, usuario, password, base_datos, puerto 
+            FROM datos_host_local 
+            WHERE activo = 1 
+            LIMIT 1
+        """)
+        config = cursor.fetchone()
+        conn_temp.close()
+        
+        if not config:
+            raise Exception("No hay configuración local activa")
+        
+        # Conexión REAL con datos de la tabla
+        conn = mysql.connector.connect(
+            host=config['host'],
+            user=config['usuario'],
+            password=config['password'],
+            database=config['base_datos'],
+            port=config['puerto']
+        )
         return conn
+        
     except Exception as e:
-        print(f"❌ Error conectando a BD local databaseapp: {e}")
+        print(f"❌ Error conectando a BD local: {e}")
         return None
 
 def obtener_config_desde_tabla(tabla):
@@ -151,6 +175,28 @@ def health_check():
             "base_datos": "desconectada",
             "error": str(e)
         }), 500
+
+# ✅ NUEVO ENDPOINT PARA FRONTEND
+@app.route('/api/config/frontend', methods=['GET'])
+def config_frontend():
+    """✅ Devuelve configuración para frontend desde BD LOCAL"""
+    try:
+        config = obtener_config_desde_tabla('datos_hosting')
+        
+        return jsonify({
+            'api_base_url': config['base_url'],
+            'entorno': detectar_entorno(),
+            'status': 'ok',
+            'fuente': config['fuente']
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'api_base_url': '',
+            'entorno': 'local',
+            'status': 'error',
+            'message': 'No existen datos para conectar local'
+        })
 
 @app.route('/api/configuracion', methods=['GET'])
 def obtener_configuracion():

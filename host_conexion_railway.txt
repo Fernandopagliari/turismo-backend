@@ -1,11 +1,11 @@
 # Conexión modo remoto
 
-         host: "shinkansen.proxy.rlwy.net",  "mysql.railway.internal"
+         host: "shinkansen.proxy.rlwy.net",
          usuario: "root", 
          password:"modwetYgGSblbVwIoVyvOoYQMPacXSjZ",
          base_datos:"railway",
           puerto: 44292,
-          base_url: https://turismo-regional.up.railway.app
+          base_url:https://turismo-backend.up.railway.app
           activo:True
 
 # Conexión Modo Local
