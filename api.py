@@ -6,12 +6,15 @@ import os
 from datetime import datetime
 
 app = Flask(__name__)
+CORS(app)
 
-# ✅ Configuración para servir build de React
+# =========================
+# CONFIGURACIÓN PARA SERVIR BUILD DE REACT
+# =========================
 app.static_folder = os.path.join(os.path.dirname(__file__), "build")
 app.static_url_path = ""
 
-CORS(app)
+
 
 # =========================
 # CONFIGURACIÓN MEJORADA - BD LOCAL Y REMOTA
@@ -171,6 +174,24 @@ def servir_imagenes(filename):
         return send_from_directory(assets_path, filename)
     except Exception as e:
         return jsonify({"error": "Archivo no encontrado"}), 404
+    
+# =========================
+# SERVIR FRONTEND REACT - ✅ AGREGAR ESTA SECCIÓN
+# =========================
+
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>')
+def serve_react_app(path):
+    """Servir la aplicación React - Client Side Routing"""
+    try:
+        # Si el archivo existe en build/, servirlo
+        if path != "" and os.path.exists(os.path.join(app.static_folder, path)):
+            return send_from_directory(app.static_folder, path)
+        
+        # Para cualquier otra ruta, servir index.html (React Router manejará)
+        return send_from_directory(app.static_folder, 'index.html')
+    except Exception as e:
+        return jsonify({"error": "Frontend no disponible", "details": str(e)}), 500
 
 # =========================
 # ENDPOINTS PRINCIPALES - SOLO RUTAS RELATIVAS
