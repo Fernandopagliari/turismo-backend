@@ -14,7 +14,7 @@ CORS(app)
 
 def detectar_entorno():
     """Detecta si estamos en local o hosting"""
-    if os.environ.get('RAILWAY_ENVIRONMENT'):
+    if os.environ.get('MYSQLHOST') or os.environ.get('RAILWAY_ENVIRONMENT'):
         return 'hosting'
     return 'local'
 
@@ -34,14 +34,14 @@ def conectar_a_bd_local():
         return None
 
 def conectar_a_bd_remota():
-    """✅ CONEXIÓN a BD REMOTA usando variables de entorno"""
+    """✅ CONEXIÓN DIRECTA a BD REMOTA usando variables de RENDER"""
     try:
         conn = mysql.connector.connect(
-            host=os.environ.get('DATABASE_HOST', 'mysql.railway.internal'),
-            user=os.environ.get('DATABASE_USER', 'root'),
-            password=os.environ.get('DATABASE_PASSWORD', ''),
-            database=os.environ.get('DATABASE_NAME', 'railway'),
-            port=int(os.environ.get('DATABASE_PORT', 3306))
+            host=os.environ.get('MYSQLHOST'),
+            user=os.environ.get('MYSQLUSER'),
+            password=os.environ.get('MYSQLPASSWORD'),
+            database=os.environ.get('MYSQLDATABASE'),
+            port=int(os.environ.get('MYSQLPORT', 3306))
         )
         return conn
     except Exception as e:
@@ -112,10 +112,22 @@ def get_db_config():
         
     except Exception as e:
         print(f"❌ Error crítico obteniendo configuración: {e}")
-        raise Exception(f"No se pudo obtener configuración: {e}")
+        # ✅ FALLBACK: Conexión directa con variables de entorno
+        print("🔄 Usando conexión directa con variables de entorno...")
+        if entorno == 'hosting':
+            return {
+                'host': os.environ.get('MYSQLHOST'),
+                'user': os.environ.get('MYSQLUSER'),
+                'password': os.environ.get('MYSQLPASSWORD'),
+                'database': os.environ.get('MYSQLDATABASE'),
+                'port': int(os.environ.get('MYSQLPORT', 3306)),
+                'fuente': 'variables_entorno_directo'
+            }
+        else:
+            raise e
 
 def conectar_bd():
-    """✅ Conexión usando configuración de las tablas"""
+    """✅ Conexión usando configuración de las tablas CON FALLBACK"""
     try:
         config = get_db_config()
         
@@ -133,8 +145,14 @@ def conectar_bd():
         return conn
         
     except Exception as e:
-        print(f"❌ Error de conexión: {e}")
-        return None
+        print(f"❌ Error de conexión con configuración: {e}")
+        
+        # ✅ FALLBACK DIRECTA
+        print("🔄 Intentando conexión directa...")
+        if detectar_entorno() == 'hosting':
+            return conectar_a_bd_remota()
+        else:
+            return conectar_a_bd_local()
 
 # =========================
 # SERVIR ARCHIVOS ESTÁTICOS
@@ -155,24 +173,29 @@ def servir_imagenes(filename):
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
-    """Health check"""
+    """Health check MEJORADO con fallback"""
     try:
         conn = conectar_bd()
         estado = "conectada" if conn else "desconectada"
         
         if conn:
+            # Probar que realmente funciona
+            cursor = conn.cursor()
+            cursor.execute("SELECT 1")
             conn.close()
         
         return jsonify({
             "status": "ok",
             "base_datos": estado,
-            "entorno": detectar_entorno()
+            "entorno": detectar_entorno(),
+            "mysql_host": os.environ.get('MYSQLHOST', 'no configurado')
         })
     except Exception as e:
         return jsonify({
             "status": "error", 
             "base_datos": "desconectada",
-            "error": str(e)
+            "error": str(e),
+            "entorno": detectar_entorno()
         }), 500
 
 # ✅ ENDPOINT MEJORADO PARA FRONTEND
@@ -308,7 +331,7 @@ if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     
     print("=" * 50)
-    print("🚀 SISTEMA - CONEXIÓN DUAL (LOCAL/REMOTA)")
+    print("🚀 SISTEMA - CONEXIÓN DUAL CON FALLBACK")
     print("=" * 50)
     
     entorno = detectar_entorno()
