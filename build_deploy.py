@@ -117,14 +117,14 @@ class BuildDeployThread(QThread):
     # -------------------------
     def find_project_root(self):
         """Buscar carpeta donde exista package.json"""
-        # ✅ RUTAS ACTUALIZADAS para tu estructura de proyecto
         posibles_rutas = [
             self.requested_path,
             os.path.join(self.requested_path, "frontend"),
-            os.path.join(self.requested_path, "turismo-frontend"),
+            os.path.join(self.requested_path, "turismo-frontend"),  # ← ESTA YA ESTÁ
             os.path.join(self.requested_path, "src"),
             # Rutas específicas para tu proyecto
             r"E:\Sistemas de app para androide\turismo-app\frontend",
+            r"E:\Sistemas de app para androide\turismo-app\turismo-frontend",  # ← AGREGAR ESTA
             r"E:\Sistemas de app para androide\frontend",
             os.path.join(os.path.dirname(self.requested_path), "frontend"),
             os.path.join(os.path.dirname(os.path.dirname(self.requested_path)), "frontend"),

@@ -6,6 +6,11 @@ import os
 from datetime import datetime
 
 app = Flask(__name__)
+
+# ✅ Configuración para servir build de React
+app.static_folder = os.path.join(os.path.dirname(__file__), "build")
+app.static_url_path = ""
+
 CORS(app)
 
 # =========================
