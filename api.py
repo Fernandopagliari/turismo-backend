@@ -176,16 +176,16 @@ def servir_imagenes(filename):
         return jsonify({"error": "Archivo no encontrado"}), 404
     
 # =========================
-# SERVIR FRONTEND REACT - ✅ AGREGAR ESTA SECCIÓN
+# SERVIR FRONTEND REACT - ✅ CORREGIDA
 # =========================
 
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
 def serve_react_app(path):
-    """Servir la aplicación React - Client Side Routing"""
+    """Servir la aplicación React - Client Side Routing CORREGIDO"""
     try:
-        # Si el archivo existe en build/, servirlo
-        if path != "" and os.path.exists(os.path.join(app.static_folder, path)):
+        # Si es un archivo en assets/, servirlo directamente
+        if path.startswith('assets/'):
             return send_from_directory(app.static_folder, path)
         
         # Para cualquier otra ruta, servir index.html (React Router manejará)
