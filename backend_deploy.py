@@ -11,7 +11,7 @@ from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 
 class BackendDeployThread(QThread):
-    """Hilo para ejecutar deploy COMPLETO del backend incluyendo assets"""
+    """Hilo para ejecutar deploy COMPLETO del backend incluyendo assets - UNIVERSAL"""
     log_signal = pyqtSignal(str)
     progress_signal = pyqtSignal(int)
     finished_signal = pyqtSignal(bool, str)
@@ -24,12 +24,12 @@ class BackendDeployThread(QThread):
         
     def run(self):
         try:
-            self.log_signal.emit("🚀 INICIANDO DEPLOY COMPLETO DEL BACKEND")
+            self.log_signal.emit("🚀 INICIANDO DEPLOY COMPLETO UNIVERSAL")
             self.log_signal.emit("=" * 50)
             
             # Mostrar información del hosting desde BD
             if self.datos_hosting:
-                self.log_signal.emit(f"🌐 Host: {self.datos_hosting.get('host', 'N/A')}")
+                self.log_signal.emit(f"🌐 Servidor: {self.datos_hosting.get('host', 'N/A')}")
                 self.log_signal.emit(f"🔗 URL: {self.datos_hosting.get('base_url', 'N/A')}")
                 self.log_signal.emit(f"👤 Usuario: {self.datos_hosting.get('user', 'N/A')}")
                 self.log_signal.emit("-" * 30)
@@ -42,8 +42,8 @@ class BackendDeployThread(QThread):
             self.log_signal.emit(f"📁 Backend encontrado en: {self.backend_path}")
             self.progress_signal.emit(10)
             
-            # Paso 2: Verificar y crear archivos esenciales PARA PRODUCCIÓN
-            if not self.preparar_archivos_produccion():
+            # Paso 2: Verificar y crear archivos esenciales UNIVERSALES
+            if not self.preparar_archivos_universales():
                 return
             
             self.progress_signal.emit(20)
@@ -71,7 +71,7 @@ class BackendDeployThread(QThread):
                 # Paso 6: Verificar deploy
                 if self.verificar_deploy():
                     self.progress_signal.emit(100)
-                    self.finished_signal.emit(True, f"✅ ¡DEPLOY COMPLETADO EXITOSAMENTE! 🎉\n\nTu aplicación está funcionando en PRODUCCIÓN:\n{self.datos_hosting.get('base_url', 'N/A')}")
+                    self.finished_signal.emit(True, f"✅ ¡DEPLOY COMPLETADO EXITOSAMENTE! 🎉\n\nTu aplicación está funcionando en PRODUCCIÓN:\n{self.datos_hosting.get('base_url', 'URL del servidor')}")
                 else:
                     self.finished_signal.emit(True, f"⚠️  Deploy completado pero la verificación mostró advertencias")
             else:
@@ -80,42 +80,50 @@ class BackendDeployThread(QThread):
         except Exception as e:
             self.finished_signal.emit(False, f"❌ Error: {str(e)}")
     
-    def preparar_archivos_produccion(self):
-        """Verificar y crear archivos esenciales para PRODUCCIÓN"""
-        self.log_signal.emit("🔧 Configurando para PRODUCCIÓN...")
+    def preparar_archivos_universales(self):
+        """Verificar y crear archivos esenciales para CUALQUIER servidor"""
+        self.log_signal.emit("🔧 Configurando para PRODUCCIÓN UNIVERSAL...")
         
-        # ✅ 1. ACTUALIZAR requirements.txt CON GUNICORN
+        # ✅ 1. ACTUALIZAR requirements.txt CON DEPENDENCIAS UNIVERSALES
         requirements_path = os.path.join(self.backend_path, "requirements.txt")
+        dependencias_universales = [
+            "gunicorn==20.1.0",
+            "Flask==2.3.3",
+            "Flask-CORS==4.0.0",
+            "mysql-connector-python==8.1.0",
+            "requests==2.31.0"
+        ]
+        
         if os.path.exists(requirements_path):
             try:
                 with open(requirements_path, 'r', encoding='utf-8') as f:
                     contenido = f.read()
                 
-                if 'gunicorn' not in contenido:
-                    self.log_signal.emit("📦 Agregando gunicorn a requirements.txt...")
+                dependencias_faltantes = []
+                for dep in dependencias_universales:
+                    if dep.split('==')[0] not in contenido:
+                        dependencias_faltantes.append(dep)
+                
+                if dependencias_faltantes:
+                    self.log_signal.emit("📦 Agregando dependencias universales...")
                     with open(requirements_path, 'a', encoding='utf-8') as f:
-                        f.write("\ngunicorn==20.1.0\n")
-                    self.log_signal.emit("✅ gunicorn agregado para producción")
+                        f.write("\n# === DEPENDENCIAS PRODUCCIÓN ===\n")
+                        for dep in dependencias_faltantes:
+                            f.write(f"{dep}\n")
+                            self.log_signal.emit(f"   ✅ {dep}")
+                    self.log_signal.emit("✅ Dependencias universales agregadas")
                 else:
-                    self.log_signal.emit("✅ gunicorn ya está en requirements.txt")
+                    self.log_signal.emit("✅ Todas las dependencias ya están presentes")
             except Exception as e:
                 self.log_signal.emit(f"⚠️  Error actualizando requirements.txt: {str(e)}")
         
-        # ✅ 2. CREAR/MODIFICAR Procfile PARA PRODUCCIÓN
-        procfile_path = os.path.join(self.backend_path, "Procfile")
-        try:
-            procfile_content = "web: gunicorn api:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120"
-            with open(procfile_path, 'w', encoding='utf-8') as f:
-                f.write(procfile_content)
-            self.log_signal.emit("✅ Procfile configurado para producción con gunicorn")
-        except Exception as e:
-            self.log_signal.emit(f"❌ Error creando Procfile: {str(e)}")
-            return False
-        
-        # ✅ 3. CREAR/MODIFICAR railway.toml
-        railway_toml_path = os.path.join(self.backend_path, "railway.toml")
-        try:
-            railway_config = """[build]
+        # ✅ 2. CREAR ARCHIVOS DE CONFIGURACIÓN PARA DIFERENTES PLATAFORMAS
+        archivos_config = {
+            # Render
+            "Procfile": "web: gunicorn api:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120",
+            
+            # Railway
+            "railway.toml": """[build]
 builder = "nixpacks"
 
 [deploy]
@@ -124,31 +132,70 @@ startCommand = "gunicorn api:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120"
 [[services]]
 name = "web"
 type = "web"
+""",
+            
+            # Heroku
+            "Procfile.windows": "web: gunicorn api:app --bind 0.0.0.0:%PORT% --workers 2 --timeout 120",
+            
+            # Configuración general
+            "runtime.txt": "python-3.9.0",
+            
+            # Render (configuración YAML)
+            "render.yaml": """services:
+  - type: web
+    name: turismo-backend
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn api:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120
 """
-            with open(railway_toml_path, 'w', encoding='utf-8') as f:
-                f.write(railway_config)
-            self.log_signal.emit("✅ railway.toml configurado para producción")
-        except Exception as e:
-            self.log_signal.emit(f"❌ Error creando railway.toml: {str(e)}")
-            return False
+        }
         
-        # ✅ 4. CREAR runtime.txt si no existe
-        runtime_path = os.path.join(self.backend_path, "runtime.txt")
-        if not os.path.exists(runtime_path):
+        for archivo, contenido in archivos_config.items():
             try:
-                with open(runtime_path, 'w', encoding='utf-8') as f:
-                    f.write("python-3.9.0")
-                self.log_signal.emit("✅ runtime.txt creado")
+                archivo_path = os.path.join(self.backend_path, archivo)
+                with open(archivo_path, 'w', encoding='utf-8') as f:
+                    f.write(contenido)
+                self.log_signal.emit(f"✅ {archivo} - Configurado")
             except Exception as e:
-                self.log_signal.emit(f"⚠️  Error creando runtime.txt: {str(e)}")
+                self.log_signal.emit(f"⚠️  Error creando {archivo}: {str(e)}")
         
-        # ✅ 5. VERIFICAR ARCHIVOS ESENCIALES
+        # ✅ 3. CREAR .env.example PARA CONFIGURACIÓN
+        env_example_path = os.path.join(self.backend_path, ".env.example")
+        try:
+            env_content = """# === CONFIGURACIÓN BASE DE DATOS ===
+# LOCAL
+LOCAL_DB_HOST=localhost
+LOCAL_DB_USER=root
+LOCAL_DB_PASSWORD=
+LOCAL_DB_NAME=databaseapp
+LOCAL_DB_PORT=3306
+
+# PRODUCCIÓN (Render/Railway/Heroku)
+MYSQLHOST=tu_host_mysql
+MYSQLUSER=tu_usuario
+MYSQLPASSWORD=tu_password
+MYSQLDATABASE=tu_base_datos
+MYSQLPORT=3306
+
+# ENTORNO
+RAILWAY_ENVIRONMENT=production
+PORT=10000
+"""
+            with open(env_example_path, 'w', encoding='utf-8') as f:
+                f.write(env_content)
+            self.log_signal.emit("✅ .env.example - Creado para configuración")
+        except Exception as e:
+            self.log_signal.emit(f"⚠️  Error creando .env.example: {str(e)}")
+        
+        # ✅ 4. VERIFICAR ARCHIVOS ESENCIALES UNIVERSALES
         archivos_esenciales = {
             "api.py": "Servidor Flask principal",
             "requirements.txt": "Dependencias Python", 
-            "database_hosting.py": "Conexión BD",
+            "Procfile": "Configuración proceso (Render/Heroku)",
             "railway.toml": "Configuración Railway",
-            "Procfile": "Configuración proceso"
+            "render.yaml": "Configuración Render",
+            "assets/": "Archivos estáticos"
         }
         
         todos_encontrados = True
@@ -161,6 +208,7 @@ type = "web"
                 if archivo in ["api.py", "requirements.txt"]:
                     todos_encontrados = False
         
+        self.log_signal.emit("🎯 Configurado para: Render, Railway, Heroku y más")
         return todos_encontrados
     
     def copiar_assets_al_repositorio(self):
@@ -292,41 +340,56 @@ type = "web"
             self.log_signal.emit(f"⚠️  Error mostrando estructura: {str(e)}")
     
     def ejecutar_deploy(self, tipo, servidor, comando_personalizado=""):
-        """Ejecutar deploy según el tipo de servidor"""
+        """Ejecutar deploy según el tipo de servidor - UNIVERSAL"""
         try:
             if tipo == "cli":
-                return self.deploy_con_cli(servidor, comando_personalizado)
+                return self.deploy_con_cli_universal(servidor, comando_personalizado)
             elif tipo == "git":
-                return self.deploy_con_git_completo(servidor, comando_personalizado)
+                return self.deploy_con_git_universal(servidor, comando_personalizado)
             elif tipo == "manual":
-                return self.deploy_manual(servidor)
+                return self.deploy_manual_universal(servidor)
             else:
-                return self.deploy_con_git_completo(servidor, comando_personalizado)
+                return self.deploy_con_git_universal(servidor, comando_personalizado)
                 
         except Exception as e:
             self.log_signal.emit(f"❌ Error en deploy {servidor}: {str(e)}")
-            return self.deploy_con_git_completo(servidor, comando_personalizado)
+            return self.deploy_con_git_universal(servidor, comando_personalizado)
     
-    def deploy_con_cli(self, servidor, comando_personalizado=""):
-        """Deploy usando CLI específico (Railway, Heroku, etc.)"""
+    def deploy_con_cli_universal(self, servidor, comando_personalizado=""):
+        """Deploy usando CLI específico para CUALQUIER plataforma"""
         try:
-            self.log_signal.emit(f"🔧 Ejecutando deploy via CLI para {servidor}...")
+            self.log_signal.emit(f"🔧 Ejecutando deploy via CLI universal...")
             
-            # Determinar qué CLI usar basado en el servidor
-            if "railway" in servidor.lower():
-                cli_tool = "railway"
-                comando_base = "railway deploy"
-            elif "heroku" in servidor.lower():
-                cli_tool = "heroku"
-                comando_base = "git push heroku main"
+            # Mapeo de plataformas y sus CLIs
+            plataformas = {
+                "railway": {"cli": "railway", "comando": "railway deploy"},
+                "render": {"cli": "render", "comando": "render deploy"},
+                "heroku": {"cli": "heroku", "comando": "git push heroku main"},
+                "netlify": {"cli": "netlify", "comando": "netlify deploy --prod"},
+                "vercel": {"cli": "vercel", "comando": "vercel --prod"}
+            }
+            
+            # Detectar plataforma
+            plataforma_detectada = None
+            for plataforma, config in plataformas.items():
+                if plataforma in servidor.lower():
+                    plataforma_detectada = plataforma
+                    break
+            
+            if plataforma_detectada:
+                cli_tool = plataformas[plataforma_detectada]["cli"]
+                comando_base = plataformas[plataforma_detectada]["comando"]
+                self.log_signal.emit(f"🎯 Plataforma detectada: {plataforma_detectada.upper()}")
             else:
                 # CLI genérico
                 cli_tool = servidor
                 comando_base = comando_personalizado
+                self.log_signal.emit(f"🔧 Usando CLI genérico: {servidor}")
             
             # Verificar que la CLI está instalada
             if not self.verificar_herramienta(cli_tool):
                 self.log_signal.emit(f"❌ {cli_tool} CLI no encontrado")
+                self.log_signal.emit("💡 Instala el CLI o usa deploy por Git")
                 return False
             
             # Ejecutar comando de deploy
@@ -356,46 +419,62 @@ type = "web"
             self.log_signal.emit(f"❌ Error en CLI deploy: {str(e)}")
             return False
 
-    def deploy_manual(self, servidor):
-        """Provee instrucciones para deploy manual"""
+    def deploy_manual_universal(self, servidor):
+        """Provee instrucciones para deploy manual en CUALQUIER plataforma"""
         try:
-            self.log_signal.emit("📋 MODO MANUAL - INSTRUCCIONES:")
+            self.log_signal.emit("📋 MODO MANUAL UNIVERSAL - INSTRUCCIONES:")
             self.log_signal.emit("=" * 50)
             
-            # Instrucciones específicas basadas en el servidor
-            if "railway" in servidor.lower():
-                instrucciones = [
+            # Instrucciones para diferentes plataformas
+            instrucciones_por_plataforma = {
+                "railway": [
                     "1. Abrir terminal en la carpeta del backend",
                     "2. Ejecutar: railway login",
                     "3. Ejecutar: railway link (si no está vinculado)",
                     "4. Ejecutar: railway deploy",
                     "5. O usar: git push origin main (si está conectado a GitHub)"
-                ]
-            elif "heroku" in servidor.lower():
-                instrucciones = [
+                ],
+                "render": [
+                    "1. Conectar repositorio GitHub a Render",
+                    "2. Configurar Auto-Deploy en Render",
+                    "3. O subir archivos manualmente via Git:",
+                    "4. git add . && git commit -m 'deploy'",
+                    "5. git push origin main"
+                ],
+                "heroku": [
                     "1. Abrir terminal en la carpeta del backend", 
                     "2. Ejecutar: heroku login",
                     "3. Ejecutar: git push heroku main",
                     "4. O usar: heroku deploy:war"
-                ]
-            else:
-                instrucciones = [
+                ],
+                "general": [
                     "1. Subir manualmente los archivos al servidor",
                     "2. Asegurar que requirements.txt tiene gunicorn",
                     "3. Configurar Procfile para producción",
-                    "4. Reiniciar servicio web"
+                    "4. Configurar variables de entorno",
+                    "5. Reiniciar servicio web"
                 ]
+            }
             
-            for paso in instrucciones:
+            # Determinar qué instrucciones mostrar
+            plataforma = "general"
+            for key in instrucciones_por_plataforma:
+                if key in servidor.lower():
+                    plataforma = key
+                    break
+            
+            self.log_signal.emit(f"📚 Instrucciones para: {plataforma.upper()}")
+            for paso in instrucciones_por_plataforma[plataforma]:
                 self.log_signal.emit(f"   {paso}")
             
             self.log_signal.emit("")
-            self.log_signal.emit("📁 Archivos preparados para deploy manual:")
+            self.log_signal.emit("📁 Archivos preparados para deploy universal:")
             
-            # Listar archivos esenciales
+            # Listar archivos esenciales para todas las plataformas
             archivos_esenciales = [
                 "api.py", "requirements.txt", "database_hosting.py",
-                "railway.toml", "Procfile", "assets/", "runtime.txt"
+                "Procfile", "railway.toml", "render.yaml", 
+                "runtime.txt", ".env.example", "assets/"
             ]
             
             for archivo in archivos_esenciales:
@@ -413,17 +492,19 @@ type = "web"
                     self.log_signal.emit(f"   ❌ {archivo} - FALTANTE")
             
             self.log_signal.emit("")
-            self.log_signal.emit("🎯 El backend está listo para deploy manual")
+            self.log_signal.emit("🎯 Configurado para: Render, Railway, Heroku, Netlify, Vercel")
+            self.log_signal.emit("🚀 El backend está listo para deploy universal")
             return True
             
         except Exception as e:
             self.log_signal.emit(f"❌ Error generando instrucciones: {str(e)}")
             return False
     
-    def deploy_con_git_completo(self, servidor, comando):
-        """✅ DEPLOY COMPLETO con Git - Con pull automático"""
+    def deploy_con_git_universal(self, servidor, comando):
+        """✅ DEPLOY UNIVERSAL con Git - Compatible con todas las plataformas"""
         try:
-            self.log_signal.emit(f"📦 Ejecutando DEPLOY AUTOMÁTICO via Git...")
+            self.log_signal.emit(f"📦 Ejecutando DEPLOY UNIVERSAL via Git...")
+            self.log_signal.emit("🎯 Compatible con: Render, Railway, Heroku, etc.")
             
             if not self.verificar_herramienta("git"):
                 self.log_signal.emit("❌ Git no encontrado en el sistema")
@@ -467,7 +548,7 @@ type = "web"
             self.log_signal.emit("✅ Todos los archivos agregados al staging")
             
             # ✅ PASO 3: COMMIT
-            mensaje_commit = f"Deploy PRODUCCIÓN: API + Assets + Gunicorn - {time.strftime('%Y-%m-%d %H:%M')}"
+            mensaje_commit = f"Deploy UNIVERSAL: API + Assets + Multiplataforma - {time.strftime('%Y-%m-%d %H:%M')}"
             self.log_signal.emit(f"💾 Realizando commit: {mensaje_commit}")
             
             commit_result = subprocess.run(
@@ -481,7 +562,7 @@ type = "web"
             else:
                 self.log_signal.emit("ℹ️  Sin cambios para commitear (posiblemente ya estaban commiteados)")
             
-            # ✅ PASO 4: PUSH
+            # ✅ PASO 4: PUSH UNIVERSAL
             comando_push = comando if comando else "git push origin main"
             self.log_signal.emit(f"🔧 Ejecutando: {comando_push}")
             
@@ -494,6 +575,13 @@ type = "web"
             
             if result_push.returncode == 0:
                 self.log_signal.emit("🎉 ¡PUSH EXITOSO A GITHUB!")
+                self.log_signal.emit("🌍 Compatible con todas las plataformas:")
+                self.log_signal.emit("   ✅ Render - Auto-deploy con GitHub")
+                self.log_signal.emit("   ✅ Railway - Auto-deploy con GitHub") 
+                self.log_signal.emit("   ✅ Heroku - Auto-deploy con GitHub")
+                self.log_signal.emit("   ✅ Netlify - Auto-deploy con GitHub")
+                self.log_signal.emit("   ✅ Vercel - Auto-deploy con GitHub")
+                
                 if result_push.stdout:
                     for linea in result_push.stdout.split('\n'):
                         if linea.strip() and any(x in linea for x in ['Writing objects', 'To http', 'master ->', 'main ->']):
@@ -502,8 +590,8 @@ type = "web"
                 # Verificar assets en GitHub
                 self.verificar_assets_en_git()
                 
-                self.log_signal.emit("🔄 Railway detectará los cambios automáticamente...")
-                self.log_signal.emit("⏳ El deploy en Railway puede tomar 2-5 minutos")
+                self.log_signal.emit("🔄 Las plataformas detectarán los cambios automáticamente...")
+                self.log_signal.emit("⏳ El deploy puede tomar 2-5 minutos")
                 self.log_signal.emit("🚀 Configurado para PRODUCCIÓN con Gunicorn")
                 
                 return True
@@ -544,13 +632,14 @@ type = "web"
             self.log_signal.emit(f"⚠️  No se pudo verificar assets: {str(e)}")
     
     def verificar_deploy(self):
-        """Verificar que el deploy funcionó correctamente"""
+        """Verificar que el deploy funcionó correctamente en CUALQUIER servidor"""
         try:
             base_url = self.datos_hosting.get('base_url')
             if not base_url or base_url == 'No configurada':
+                self.log_signal.emit("⚠️  No hay URL configurada para verificación")
                 return True
             
-            self.log_signal.emit("🔍 Verificando estado del servidor en PRODUCCIÓN...")
+            self.log_signal.emit("🔍 Verificando estado del servidor...")
             self.log_signal.emit(f"🌐 URL: {base_url}")
             
             endpoints = [
@@ -569,8 +658,13 @@ type = "web"
                         if endpoint == "/api/health":
                             try:
                                 data = response.json()
+                                info_extra = []
                                 if 'entorno' in data:
-                                    self.log_signal.emit(f"   🏭 Entorno: {data['entorno']}")
+                                    info_extra.append(f"Entorno: {data['entorno']}")
+                                if 'base_datos' in data:
+                                    info_extra.append(f"BD: {data['base_datos']}")
+                                if info_extra:
+                                    self.log_signal.emit(f"   📊 {' | '.join(info_extra)}")
                             except:
                                 pass
                     else:
@@ -585,6 +679,7 @@ type = "web"
                 self.log_signal.emit("✅ Servidor configurado con Gunicorn para producción")
             else:
                 self.log_signal.emit("⚠️  Algunos endpoints tienen problemas")
+                self.log_signal.emit("💡 El deploy puede estar en progreso...")
             
             return True
             
@@ -610,7 +705,7 @@ type = "web"
             return False
 
 class DialogoBackendDeploy(QDialog):
-    """Diálogo para deploy COMPLETO del backend en PRODUCCIÓN"""
+    """Diálogo para deploy COMPLETO del backend en CUALQUIER servidor"""
     
     def __init__(self, parent=None, backend_path=None):
         super().__init__(parent)
@@ -630,36 +725,32 @@ class DialogoBackendDeploy(QDialog):
                 host = self.datos_hosting.get('host', 'N/A')
                 base_url = self.datos_hosting.get('base_url', 'No configurada')
                 
-                usuario = self.datos_hosting.get('user', 'N/A')
-                base_datos = self.datos_hosting.get('database', 'N/A')
-                puerto = self.datos_hosting.get('port', 'N/A')
-                
                 info_text = (
-                    f"🌐 Host: {host}\n"
+                    f"🌐 Servidor: {host}\n"
                     f"🔗 URL: {base_url}\n"
-                    f"👤 Usuario: {usuario}\n"
-                    f"🗃️ BD: {base_datos}\n"
-                    f"🔒 Puerto: {puerto}"
+                    f"👤 Usuario: {self.datos_hosting.get('user', 'N/A')}\n"
+                    f"🗃️ BD: {self.datos_hosting.get('database', 'N/A')}\n"
+                    f"🔧 Plataforma: Multi-hosting"
                 )
                 
                 self.lbl_info_hosting.setText(info_text)
                 self.log(f"✅ Configuración cargada: {host}")
                 
-                # Auto-seleccionar Git como método principal
-                self.combo_tipo.setCurrentText("📦 Git (Automático)")
+                # Auto-seleccionar Git como método universal
+                self.combo_tipo.setCurrentText("📦 Git (Universal)")
                 self.txt_comando.setText("git push origin main")
                 
             else:
-                self.lbl_info_hosting.setText("❌ No hay configuración de hosting")
-                self.log("⚠️  Configure primero el hosting")
+                self.lbl_info_hosting.setText("🌐 Servidor: Multiplataforma\n🔗 URL: Configurar en hosting\n🔧 Compatible: Render, Railway, Heroku, etc.")
+                self.log("⚠️  Configure hosting o use deploy universal")
                 
         except Exception as e:
-            self.lbl_info_hosting.setText("❌ Error cargando configuración")
-            self.log(f"❌ Error: {str(e)}")
+            self.lbl_info_hosting.setText("🌐 Servidor: Multiplataforma\n🔗 URL: Configurar después\n🎯 Compatible con cualquier hosting")
+            self.log(f"⚠️  Error cargando BD, usando modo universal: {str(e)}")
 
     def setup_ui(self):
-        self.setWindowTitle("🚀 Deploy PRODUCCIÓN - Backend + Assets")
-        self.setFixedSize(680, 520)
+        self.setWindowTitle("🚀 Deploy UNIVERSAL - Cualquier Servidor")
+        self.setFixedSize(700, 550)
         
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -669,7 +760,7 @@ class DialogoBackendDeploy(QDialog):
         layout.setContentsMargins(12, 12, 12, 12)
         
         # Título
-        titulo = QLabel("🚀 DEPLOY COMPLETO PARA PRODUCCIÓN")
+        titulo = QLabel("🚀 DEPLOY UNIVERSAL - MULTIPLATAFORMA")
         titulo.setStyleSheet("font-size: 14px; font-weight: bold; color: #2c3e50; margin: 8px 0px;")
         layout.addWidget(titulo)
         
@@ -687,7 +778,7 @@ class DialogoBackendDeploy(QDialog):
         layout.addWidget(info_hosting_group)
         
         # Configuración de deploy
-        config_group = QGroupBox("⚙️ Configuración de Deploy")
+        config_group = QGroupBox("⚙️ Configuración de Deploy Universal")
         config_layout = QVBoxLayout()
         config_layout.setSpacing(8)
         
@@ -696,7 +787,7 @@ class DialogoBackendDeploy(QDialog):
         config_layout.addWidget(lbl_tipo)
         
         self.combo_tipo = QComboBox()
-        tipos = ["📦 Git (Automático)", "🔧 CLI (Railway)", "📋 Manual"]
+        tipos = ["📦 Git (Universal)", "🔧 CLI (Específico)", "📋 Manual"]
         self.combo_tipo.addItems(tipos)
         self.combo_tipo.setStyleSheet("font-size: 11px; padding: 6px; height: 30px;")
         config_layout.addWidget(self.combo_tipo)
@@ -710,11 +801,16 @@ class DialogoBackendDeploy(QDialog):
         self.txt_comando.setStyleSheet("padding: 6px; font-size: 11px; height: 30px;")
         config_layout.addWidget(self.txt_comando)
         
+        # Info plataformas
+        lbl_plataformas = QLabel("🎯 Plataformas compatibles: Render, Railway, Heroku, Netlify, Vercel")
+        lbl_plataformas.setStyleSheet("font-size: 10px; color: #7f8c8d; font-style: italic;")
+        config_layout.addWidget(lbl_plataformas)
+        
         config_group.setLayout(config_layout)
         layout.addWidget(config_group)
         
         # Información del backend
-        info_backend_group = QGroupBox("📁 Archivos para PRODUCCIÓN")
+        info_backend_group = QGroupBox("📁 Archivos para PRODUCCIÓN UNIVERSAL")
         info_backend_layout = QVBoxLayout()
         
         self.lbl_backend = QLabel(f"📁 {self.backend_path}")
@@ -751,8 +847,8 @@ class DialogoBackendDeploy(QDialog):
         botones_layout = QHBoxLayout()
         botones_layout.setSpacing(8)
         
-        self.btn_deploy = QPushButton("🚀 Deploy PRODUCCIÓN (Gunicorn)")
-        self.btn_deploy.setStyleSheet("QPushButton { background-color: #27ae60; color: white; padding: 8px 15px; border: none; border-radius: 4px; font-weight: bold; font-size: 11px; min-width: 200px; } QPushButton:hover { background-color: #219a52; } QPushButton:disabled { background-color: #bdc3c7; }")
+        self.btn_deploy = QPushButton("🚀 Deploy UNIVERSAL")
+        self.btn_deploy.setStyleSheet("QPushButton { background-color: #9b59b6; color: white; padding: 8px 15px; border: none; border-radius: 4px; font-weight: bold; font-size: 11px; min-width: 200px; } QPushButton:hover { background-color: #8e44ad; } QPushButton:disabled { background-color: #bdc3c7; }")
         
         self.btn_verificar = QPushButton("🔍 Verificar")
         self.btn_verificar.setStyleSheet("QPushButton { background-color: #3498db; color: white; padding: 8px 15px; border: none; border-radius: 4px; font-weight: bold; font-size: 11px; min-width: 100px; } QPushButton:hover { background-color: #2980b9; }")
@@ -783,18 +879,19 @@ class DialogoBackendDeploy(QDialog):
         self.verificar_archivos()
 
     def verificar_archivos(self):
-        """Verificar archivos para deploy en producción"""
+        """Verificar archivos para deploy universal"""
         try:
             archivos_esenciales = {
                 "api.py": "Servidor Flask",
                 "requirements.txt": "Dependencias", 
-                "database_hosting.py": "Conexión BD",
-                "railway.toml": "Config Railway",
-                "Procfile": "Config Proceso",
-                ".git": "Repositorio Git"
+                "Procfile": "Render/Heroku",
+                "railway.toml": "Railway",
+                "render.yaml": "Render",
+                ".git": "Repositorio Git",
+                "assets/": "Archivos estáticos"
             }
             
-            mensaje = ""
+            mensaje = "🎯 CONFIGURACIÓN UNIVERSAL:\n"
             for archivo, descripcion in archivos_esenciales.items():
                 ruta_archivo = os.path.join(self.backend_path, archivo)
                 existe = os.path.exists(ruta_archivo)
@@ -807,23 +904,15 @@ class DialogoBackendDeploy(QDialog):
                 with open(requirements_path, 'r') as f:
                     contenido = f.read()
                 if 'gunicorn' in contenido:
-                    mensaje += "✅ Gunicorn - Configurado para producción\n"
+                    mensaje += "✅ Gunicorn - Servidor producción\n"
                 else:
-                    mensaje += "❌ Gunicorn - Faltante para producción\n"
+                    mensaje += "❌ Gunicorn - Faltante\n"
             
-            # Verificar assets
-            assets_path = os.path.join(self.backend_path, "assets")
-            if os.path.exists(assets_path):
-                try:
-                    num_assets = len(os.listdir(assets_path))
-                    mensaje += f"✅ Assets: {num_assets} archivos listos\n"
-                except:
-                    mensaje += "✅ Assets: Carpeta encontrada\n"
-            else:
-                mensaje += "❌ Assets: No encontrados\n"
-            
+            # Verificar multiplataforma
+            mensaje += "🔧 Plataformas: Render, Railway, Heroku+\n"
+
             self.lbl_archivos.setText(mensaje)
-            self.log("🔍 Verificación completada para PRODUCCIÓN")
+            self.log("🔍 Verificación UNIVERSAL completada")
             
         except Exception as e:
             self.lbl_archivos.setText(f"❌ Error: {str(e)}")
@@ -832,8 +921,8 @@ class DialogoBackendDeploy(QDialog):
         """Obtener tipo de deploy seleccionado"""
         texto = self.combo_tipo.currentText()
         mapeo = {
-            "📦 Git (Automático)": "git",
-            "🔧 CLI (Railway)": "cli", 
+            "📦 Git (Universal)": "git",
+            "🔧 CLI (Específico)": "cli", 
             "📋 Manual": "manual"
         }
         return mapeo.get(texto, "git")
@@ -847,11 +936,7 @@ class DialogoBackendDeploy(QDialog):
         self.log_output.moveCursor(self.log_output.textCursor().End)
 
     def iniciar_deploy(self):
-        """Iniciar deploy completo para producción"""
-        if not self.datos_hosting:
-            QMessageBox.warning(self, "Configuración", "Configure hosting primero")
-            return
-        
+        """Iniciar deploy universal para cualquier servidor"""
         self.verificar_archivos()
         
         tipo = self.obtener_tipo_deploy()
@@ -862,14 +947,14 @@ class DialogoBackendDeploy(QDialog):
         self.progress_bar.setValue(0)
         
         self.log_output.clear()
-        self.log("🚀 INICIANDO DEPLOY PARA PRODUCCIÓN...")
-        self.log("📝 Configurando Gunicorn como servidor WSGI de producción")
+        self.log("🚀 INICIANDO DEPLOY UNIVERSAL...")
+        self.log("🎯 Compatible con: Render, Railway, Heroku, Netlify, Vercel")
         
         config = {
-            'nombre': self.datos_hosting.get('host', 'Servidor'),
+            'nombre': self.datos_hosting.get('host', 'Servidor Universal') if self.datos_hosting else 'Multiplataforma',
             'tipo': tipo,
             'comando': comando,
-            'datos_hosting': self.datos_hosting
+            'datos_hosting': self.datos_hosting or {}
         }
         
         self.deploy_thread = BackendDeployThread(self.backend_path, config)
@@ -884,16 +969,16 @@ class DialogoBackendDeploy(QDialog):
         self.log(mensaje)
         
         if exito:
-            QMessageBox.information(self, "🎉 ¡PRODUCCIÓN CONFIGURADA!", 
+            QMessageBox.information(self, "🎉 ¡DEPLOY UNIVERSAL EXITOSO!", 
                                   f"{mensaje}\n\n"
-                                  f"✅ Gunicorn configurado como servidor WSGI\n"
+                                  f"✅ Configurado para MULTIPLATAFORMA\n"
+                                  f"✅ Gunicorn como servidor WSGI\n"
                                   f"✅ Sincronización con GitHub completada\n"
                                   f"✅ Assets copiados al repositorio\n"
-                                  f"✅ Código subido a GitHub\n" 
-                                  f"✅ Railway desplegando automáticamente\n"
-                                  f"✅ API funcionando en PRODUCCIÓN")
+                                  f"✅ Archivos para Render, Railway, Heroku\n"
+                                  f"🎯 Compatible con cualquier hosting")
         else:
-            QMessageBox.critical(self, "❌ Error", mensaje)
+            QMessageBox.critical(self, "❌ Error en Deploy", mensaje)
 
 def mostrar_dialogo_backend_deploy(parent=None):
     dialogo = DialogoBackendDeploy(parent)
