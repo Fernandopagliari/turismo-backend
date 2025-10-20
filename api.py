@@ -11,7 +11,7 @@ CORS(app)
 # =========================
 # CONFIGURACIÓN PARA SERVIR BUILD DE REACT
 # =========================
-app.static_folder = os.path.join(os.path.dirname(__file__), "build")
+app.static_folder = os.path.join(os.path.dirname(__file__), "assets")  
 app.static_url_path = ""
 
 
@@ -184,15 +184,15 @@ def servir_imagenes(filename):
 def serve_react_app(path):
     """Servir la aplicación React - Client Side Routing CORREGIDO"""
     try:
-        # Si es un archivo en assets/, servirlo directamente
-        if path.startswith('assets/'):
+        # Si es un archivo específico, servirlo directamente
+        if path and path != "" and os.path.exists(os.path.join(app.static_folder, path)):
             return send_from_directory(app.static_folder, path)
         
-        # Para cualquier otra ruta, servir index.html (React Router manejará)
+        # Para cualquier otra ruta, servir index.html
         return send_from_directory(app.static_folder, 'index.html')
     except Exception as e:
         return jsonify({"error": "Frontend no disponible", "details": str(e)}), 500
-
+    
 # =========================
 # ENDPOINTS PRINCIPALES - SOLO RUTAS RELATIVAS
 # =========================
