@@ -212,13 +212,83 @@ PORT=10000
         return todos_encontrados
     
     def copiar_assets_al_repositorio(self):
-        """Copiar assets desde turismo-app/public/assets al repositorio MANTENIENDO ESTRUCTURA"""
+        """Copiar assets Y build de React al repositorio MANTENIENDO ESTRUCTURA COMPLETA"""
         try:
-            # Buscar assets en diferentes ubicaciones posibles
+            # ✅ PRIMERO: Generar build de React si existe el frontend
+            frontend_path = os.path.join(os.path.dirname(self.backend_path), "frontend")
+            build_generado = False
+            
+            if os.path.exists(frontend_path):
+                self.log_signal.emit("🔄 Generando build de React...")
+                try:
+                    os.chdir(frontend_path)
+                    result = subprocess.run(["npm", "run", "build"], capture_output=True, text=True, timeout=120)
+                    if result.returncode == 0:
+                        self.log_signal.emit("✅ Build de React generado exitosamente")
+                        build_generado = True
+                        
+                        # Mostrar info del build
+                        if result.stdout:
+                            for line in result.stdout.split('\n'):
+                                if 'compiled' in line.lower() or 'build' in line.lower():
+                                    self.log_signal.emit(f"   📦 {line.strip()}")
+                    else:
+                        self.log_signal.emit(f"❌ Error en build React: {result.stderr}")
+                except subprocess.TimeoutExpired:
+                    self.log_signal.emit("⏰ Timeout generando build React")
+                except Exception as e:
+                    self.log_signal.emit(f"⚠️  Error generando build: {str(e)}")
+            
+            assets_destino = os.path.join(self.backend_path, "assets")
+            
+            # ✅ SEGUNDO: Copiar build de React a assets (si se generó)
+            if build_generado:
+                build_path = os.path.join(frontend_path, "build", "dist")  # Vite
+                if not os.path.exists(build_path):
+                    build_path = os.path.join(frontend_path, "build")  # Create React App
+                
+                if os.path.exists(build_path):
+                    self.log_signal.emit("📦 Copiando build de React a assets...")
+                    
+                    # Crear carpeta assets si no existe
+                    if not os.path.exists(assets_destino):
+                        os.makedirs(assets_destino)
+                    
+                    # Copiar TODO el contenido del build
+                    items_copiados = 0
+                    for item in os.listdir(build_path):
+                        origen_item = os.path.join(build_path, item)
+                        destino_item = os.path.join(assets_destino, item)
+                        
+                        try:
+                            if os.path.isdir(origen_item):
+                                shutil.copytree(origen_item, destino_item, dirs_exist_ok=True)
+                                # Contar archivos en la carpeta
+                                count = sum([len(files) for r, d, files in os.walk(destino_item)])
+                                items_copiados += count
+                                self.log_signal.emit(f"   📁 {item}/ ({count} archivos)")
+                            else:
+                                shutil.copy2(origen_item, destino_item)
+                                items_copiados += 1
+                                self.log_signal.emit(f"   📄 {item}")
+                        except Exception as e:
+                            self.log_signal.emit(f"   ⚠️  Error copiando {item}: {str(e)}")
+                    
+                    self.log_signal.emit(f"✅ {items_copiados} archivos de React copiados")
+                    
+                    # Verificar que index.html existe
+                    index_path = os.path.join(assets_destino, "index.html")
+                    if os.path.exists(index_path):
+                        self.log_signal.emit("🎯 index.html encontrado - Frontend listo")
+                    else:
+                        self.log_signal.emit("❌ index.html NO encontrado en build")
+            
+            # ✅ TERCERO: Buscar y copiar assets adicionales (imágenes, etc.)
             posibles_rutas_assets = [
                 os.path.join(os.path.dirname(self.backend_path), "..", "frontend", "public", "assets"),
                 os.path.join(os.path.dirname(self.backend_path), "..", "public", "assets"),
                 os.path.join(os.path.dirname(self.backend_path), "public", "assets"),
+                os.path.join(os.path.dirname(self.backend_path), "..", "assets"),
             ]
             
             assets_origen = None
@@ -228,84 +298,81 @@ PORT=10000
                     assets_origen = ruta_abs
                     break
             
-            if not assets_origen:
-                self.log_signal.emit("⚠️  No se encontraron assets en las ubicaciones esperadas")
-                return True
-            
-            assets_destino = os.path.join(self.backend_path, "assets")
-            
-            self.log_signal.emit(f"📁 Assets encontrados en: {assets_origen}")
-            
-            try:
-                contenido = os.listdir(assets_origen)
-                if not contenido:
-                    self.log_signal.emit("ℹ️  Carpeta assets vacía")
-                    return True
+            if assets_origen:
+                self.log_signal.emit(f"📁 Assets adicionales encontrados en: {assets_origen}")
                 
-                self.log_signal.emit(f"📦 Encontrados {len(contenido)} elementos en assets")
-                for item in contenido:
-                    ruta_item = os.path.join(assets_origen, item)
-                    if os.path.isdir(ruta_item):
-                        try:
-                            subitems = os.listdir(ruta_item)
-                            self.log_signal.emit(f"   📂 {item}/ ({len(subitems)} elementos)")
-                        except:
-                            self.log_signal.emit(f"   📂 {item}/")
-                    else:
-                        self.log_signal.emit(f"   📄 {item}")
+                try:
+                    contenido = os.listdir(assets_origen)
+                    if contenido:
+                        self.log_signal.emit(f"📦 Encontrados {len(contenido)} elementos en assets adicionales")
                         
-            except Exception as e:
-                self.log_signal.emit(f"⚠️  Error listando assets: {str(e)}")
-                return True
-            
-            self.log_signal.emit("🔄 Copiando assets al repositorio MANTENIENDO ESTRUCTURA...")
-            
-            # ✅ FUNCIÓN RECURSIVA PARA COPIAR MANTENIENDO ESTRUCTURA
-            def copiar_recursivo(origen, destino):
-                """Copia recursivamente manteniendo estructura de carpetas"""
-                if not os.path.exists(destino):
-                    os.makedirs(destino)
-                
-                items_copiados = 0
-                for item in os.listdir(origen):
-                    origen_item = os.path.join(origen, item)
-                    destino_item = os.path.join(destino, item)
-                    
-                    try:
-                        if os.path.isdir(origen_item):
-                            # Crear subcarpeta y copiar contenido recursivamente
-                            if not os.path.exists(destino_item):
-                                os.makedirs(destino_item)
+                        # ✅ FUNCIÓN RECURSIVA PARA COPIAR MANTENIENDO ESTRUCTURA
+                        def copiar_recursivo(origen, destino):
+                            """Copia recursivamente manteniendo estructura de carpetas"""
+                            if not os.path.exists(destino):
+                                os.makedirs(destino)
                             
-                            # Llamada recursiva para subcarpetas
-                            sub_items = copiar_recursivo(origen_item, destino_item)
-                            items_copiados += sub_items
-                            self.log_signal.emit(f"   📁 Carpeta: {item}/ ({sub_items} archivos)")
-                            
-                        else:
-                            # Copiar archivo individual
-                            shutil.copy2(origen_item, destino_item)
-                            items_copiados += 1
-                            # Solo mostrar algunos archivos para no saturar el log
-                            if items_copiados <= 10:  # Mostrar primeros 10 archivos
-                                self.log_signal.emit(f"   📄 {item}")
+                            items_copiados = 0
+                            for item in os.listdir(origen):
+                                origen_item = os.path.join(origen, item)
+                                destino_item = os.path.join(destino, item)
                                 
-                    except Exception as e:
-                        self.log_signal.emit(f"   ⚠️  Error copiando {item}: {str(e)}")
-                        continue
-                
-                return items_copiados
+                                try:
+                                    if os.path.isdir(origen_item):
+                                        # Crear subcarpeta y copiar contenido recursivamente
+                                        if not os.path.exists(destino_item):
+                                            os.makedirs(destino_item)
+                                        
+                                        # Llamada recursiva para subcarpetas
+                                        sub_items = copiar_recursivo(origen_item, destino_item)
+                                        items_copiados += sub_items
+                                        self.log_signal.emit(f"   📁 Carpeta: {item}/ ({sub_items} archivos)")
+                                        
+                                    else:
+                                        # Copiar archivo individual
+                                        shutil.copy2(origen_item, destino_item)
+                                        items_copiados += 1
+                                        # Solo mostrar algunos archivos para no saturar el log
+                                        if items_copiados <= 10:  # Mostrar primeros 10 archivos
+                                            self.log_signal.emit(f"   📄 {item}")
+                                            
+                                except Exception as e:
+                                    self.log_signal.emit(f"   ⚠️  Error copiando {item}: {str(e)}")
+                                    continue
+                            
+                            return items_copiados
+                        
+                        # ✅ COPIAR ASSETS ADICIONALES MANTENIENDO ESTRUCTURA
+                        total_adicionales = copiar_recursivo(assets_origen, assets_destino)
+                        self.log_signal.emit(f"✅ {total_adicionales} assets adicionales copiados")
+                    else:
+                        self.log_signal.emit("ℹ️  Carpeta assets adicionales vacía")
+                        
+                except Exception as e:
+                    self.log_signal.emit(f"⚠️  Error listando assets adicionales: {str(e)}")
+            else:
+                self.log_signal.emit("ℹ️  No se encontraron assets adicionales")
             
-            # ✅ USAR LA FUNCIÓN RECURSIVA MEJORADA
-            total_copiados = copiar_recursivo(assets_origen, assets_destino)
-            
-            self.log_signal.emit(f"✅ {total_copiados} assets copiados manteniendo estructura")
-            
-            # ✅ VERIFICAR ESTRUCTURA COPIADA
+            # ✅ VERIFICAR ESTRUCTURA FINAL
             if os.path.exists(assets_destino):
                 try:
-                    self.log_signal.emit("🔍 Verificando estructura copiada...")
+                    self.log_signal.emit("🔍 Verificando estructura final de assets...")
+                    
+                    # Verificar archivos esenciales
+                    archivos_esenciales = ["index.html", "assets/", "imagenes/"]
+                    for archivo in archivos_esenciales:
+                        ruta_archivo = os.path.join(assets_destino, archivo)
+                        if os.path.exists(ruta_archivo):
+                            if archivo == "index.html":
+                                self.log_signal.emit(f"✅ {archivo} - Frontend React listo")
+                            else:
+                                self.log_signal.emit(f"✅ {archivo} - Presente")
+                        else:
+                            self.log_signal.emit(f"❌ {archivo} - FALTANTE")
+                    
+                    # Mostrar estructura
                     self.mostrar_estructura_assets(assets_destino)
+                    
                 except Exception as e:
                     self.log_signal.emit(f"✅ Assets copiados (error en verificación: {str(e)})")
             
@@ -314,7 +381,7 @@ PORT=10000
         except Exception as e:
             self.log_signal.emit(f"❌ Error copiando assets: {str(e)}")
             return False
-
+        
     def mostrar_estructura_assets(self, ruta_assets):
         """Mostrar estructura de assets copiada"""
         try:
