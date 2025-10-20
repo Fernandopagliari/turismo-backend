@@ -224,7 +224,7 @@ class BuildDeployThread(QThread):
     # ✅ VERSIÓN CORREGIDA: COPIAR BUILD A FLASK SIN DUPLICAR
     # -------------------------
     def copy_build_to_flask(self):
-        """Copia SOLO archivos esenciales del build SIN duplicar carpetas"""
+        """✅ VERSIÓN CORREGIDA - ELIMINA DUPLICACIÓN EXISTENTE"""
         if not self.backend_path:
             self.log("No hay backend configurado; se omite integración Flask", "INFO")
             return False
@@ -233,79 +233,116 @@ class BuildDeployThread(QThread):
             self.log("No se encontró la carpeta dist", "ERROR")
             return False
 
-        # ✅ CORREGIDO: Usar assets/ en lugar de build/ para consistencia
         assets_destino = os.path.join(self.backend_path, "assets")
         
         try:
-            # ✅ PRIMERO: Limpiar solo archivos del build, mantener imágenes
-            # ✅ VERSIÓN MEJORADA - NO da error si hay archivos en uso
-            if os.path.exists(assets_destino):
-                self.log(f"🧹 Limpiando assets existentes...")
-                for item in os.listdir(assets_destino):
-                    item_path = os.path.join(assets_destino, item)
-                    # ✅ MANTENER solo la carpeta imagenes/
-                    if item != "imagenes":
-                        try:
-                            if os.path.isfile(item_path):
-                                os.remove(item_path)
-                                self.log(f"   🗑️ Eliminado: {item}")
-                            elif os.path.isdir(item_path):
-                                shutil.rmtree(item_path)
-                                self.log(f"   🗑️ Eliminada carpeta: {item}/")
-                        except Exception as e:
-                            # ✅ SI HAY ERROR, CONTINUAR SIN PARAR
-                            self.log(f"   ⚠️ No se pudo eliminar {item}: {str(e)}")
-                            continue  # ← ESTO ES CLAVE: CONTINUA A PESAR DEL ERROR
-
-            # ✅ SEGUNDO: Copiar SOLO archivos esenciales del build
-            self.log(f"📦 Copiando build desde {self.dist_path} -> {assets_destino}")
+            # ✅ PRIMERO: ELIMINAR DUPLICACIÓN EXISTENTE (assets/assets/)
+            duplicated_assets = os.path.join(assets_destino, "assets")
+            if os.path.exists(duplicated_assets):
+                self.log("🧹 Eliminando duplicación existente: assets/assets/")
+                shutil.rmtree(duplicated_assets)
+                self.log("✅ Duplicación eliminada")
+            self.log(f"📦 Copiando SOLO archivos esenciales...")
+            # ✅ CREAR carpeta assets si no existe
+            os.makedirs(assets_destino, exist_ok=True)
+            
+            self.log(f"📦 Copiando SOLO archivos esenciales...")
             
             items_copiados = 0
+            
+            # ✅ COPIAR DIRECTAMENTE del build, EVITANDO duplicar 'assets/'
             for item in os.listdir(self.dist_path):
                 origen_item = os.path.join(self.dist_path, item)
-                destino_item = os.path.join(assets_destino, item)
                 
-                try:
-                    # ✅ SOLO copiar archivos, NO carpetas (para evitar assets/assets/)
-                    if os.path.isfile(origen_item):
+                # ✅ SOLO COPIAR ARCHIVOS, IGNORAR CARPETAS 'assets' DEL BUILD
+                if os.path.isfile(origen_item):
+                    # Copiar index.html, *.js, *.css
+                    destino_item = os.path.join(assets_destino, item)
+                    try:
                         shutil.copy2(origen_item, destino_item)
                         items_copiados += 1
-                        self.log(f"   📄 {item}")
-                    # ✅ EXCEPCIÓN: Si es carpeta 'assets' del build, copiar su CONTENIDO
-                    elif os.path.isdir(origen_item) and item == "assets":
-                        for sub_item in os.listdir(origen_item):
-                            sub_origen = os.path.join(origen_item, sub_item)
-                            sub_destino = os.path.join(assets_destino, sub_item)
-                            if os.path.isfile(sub_origen):
-                                shutil.copy2(sub_origen, sub_destino)
-                                items_copiados += 1
-                                self.log(f"   📄 {sub_item}")
-                            elif os.path.isdir(sub_origen):
-                                shutil.copytree(sub_origen, sub_destino, dirs_exist_ok=True)
-                                count = sum([len(files) for r, d, files in os.walk(sub_destino)])
-                                items_copiados += count
-                                self.log(f"   📁 {sub_item}/ ({count} archivos)")
-                except Exception as e:
-                    self.log(f"   ⚠️  Error copiando {item}: {str(e)}")
-
-            self.log(f"✅ {items_copiados} archivos de React copiados")
+                        self.log(f"   ✅ {item}")
+                    except Exception as e:
+                        self.log(f"   ⚠️ Error copiando {item}: {str(e)}")
+                
+                # ✅ IGNORAR COMPLETAMENTE la carpeta 'assets' del build
+                elif os.path.isdir(origen_item) and item == "assets":
+                    self.log(f"   ⚠️ Ignorando carpeta 'assets' del build (evita duplicación)")
+                    continue
+                    
+                # ✅ COPIAR OTRAS CARPETAS (que no sean 'assets')
+                elif os.path.isdir(origen_item):
+                    destino_item = os.path.join(assets_destino, item)
+                    try:
+                        shutil.copytree(origen_item, destino_item, dirs_exist_ok=True)
+                        count = sum([len(files) for r, d, files in os.walk(destino_item)])
+                        items_copiados += count
+                        self.log(f"   📁 {item}/ ({count} archivos)")
+                    except Exception as e:
+                        self.log(f"   ⚠️ Error copiando carpeta {item}: {str(e)}")
             
-            # ✅ VERIFICAR que index.html existe
-            index_path = os.path.join(assets_destino, "index.html")
-            if os.path.exists(index_path):
-                self.log("🎯 index.html encontrado - Frontend listo")
-            else:
-                self.log("❌ index.html NO encontrado en build")
-
-            # ✅ ACTUALIZAR Flask para servir desde assets/
-            self.update_flask_for_assets()
+            self.log(f"✅ {items_copiados} archivos copiados")
+            
+            # ✅ VERIFICAR que NO hay duplicación
+            self.verificar_sin_duplicacion(assets_destino)
             
             return True
             
         except Exception as e:
-            self.log(f"Error copiando build a Flask: {e}", "ERROR")
+            self.log(f"Error: {e}", "ERROR")
             return False
 
+    def verificar_sin_duplicacion(self, assets_destino):
+        """Verificar que NO existe carpeta assets/ dentro de assets/"""
+        try:
+            self.log("🔍 Verificando que NO hay duplicación...")
+            
+            # Buscar si existe assets/assets/
+            for item in os.listdir(assets_destino):
+                item_path = os.path.join(assets_destino, item)
+                if os.path.isdir(item_path) and item == "assets":
+                    self.log(f"   ❌ ¡DUPLICACIÓN DETECTADA: assets/assets/!")
+                    return False
+            
+            self.log("   ✅ Estructura correcta - Sin duplicación")
+            return True
+            
+        except Exception as e:
+            self.log(f"⚠️ Error en verificación: {str(e)}")
+            return False
+        
+    def mostrar_estructura_actual(self, assets_destino):
+        """Mostrar la estructura actual SIN modificarla"""
+        try:
+            self.log("📂 ESTRUCTURA ACTUAL en assets/:")
+            
+            if not os.path.exists(assets_destino):
+                self.log("   ❌ No existe carpeta assets/")
+                return
+                
+            for item in os.listdir(assets_destino):
+                item_path = os.path.join(assets_destino, item)
+                
+                if os.path.isfile(item_path):
+                    self.log(f"   📄 {item}")
+                    
+                elif os.path.isdir(item_path):
+                    if item == "imagenes":
+                        # Mostrar todas las subcarpetas de imágenes
+                        self.log(f"   📁 {item}/")
+                        imagenes_path = os.path.join(assets_destino, "imagenes")
+                        
+                        for sub_item in os.listdir(imagenes_path):
+                            sub_path = os.path.join(imagenes_path, sub_item)
+                            if os.path.isdir(sub_path):
+                                num_archivos = len(os.listdir(sub_path))
+                                self.log(f"      📂 {sub_item}/ ({num_archivos} archivos)")
+                    else:
+                        self.log(f"   📁 {item}/")
+                        
+        except Exception as e:
+            self.log(f"⚠️ Error mostrando estructura: {str(e)}")
+            
     def update_flask_for_assets(self):
         """Actualizar Flask para servir desde assets/ en lugar de build/"""
         try:
