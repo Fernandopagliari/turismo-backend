@@ -178,20 +178,24 @@ def servir_imagenes(filename):
 # =========================
 # SERVIR FRONTEND REACT - ✅ CORREGIDA
 # =========================
-
-@app.route('/', defaults={'path': ''})
-@app.route('/<path:path>')
-def serve_react_app(path):
-    """Servir la aplicación React - Client Side Routing CORREGIDO"""
+@app.route('/')
+def serve_react_app():
+    """Servir solo la ruta principal - VERSIÓN SIMPLE"""
     try:
-        # Si es un archivo específico, servirlo directamente
-        if path and path != "" and os.path.exists(os.path.join(app.static_folder, path)):
-            return send_from_directory(app.static_folder, path)
-        
-        # Para cualquier otra ruta, servir index.html
-        return send_from_directory(app.static_folder, 'index.html')
+        assets_path = os.path.join(os.path.dirname(__file__), 'assets')
+        return send_from_directory(assets_path, 'index.html')
     except Exception as e:
         return jsonify({"error": "Frontend no disponible", "details": str(e)}), 500
+
+@app.route('/<path:path>')
+def serve_static_files(path):
+    """Servir archivos estáticos"""
+    try:
+        assets_path = os.path.join(os.path.dirname(__file__), 'assets')
+        return send_from_directory(assets_path, path)
+    except Exception as e:
+        return jsonify({"error": "Archivo no encontrado"}), 404
+
     
 # =========================
 # ENDPOINTS PRINCIPALES - SOLO RUTAS RELATIVAS
