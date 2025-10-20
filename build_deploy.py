@@ -27,8 +27,7 @@ try:
     BD_DISPONIBLE = True
 except Exception:
     BD_DISPONIBLE = False
-    obtener_configuracion_hosting = None  # ✅ AGREGADO para evitar errores
-
+    obtener_configuracion_hosting = None
 
 # -------------------------
 # UTILIDADES COMUNES
@@ -36,14 +35,9 @@ except Exception:
 def is_windows():
     return platform.system().lower().startswith("win")
 
-
 def run_subprocess(cmd, cwd=None, timeout=300):
-    """
-    Ejecuta un comando seguro (lista) y devuelve (ok, stdout, stderr, returncode).
-    Nunca usar shell=True con comandos construidos dinámicamente.
-    """
+    """Ejecuta un comando seguro y devuelve (ok, stdout, stderr, returncode)"""
     try:
-        # Asegurarse de que cmd sea lista
         if isinstance(cmd, str):
             cmd = cmd.split()
         result = subprocess.run(
@@ -62,15 +56,11 @@ def run_subprocess(cmd, cwd=None, timeout=300):
     except Exception as e:
         return (False, "", f"Exception: {str(e)}", -3)
 
-
 # -------------------------
 # HILO PRINCIPAL
 # -------------------------
 class BuildDeployThread(QThread):
-    """
-    Hilo para ejecutar build y deploy sin bloquear la UI.
-    Emite logs (texto), progreso (0-100) y finished_signal(exito:bool, mensaje:str).
-    """
+    """Hilo para ejecutar build y deploy sin bloquear la UI"""
     log_signal = pyqtSignal(str)
     progress_signal = pyqtSignal(int)
     finished_signal = pyqtSignal(bool, str)
@@ -79,35 +69,17 @@ class BuildDeployThread(QThread):
         super().__init__()
         self.requested_path = project_path or os.getcwd()
         self.deploy_config = deploy_config or {}
-
-        # Rutas candidatas para buscar el proyecto React
-        self.possible_paths = [
-            self.requested_path,
-            os.path.join(self.requested_path, "turismo-frontend"),
-            os.path.join(self.requested_path, "frontend"),
-            os.path.join(self.requested_path, "src"),
-        ]
-
         self.project_root = self.find_project_root()
         self.dist_path = os.path.join(self.project_root, "dist") if self.project_root else None
-
-        # Intentar localizar backend Flask para integración
         self.backend_path = self.find_backend_path()
-        # ✅ CORREGIDO: react-build -> build para Flask estándar
-        self.react_build_dest = os.path.join(self.backend_path, "build") if self.backend_path else None
-
-        # Rutas de node/npm (pueden ser 'node'/'npm' si están en PATH)
         self.npm_cmd = self.find_npm()
         self.node_cmd = self.find_node()
-
-        # Estado interno
         self._stopped = False
 
     # -------------------------
     # UTILIDADES DE LOG
     # -------------------------
     def log(self, mensaje, nivel="INFO"):
-        """Formatea y emite logs"""
         ts = time.strftime("%Y-%m-%d %H:%M:%S")
         texto = f"[{ts}] [{nivel}] {mensaje}"
         self.log_signal.emit(texto)
@@ -120,47 +92,35 @@ class BuildDeployThread(QThread):
         posibles_rutas = [
             self.requested_path,
             os.path.join(self.requested_path, "frontend"),
-            os.path.join(self.requested_path, "turismo-frontend"),  # ← ESTA YA ESTÁ
+            os.path.join(self.requested_path, "turismo-frontend"),
             os.path.join(self.requested_path, "src"),
-            # Rutas específicas para tu proyecto
             r"E:\Sistemas de app para androide\turismo-app\frontend",
-            r"E:\Sistemas de app para androide\turismo-app\turismo-frontend",  # ← AGREGAR ESTA
+            r"E:\Sistemas de app para androide\turismo-app\turismo-frontend",
             r"E:\Sistemas de app para androide\frontend",
             os.path.join(os.path.dirname(self.requested_path), "frontend"),
-            os.path.join(os.path.dirname(os.path.dirname(self.requested_path)), "frontend"),
         ]
         
         for ruta in posibles_rutas:
             try:
                 ruta_abs = os.path.abspath(ruta)
                 package_json = os.path.join(ruta_abs, "package.json")
-                self.log(f"Buscando package.json en: {ruta_abs}", "DEBUG")
-                
                 if os.path.exists(package_json):
                     self.log(f"✅ Encontrado package.json en: {ruta_abs}")
                     return ruta_abs
             except Exception as e:
-                self.log(f"Error comprobando {ruta}: {e}", "DEBUG")
+                continue
         
-        # ✅ SI NO ENCUENTRA, MOSTRAR RUTAS DISPONIBLES
-        self.log("❌ No se encontró package.json. Rutas disponibles:", "ERROR")
-        for ruta in posibles_rutas:
-            ruta_abs = os.path.abspath(ruta)
-            existe = os.path.exists(ruta_abs)
-            self.log(f"   {'✅' if existe else '❌'} {ruta_abs}")
-        
+        self.log("❌ No se encontró package.json", "ERROR")
         return None
     
     def find_backend_path(self):
-        """Intentar localizar backend Flask (api.py) en rutas probables"""
+        """Intentar localizar backend Flask (api.py)"""
         posibles = [
             os.path.join(self.requested_path, "turismo-backend"),
             os.path.join(os.path.dirname(self.requested_path), "turismo-backend"),
             os.path.join(self.requested_path, "backend"),
             os.path.join(self.requested_path, "turismo-app", "turismo-backend"),
-            # rutas absolutas comunes - puedes personalizarlas
             r"E:\Sistemas de app para androide\turismo-app\turismo-backend",
-            r"E:\Sistemas de app para androide\turismo-backend",
         ]
         for b in posibles:
             try:
@@ -189,7 +149,7 @@ class BuildDeployThread(QThread):
             if ok:
                 self.log(f"npm encontrado: {cmd} ({out.strip()})")
                 return cmd
-        self.log("npm no encontrado en el sistema PATH o rutas comunes.", "WARN")
+        self.log("npm no encontrado", "WARN")
         return None
 
     def find_node(self):
@@ -208,7 +168,7 @@ class BuildDeployThread(QThread):
             if ok:
                 self.log(f"node encontrado: {cmd} ({out.strip()})")
                 return cmd
-        self.log("node no encontrado en el sistema PATH o rutas comunes.", "WARN")
+        self.log("node no encontrado", "WARN")
         return None
 
     # -------------------------
@@ -219,7 +179,7 @@ class BuildDeployThread(QThread):
         if not self.project_root:
             raise RuntimeError("No se encontró la raíz del proyecto (package.json).")
         if not self.node_cmd or not self.npm_cmd:
-            raise RuntimeError("Node.js o npm no están instalados / no están en PATH.")
+            raise RuntimeError("Node.js o npm no están instalados.")
         self.log(f"Entorno verificado: project_root={self.project_root}", "DEBUG")
 
     # -------------------------
@@ -238,10 +198,6 @@ class BuildDeployThread(QThread):
         ok, out, err, rc = run_subprocess([self.npm_cmd, "install"], cwd=self.project_root, timeout=600)
         if ok:
             self.log("Dependencias instaladas correctamente")
-            # Mostrar algunos mensajes útiles del output si existen
-            if out:
-                for l in out.splitlines()[-8:]:
-                    self.log(l, "DEBUG")
             return True
         else:
             self.log(f"Error instalando dependencias: {err[:1000]}", "ERROR")
@@ -253,11 +209,9 @@ class BuildDeployThread(QThread):
     def run_build(self):
         """Ejecutar npm run build"""
         self.log("Iniciando build de React (npm run build)...")
-        # Asegurarnos de usar npm_cmd con run build
         ok, out, err, rc = run_subprocess([self.npm_cmd, "run", "build"], cwd=self.project_root, timeout=900)
         if ok:
             self.log("Build completado correctamente")
-            # Info de tamaño y archivos
             if os.path.exists(self.dist_path):
                 size = self.get_folder_size(self.dist_path)
                 self.log(f"Carpeta dist creada: {self.dist_path} (tamaño: {size})")
@@ -267,48 +221,85 @@ class BuildDeployThread(QThread):
             return False
 
     # -------------------------
-    # COPIAR BUILD A FLASK
+    # ✅ VERSIÓN CORREGIDA: COPIAR BUILD A FLASK SIN DUPLICAR
     # -------------------------
     def copy_build_to_flask(self):
-        """Copia dist -> backend/build limpiando destino previo"""
+        """Copia SOLO archivos esenciales del build SIN duplicar carpetas"""
         if not self.backend_path:
             self.log("No hay backend configurado; se omite integración Flask", "INFO")
             return False
 
         if not self.dist_path or not os.path.exists(self.dist_path):
-            self.log("No se encontró la carpeta dist; asegúrate de que el build se generó correctamente.", "ERROR")
+            self.log("No se encontró la carpeta dist", "ERROR")
             return False
 
-        destino = self.react_build_dest
+        # ✅ CORREGIDO: Usar assets/ en lugar de build/ para consistencia
+        assets_destino = os.path.join(self.backend_path, "assets")
+        
         try:
-            if os.path.exists(destino):
-                self.log(f"Limpiando destino anterior: {destino}")
-                shutil.rmtree(destino, ignore_errors=True)
-                time.sleep(0.2)
+            # ✅ PRIMERO: Limpiar solo archivos del build, mantener imágenes
+            if os.path.exists(assets_destino):
+                self.log(f"🧹 Limpiando assets existentes...")
+                for item in os.listdir(assets_destino):
+                    item_path = os.path.join(assets_destino, item)
+                    # ✅ MANTENER solo la carpeta imagenes/
+                    if item != "imagenes":
+                        if os.path.isfile(item_path):
+                            os.remove(item_path)
+                        elif os.path.isdir(item_path):
+                            shutil.rmtree(item_path)
 
-            self.log(f"Copiando build desde {self.dist_path} -> {destino}")
-            shutil.copytree(self.dist_path, destino)
-            size = self.get_folder_size(destino)
-            self.log(f"Build copiado al backend: {destino} (tamaño: {size})")
+            # ✅ SEGUNDO: Copiar SOLO archivos esenciales del build
+            self.log(f"📦 Copiando build desde {self.dist_path} -> {assets_destino}")
             
-            # ✅ CORREGIDO: Verificar archivos críticos para Flask
-            existentes = os.listdir(destino)
-            checks = []
-            for crit in ("index.html", "assets", "static"):
-                checks.append((crit, crit in existentes or any(x.startswith(crit) for x in existentes)))
-            for crit, ok in checks:
-                self.log(f"{'✅' if ok else '⚠️'} {crit} {'encontrado' if ok else 'no encontrado'}", "DEBUG")
+            items_copiados = 0
+            for item in os.listdir(self.dist_path):
+                origen_item = os.path.join(self.dist_path, item)
+                destino_item = os.path.join(assets_destino, item)
+                
+                try:
+                    # ✅ SOLO copiar archivos, NO carpetas (para evitar assets/assets/)
+                    if os.path.isfile(origen_item):
+                        shutil.copy2(origen_item, destino_item)
+                        items_copiados += 1
+                        self.log(f"   📄 {item}")
+                    # ✅ EXCEPCIÓN: Si es carpeta 'assets' del build, copiar su CONTENIDO
+                    elif os.path.isdir(origen_item) and item == "assets":
+                        for sub_item in os.listdir(origen_item):
+                            sub_origen = os.path.join(origen_item, sub_item)
+                            sub_destino = os.path.join(assets_destino, sub_item)
+                            if os.path.isfile(sub_origen):
+                                shutil.copy2(sub_origen, sub_destino)
+                                items_copiados += 1
+                                self.log(f"   📄 {sub_item}")
+                            elif os.path.isdir(sub_origen):
+                                shutil.copytree(sub_origen, sub_destino, dirs_exist_ok=True)
+                                count = sum([len(files) for r, d, files in os.walk(sub_destino)])
+                                items_copiados += count
+                                self.log(f"   📁 {sub_item}/ ({count} archivos)")
+                except Exception as e:
+                    self.log(f"   ⚠️  Error copiando {item}: {str(e)}")
+
+            self.log(f"✅ {items_copiados} archivos de React copiados")
             
-            # ✅ AGREGADO: Actualizar Flask para servir build
-            self.update_flask_for_build()
+            # ✅ VERIFICAR que index.html existe
+            index_path = os.path.join(assets_destino, "index.html")
+            if os.path.exists(index_path):
+                self.log("🎯 index.html encontrado - Frontend listo")
+            else:
+                self.log("❌ index.html NO encontrado en build")
+
+            # ✅ ACTUALIZAR Flask para servir desde assets/
+            self.update_flask_for_assets()
             
             return True
+            
         except Exception as e:
             self.log(f"Error copiando build a Flask: {e}", "ERROR")
             return False
 
-    def update_flask_for_build(self):
-        """Actualizar Flask para servir el build de React"""
+    def update_flask_for_assets(self):
+        """Actualizar Flask para servir desde assets/ en lugar de build/"""
         try:
             if not self.backend_path:
                 return
@@ -322,68 +313,57 @@ class BuildDeployThread(QThread):
             with open(api_path, 'r', encoding='utf-8') as f:
                 contenido = f.read()
             
-            # Verificar si ya tiene la configuración para servir build
-            if 'static_folder=' in contenido and 'build' in contenido:
-                self.log("Flask ya configurado para servir build", "DEBUG")
-                return
+            # ✅ CORREGIDO: Actualizar para usar assets/ en lugar de build/
+            contenido_actualizado = contenido.replace(
+                'app.static_folder = os.path.join(os.path.dirname(__file__), "build")',
+                'app.static_folder = os.path.join(os.path.dirname(__file__), "assets")'
+            )
             
-            # Buscar la línea de creación de la app Flask
-            lines = contenido.split('\n')
-            updated_lines = []
-            app_created = False
+            # Si no encontró la línea anterior, buscar y reemplazar cualquier referencia a build
+            if contenido_actualizado == contenido and 'build' in contenido:
+                # Buscar cualquier línea que configure static_folder con build
+                lines = contenido.split('\n')
+                updated_lines = []
+                for line in lines:
+                    if 'static_folder' in line and 'build' in line:
+                        updated_lines.append('app.static_folder = os.path.join(os.path.dirname(__file__), "assets")')
+                    else:
+                        updated_lines.append(line)
+                contenido_actualizado = '\n'.join(updated_lines)
             
-            for line in lines:
-                updated_lines.append(line)
-                # Buscar donde se crea la app Flask
-                if 'Flask(' in line and 'app =' in line and not app_created:
-                    # Agregar configuración para servir build
-                    updated_lines.append('')
-                    updated_lines.append('# ✅ Configuración para servir build de React')
-                    updated_lines.append('app.static_folder = os.path.join(os.path.dirname(__file__), "build")')
-                    updated_lines.append('app.static_url_path = ""')
-                    updated_lines.append('')
-                    app_created = True
-            
-            # Si no se encontró donde insertar, agregar al final del archivo
-            if not app_created:
-                updated_lines.append('')
-                updated_lines.append('# ✅ Configuración para servir build de React')
-                updated_lines.append('app.static_folder = os.path.join(os.path.dirname(__file__), "build")')
-                updated_lines.append('app.static_url_path = ""')
-            
-            # Escribir archivo actualizado
-            with open(api_path, 'w', encoding='utf-8') as f:
-                f.write('\n'.join(updated_lines))
-            
-            self.log("✅ Flask actualizado para servir build de React", "INFO")
+            # Escribir archivo actualizado solo si hubo cambios
+            if contenido_actualizado != contenido:
+                with open(api_path, 'w', encoding='utf-8') as f:
+                    f.write(contenido_actualizado)
+                self.log("✅ Flask actualizado para servir desde assets/", "INFO")
+            else:
+                self.log("✅ Flask ya está configurado para assets/", "DEBUG")
             
         except Exception as e:
-            self.log(f"⚠️  No se pudo actualizar Flask automáticamente: {e}", "WARN")
+            self.log(f"⚠️  No se pudo actualizar Flask: {e}", "WARN")
 
     # -------------------------
     # DEPLOYS
     # -------------------------
     def deploy_via_railway(self):
         """Deploy automático con railway CLI"""
-        self.log("Intentando deploy a Railway (railway deploy)...")
+        self.log("Intentando deploy a Railway...")
         ok, out, err, rc = run_subprocess(["railway", "--version"], timeout=12)
         if not ok:
-            self.log("Railway CLI no está instalado. Instalalo con: npm i -g @railway/cli", "WARN")
-            return True  # no es crítico para terminar; build ya hecho
+            self.log("Railway CLI no está instalado", "WARN")
+            return True
 
-        # Ejecutar deploy
         ok, out, err, rc = run_subprocess(["railway", "deploy"], cwd=self.project_root, timeout=1200)
         if ok:
             self.log("Deploy a Railway completado")
             return True
         else:
-            self.log(f"Railway deploy falló: {err[:800] or out[:800]}", "WARN")
-            return True  # no fatal, sugerimos revisar logs
+            self.log(f"Railway deploy falló: {err[:800]}", "WARN")
+            return True
 
     def deploy_github_pages(self):
-        """Deploy usando gh-pages (npm run deploy) si está configurado"""
-        self.log("Intentando deploy a GitHub Pages (si está configurado)...")
-        # Si gh-pages está en package.json scripts, intentar npm run deploy
+        """Deploy usando gh-pages"""
+        self.log("Intentando deploy a GitHub Pages...")
         try:
             pjson = os.path.join(self.project_root, "package.json")
             if os.path.exists(pjson):
@@ -395,13 +375,9 @@ class BuildDeployThread(QThread):
                     if ok:
                         self.log("Deploy a GitHub Pages completado")
                         return True
-                    else:
-                        self.log("Error en deploy gh-pages: " + (err or out)[:1000], "WARN")
-                        return True
         except Exception as e:
-            self.log(f"Error comprobando package.json para gh-pages: {e}", "WARN")
-        # Sugerir instrucciones manuales
-        self.log("gh-pages no configurado o deploy automático falló. Usar instrucciones manuales.", "INFO")
+            self.log(f"Error en deploy gh-pages: {e}", "WARN")
+        self.log("gh-pages no configurado", "INFO")
         return True
 
     def deploy_netlify(self):
@@ -409,18 +385,18 @@ class BuildDeployThread(QThread):
         return True
 
     def deploy_vercel(self):
-        self.log("Instrucciones Vercel: instalar Vercel CLI y ejecutar `vercel --prod` o conectar repo.")
+        self.log("Instrucciones Vercel: instalar Vercel CLI y ejecutar `vercel --prod`")
         return True
 
     def deploy_generic(self):
-        self.log("Deploy genérico: subir carpeta 'dist' al servidor (FTP/SCP) o configurar CI/CD", "INFO")
+        self.log("Deploy genérico: subir carpeta 'dist' al servidor", "INFO")
         return True
 
     def perform_deploy(self):
-        """Decidir y ejecutar el deploy basado en deploy_config/base_url"""
+        """Decidir y ejecutar el deploy"""
         base_url = (self.deploy_config or {}).get("base_url", "") if self.deploy_config else ""
         if not base_url:
-            self.log("No hay base_url configurada: se omitirá el deploy automático (solo build).", "INFO")
+            self.log("No hay base_url configurada", "INFO")
             return True
 
         base_url = base_url.lower()
@@ -434,24 +410,22 @@ class BuildDeployThread(QThread):
         elif "github" in base_url or "pages" in base_url:
             return self.deploy_github_pages()
         else:
-            # Si contiene 'ssh' o 'ftp' podríamos implementar lógica adicional
             return self.deploy_generic()
 
     # -------------------------
     # VERIFICACIÓN POST-DEPLOY
     # -------------------------
     def verify_production(self):
-        """Comprobar endpoints básicos (si requests está disponible y base_url existe)"""
+        """Comprobar endpoints básicos"""
         if not requests:
-            self.log("requests no está instalado: no puedo verificar endpoints HTTP.", "WARN")
+            self.log("requests no está instalado", "WARN")
             return True
 
         base_url = (self.deploy_config or {}).get("base_url", "")
         if not base_url:
-            self.log("No hay base_url para verificación.", "DEBUG")
+            self.log("No hay base_url para verificación", "DEBUG")
             return True
 
-        # ✅ CORREGIDO: Endpoints actualizados para tu API
         endpoints = ["/api/health", "/api/configuracion", "/"]
         todos_ok = True
         for ep in endpoints:
@@ -491,7 +465,7 @@ class BuildDeployThread(QThread):
     # RUN PRINCIPAL
     # -------------------------
     def run(self):
-        """Secuencia principal: verificar -> deps -> build -> copiar -> deploy -> verificar"""
+        """Secuencia principal"""
         try:
             self.progress_signal.emit(2)
             self.log("==== INICIANDO BUILD & DEPLOY ====")
@@ -508,21 +482,21 @@ class BuildDeployThread(QThread):
 
             # 2) Instalar dependencias si hace falta
             if not self.verify_dependencies():
-                self.log("No se detectaron node_modules; se instalarán dependencias...")
+                self.log("Instalando dependencias...")
                 if not self.install_dependencies():
-                    self.finished_signal.emit(False, "Error instalando dependencias. Revisá los logs.")
+                    self.finished_signal.emit(False, "Error instalando dependencias")
                     return
 
             self.progress_signal.emit(18)
 
             # 3) Ejecutar build
             if not self.run_build():
-                self.finished_signal.emit(False, "Error en el build. Revisá los logs.")
+                self.finished_signal.emit(False, "Error en el build")
                 return
 
             self.progress_signal.emit(70)
 
-            # 4) Integrar con Flask (copiar dist)
+            # 4) ✅ CORREGIDO: Integrar con Flask (copiar a assets/)
             integrated = False
             if self.backend_path:
                 try:
@@ -535,30 +509,30 @@ class BuildDeployThread(QThread):
                     self.log(f"Error integrando con Flask: {e}", "ERROR")
                     self.progress_signal.emit(78)
 
-            # 5) Ejecutar deploy (si corresponde)
+            # 5) Ejecutar deploy
             deploy_ok = self.perform_deploy()
             if deploy_ok:
                 self.progress_signal.emit(92)
             else:
                 self.progress_signal.emit(85)
 
-            # 6) Verificación final (ping a endpoints)
+            # 6) Verificación final
             try:
                 ok_prod = self.verify_production()
                 if ok_prod:
                     self.progress_signal.emit(97)
                     self.log("Verificación final OK", "INFO")
                 else:
-                    self.log("Algunos endpoints no respondieron correctamente", "WARN")
+                    self.log("Algunos endpoints no respondieron", "WARN")
             except Exception as e:
                 self.log(f"Error en verificación final: {e}", "WARN")
 
             # Mensaje final
             final_msg = "Build & Deploy completado"
             if integrated:
-                final_msg += " + Integración Flask realizada"
+                final_msg += " + Integración Flask realizada (assets/)"
             else:
-                final_msg += " (sin integración Flask)" if self.backend_path else " (no se integró con Flask)"
+                final_msg += " (sin integración Flask)" if self.backend_path else ""
 
             self.progress_signal.emit(100)
             self.finished_signal.emit(True, final_msg)
@@ -567,12 +541,11 @@ class BuildDeployThread(QThread):
             self.log(f"Error crítico: {e}", "ERROR")
             self.finished_signal.emit(False, f"Error crítico: {e}")
 
-
 # -------------------------
 # DIÁLOGO PyQt (UI)
 # -------------------------
 class DialogoBuildDeploy(QDialog):
-    """Diálogo para build y deploy automático - CON FLASK INTEGRADO"""
+    """Diálogo para build y deploy automático"""
     def __init__(self, parent=None, project_path=None):
         super().__init__(parent)
         self.project_path = project_path or os.getcwd()
@@ -649,14 +622,9 @@ class DialogoBuildDeploy(QDialog):
         self.btn_limpiar.clicked.connect(self.clear_log)
         self.btn_cerrar.clicked.connect(self.close)
 
-        # Estado inicial
         self.verify_system()
 
-    # -------------------------
-    # LOG UI
-    # -------------------------
     def append_log(self, mensaje):
-        """Agregar mensaje al QTextEdit (desde señales)"""
         self.log_output.append(mensaje)
         self.log_output.moveCursor(self.log_output.textCursor().End)
 
@@ -664,11 +632,8 @@ class DialogoBuildDeploy(QDialog):
         self.log_output.clear()
         self.append_log("🗑️ Log limpiado")
 
-    # -------------------------
-    # CARGAR CONFIG DB
-    # -------------------------
     def load_config_from_db(self):
-        """Cargar configuración de deploy desde la BD local si está"""
+        """Cargar configuración de deploy desde la BD"""
         try:
             if not BD_DISPONIBLE:
                 self.deploy_config = {}
@@ -690,9 +655,6 @@ class DialogoBuildDeploy(QDialog):
         except Exception as e:
             self.append_log(f"❌ Error cargando configuración desde DB: {e}")
 
-    # -------------------------
-    # VERIFICACIONES LOCALES
-    # -------------------------
     def verify_system(self):
         """Verificar estado local: Flask + Node"""
         try:
@@ -723,9 +685,6 @@ class DialogoBuildDeploy(QDialog):
                 return True
         return False
 
-    # -------------------------
-    # INICIAR PROCESO
-    # -------------------------
     def start_process(self, deploy_cfg):
         """Inicia hilo de build/deploy"""
         self.btn_build_only.setEnabled(False)
@@ -735,9 +694,7 @@ class DialogoBuildDeploy(QDialog):
         self.log_output.clear()
         self.append_log("🚀 INICIANDO PROCESO BUILD & DEPLOY...")
 
-        # Preparar configuración
         cfg = deploy_cfg or self.deploy_config or {}
-
         self.build_thread = BuildDeployThread(self.project_path, cfg)
         self.build_thread.log_signal.connect(self.append_log)
         self.build_thread.progress_signal.connect(self.progress_bar.setValue)
@@ -756,7 +713,6 @@ class DialogoBuildDeploy(QDialog):
             QMessageBox.information(self, "✅ Éxito", f"{mensaje}")
         else:
             QMessageBox.critical(self, "❌ Error", f"{mensaje}")
-
 
 # -------------------------
 # ENTRYPOINT para pruebas
