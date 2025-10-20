@@ -238,16 +238,24 @@ class BuildDeployThread(QThread):
         
         try:
             # ✅ PRIMERO: Limpiar solo archivos del build, mantener imágenes
+            # ✅ VERSIÓN MEJORADA - NO da error si hay archivos en uso
             if os.path.exists(assets_destino):
                 self.log(f"🧹 Limpiando assets existentes...")
                 for item in os.listdir(assets_destino):
                     item_path = os.path.join(assets_destino, item)
                     # ✅ MANTENER solo la carpeta imagenes/
                     if item != "imagenes":
-                        if os.path.isfile(item_path):
-                            os.remove(item_path)
-                        elif os.path.isdir(item_path):
-                            shutil.rmtree(item_path)
+                        try:
+                            if os.path.isfile(item_path):
+                                os.remove(item_path)
+                                self.log(f"   🗑️ Eliminado: {item}")
+                            elif os.path.isdir(item_path):
+                                shutil.rmtree(item_path)
+                                self.log(f"   🗑️ Eliminada carpeta: {item}/")
+                        except Exception as e:
+                            # ✅ SI HAY ERROR, CONTINUAR SIN PARAR
+                            self.log(f"   ⚠️ No se pudo eliminar {item}: {str(e)}")
+                            continue  # ← ESTO ES CLAVE: CONTINUA A PESAR DEL ERROR
 
             # ✅ SEGUNDO: Copiar SOLO archivos esenciales del build
             self.log(f"📦 Copiando build desde {self.dist_path} -> {assets_destino}")
