@@ -20,24 +20,20 @@ def imagen_a_base64(ruta_imagen):
         return None
 
 def convertir_ruta_produccion(ruta_absoluta):
-    """Convierte rutas absolutas a rutas relativas para producción React"""
+    """Mantiene estructura completa de forma segura después de assets/imagenes/"""
     if not ruta_absoluta or not os.path.exists(ruta_absoluta):
         return ""
     
-    nombre_archivo = os.path.basename(ruta_absoluta)
+    # Normalizar la ruta y separar
+    ruta_normalizada = os.path.normpath(ruta_absoluta)
+    carpetas = ruta_normalizada.split(os.sep)
+    nombre_archivo = carpetas[-1]
     
-    # Determinar tipo de archivo por extensión y contexto
-    if nombre_archivo.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp')):
-        if any(keyword in nombre_archivo.lower() for keyword in ['icono', 'menu', 'hamburguesa']):
-            return f"assets/imagenes/iconos/{nombre_archivo}"
-        elif any(keyword in nombre_archivo.lower() for keyword in ['logo', 'app']):
-            return f"assets/imagenes/iconos/{nombre_archivo}"
-        elif any(keyword in nombre_archivo.lower() for keyword in ['hero', 'principal', 'banner']):
-            return f"assets/imagenes/{nombre_archivo}"
-        else:
-            return f"assets/imagenes/{nombre_archivo}"
+    # Tomar todo excepto la unidad (si existe) y el archivo
+    inicio = 1 if ':' in carpetas[0] else 0  # saltar unidad C:, D:, etc.
+    estructura_interna = os.path.join(*carpetas[inicio:-1])
     
-    return f"assets/imagenes/{nombre_archivo}"
+    return f"assets/imagenes/{estructura_interna}/{nombre_archivo}"
 
 class VentanaConfiguracion(QWidget):
     def __init__(self, parent=None):
