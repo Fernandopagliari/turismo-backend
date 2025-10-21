@@ -562,7 +562,7 @@ class VentanaPrincipal(QMainWindow):
         if ruta_relativa:
             # Limpiamos "/" o "\" inicial
             ruta_relativa = ruta_relativa.lstrip("/\\")
-            ruta_completa = os.path.join(os.getcwd(), "public", ruta_relativa)
+            ruta_completa = os.path.join(os.getcwd(), "turismo-frontend\public", ruta_relativa)
 
             if os.path.exists(ruta_completa):
                 pixmap = QPixmap(ruta_completa).scaled(size, size, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)

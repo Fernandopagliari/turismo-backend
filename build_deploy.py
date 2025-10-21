@@ -1,4 +1,4 @@
-# build_deploy.py - VERSIÓN CON DETECCIÓN DE NPM
+# build_deploy.py - VERSIÓN PARA DISTRIBUCIÓN (SIN RUTAS HARCODEADAS)
 # -*- coding: utf-8 -*-
 import os
 import subprocess
@@ -16,7 +16,7 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 
 # -------------------------
-# HILO PRINCIPAL CORREGIDO
+# HILO PRINCIPAL PARA DISTRIBUCIÓN
 # -------------------------
 class BuildDeployThread(QThread):
     log_signal = pyqtSignal(str)
@@ -25,28 +25,74 @@ class BuildDeployThread(QThread):
 
     def __init__(self, project_path, deploy_config=None):
         super().__init__()
-        self.project_path = project_path
+        self.project_path = project_path or os.getcwd()
         self.deploy_config = deploy_config or {}
-        self.frontend_path = r"E:\Sistemas de app para androide\turismo-app\turismo-frontend"
-        self.backend_path = r"E:\Sistemas de app para androide\turismo-app\turismo-backend"
+        
+        # ✅ DETECCIÓN AUTOMÁTICA - NADA HARCODEADO
+        self.frontend_path = self.find_frontend_path()
+        self.backend_path = self.find_backend_path()
         self.npm_path = self.find_npm()
 
-    def find_npm(self):
-        """Buscar npm en el sistema"""
-        posibles_npm = [
-            "npm",
-            "npm.cmd",
-            r"C:\Program Files\nodejs\npm.cmd",
-            r"C:\Program Files (x86)\nodejs\npm.cmd",
+    def find_frontend_path(self):
+        """Buscar automáticamente la carpeta del frontend"""
+        posibles_rutas = [
+            os.path.join(self.project_path, "turismo-frontend"),
+            os.path.join(self.project_path, "frontend"),
+            os.path.join(os.path.dirname(self.project_path), "turismo-frontend"),
+            self.project_path  # Por si ejecutan desde la carpeta del frontend
         ]
         
-        for npm in posibles_npm:
+        for ruta in posibles_rutas:
+            package_json = os.path.join(ruta, "package.json")
+            if os.path.exists(ruta) and os.path.exists(package_json):
+                self.log(f"✅ Frontend encontrado: {ruta}", "DEBUG")
+                return os.path.abspath(ruta)
+        
+        self.log(f"⚠️ Usando directorio actual como frontend: {self.project_path}", "INFO")
+        return self.project_path
+
+    def find_backend_path(self):
+        """Buscar automáticamente la carpeta del backend"""
+        posibles_rutas = [
+            os.path.join(self.project_path, "turismo-backend"),
+            os.path.join(self.project_path, "backend"),
+            os.path.join(os.path.dirname(self.project_path), "turismo-backend"),
+            os.path.join(self.project_path, "..", "turismo-backend")
+        ]
+        
+        for ruta in posibles_rutas:
+            api_py = os.path.join(ruta, "api.py")
+            if os.path.exists(ruta) and os.path.exists(api_py):
+                self.log(f"✅ Backend encontrado: {ruta}", "DEBUG")
+                return os.path.abspath(ruta)
+        
+        self.log("⚠️ Backend no encontrado - Solo modo build", "INFO")
+        return None
+
+    def find_npm(self):
+        """Buscar npm de forma multiplataforma"""
+        if platform.system() == "Windows":
+            commands = ["npm", "npm.cmd"]
+            # Agregar rutas comunes de Windows
+            possible_paths = [
+                r"C:\Program Files\nodejs\npm.cmd",
+                r"C:\Program Files (x86)\nodejs\npm.cmd",
+                os.path.join(os.environ.get("APPDATA", ""), "npm", "npm.cmd")
+            ]
+            commands.extend(possible_paths)
+        else:
+            commands = ["npm", "/usr/bin/npm", "/usr/local/bin/npm"]
+        
+        for cmd in commands:
             try:
-                result = subprocess.run([npm, "--version"], capture_output=True, text=True, timeout=10)
+                result = subprocess.run([cmd, "--version"], capture_output=True, text=True, timeout=10)
                 if result.returncode == 0:
-                    return npm
+                    self.log(f"✅ npm encontrado: {cmd}", "DEBUG")
+                    return cmd
             except:
                 continue
+        
+        self.log("❌ npm no encontrado", "WARN")
         return None
 
     def log(self, mensaje, nivel="INFO"):
@@ -63,7 +109,7 @@ class BuildDeployThread(QThread):
                 capture_output=True,
                 text=True,
                 timeout=timeout,
-                shell=True  # ← CAMBIADO A True PARA WINDOWS
+                shell=platform.system() == "Windows"  # Shell solo en Windows
             )
             return result.returncode == 0, result.stdout or "", result.stderr or ""
         except Exception as e:
@@ -76,7 +122,12 @@ class BuildDeployThread(QThread):
             self.log("💡 Instala Node.js desde: https://nodejs.org/", "ERROR")
             return False
 
+        if not self.frontend_path:
+            self.log("❌ No se pudo encontrar el proyecto React", "ERROR")
+            return False
+
         self.log(f"🔧 Usando npm: {self.npm_path}")
+        self.log(f"📁 Directorio frontend: {self.frontend_path}")
         self.log("🔄 Generando build de React...")
         
         ok, out, err = self.run_subprocess([self.npm_path, "run", "build"], cwd=self.frontend_path, timeout=600)
@@ -95,84 +146,84 @@ class BuildDeployThread(QThread):
             return False
 
     def copiar_archivos_correctamente(self):
-        """✅ VERSIÓN DEFINITIVA - Copia archivos frontend E imágenes reales"""
-        self.log("📦 Copiando archivos frontend E imágenes...")
-        
-        dist_path = os.path.join(self.frontend_path, "dist")
-        assets_destino = os.path.join(self.backend_path, "assets")
-        
-        if not os.path.exists(dist_path):
-            self.log("❌ No se encontró carpeta dist", "ERROR")
+        """✅ VERSIÓN PARA DISTRIBUCIÓN - Totalmente dinámica"""
+        if not self.frontend_path:
+            self.log("❌ No se pudo encontrar el proyecto frontend", "ERROR")
             return False
 
-        # ✅ CREAR carpeta assets
-        os.makedirs(assets_destino, exist_ok=True)
+        # ✅ RUTAS DINÁMICAS
+        dist_path = os.path.join(self.frontend_path, "dist")
+        public_assets_path = os.path.join(self.frontend_path, "public", "assets", "imagenes")
         
-        # ✅ COPIAR IMÁGENES REALES desde la ubicación correcta
-        ruta_imagenes_reales = r"E:\Sistemas de app para androide\turismo-app\public\assets\imagenes"
-        imagenes_destino = os.path.join(assets_destino, "imagenes")
+        if not self.backend_path:
+            self.log("⚠️ Backend no encontrado - Solo generando build", "INFO")
+            return True
+            
+        assets_destino = os.path.join(self.backend_path, "assets")
         
-        if os.path.exists(ruta_imagenes_reales):
-            self.log(f"📸 Copiando imágenes REALES desde: {ruta_imagenes_reales}")
-            
-            # Copiar TODO el contenido de imágenes con archivos reales
-            shutil.copytree(ruta_imagenes_reales, imagenes_destino)
-            
-            # Contar archivos copiados
-            total_imagenes = 0
-            for root, dirs, files in os.walk(imagenes_destino):
-                total_imagenes += len(files)
-            
-            self.log(f"✅ {total_imagenes} imágenes copiadas")
-            
-            # Mostrar estructura de imágenes copiada
-            self.log("🖼️ Estructura de imágenes copiada:")
-            for carpeta in os.listdir(imagenes_destino):
-                carpeta_path = os.path.join(imagenes_destino, carpeta)
-                if os.path.isdir(carpeta_path):
-                    num_archivos = len(os.listdir(carpeta_path))
-                    self.log(f"   📂 {carpeta}/ ({num_archivos} archivos)")
-        else:
-            self.log("❌ No se encontraron imágenes en la ruta especificada", "ERROR")
+        self.log(f"🔍 Frontend: {self.frontend_path}")
+        self.log(f"🔍 Backend: {self.backend_path}")
+        self.log(f"🔍 Imágenes: {public_assets_path}")
+
+        # Verificar que existe el build
+        if not os.path.exists(dist_path):
+            self.log("❌ No se encontró carpeta dist/ - Ejecuta npm run build primero", "ERROR")
             return False
-        
-        # ✅ COPIAR ARCHIVOS FRONTEND (html, js, css)
+
+        # ✅ COPIAR IMÁGENES (si existen)
+        imagenes_copiadas = False
+        if os.path.exists(public_assets_path):
+            imagenes_destino = os.path.join(assets_destino, "imagenes")
+            
+            self.log("📸 Copiando imágenes...")
+            if os.path.exists(imagenes_destino):
+                shutil.rmtree(imagenes_destino)
+            
+            shutil.copytree(public_assets_path, imagenes_destino)
+            
+            total_imagenes = sum([len(files) for r, d, files in os.walk(imagenes_destino)])
+            self.log(f"✅ {total_imagenes} imágenes copiadas")
+            imagenes_copiadas = True
+        else:
+            self.log("⚠️ No se encontraron imágenes en public/assets/imagenes/", "INFO")
+
+        # ✅ COPIAR ARCHIVOS FRONTEND
+        os.makedirs(assets_destino, exist_ok=True)
         archivos_copiados = 0
         
-        # 1. Buscar en raíz de dist/
-        for item in os.listdir(dist_path):
-            origen = os.path.join(dist_path, item)
-            destino = os.path.join(assets_destino, item)
+        # Función helper para copiar archivos
+        def copiar_archivo(origen, destino_base):
+            nombre_archivo = os.path.basename(origen)
+            destino = os.path.join(destino_base, nombre_archivo)
             
-            if os.path.isfile(origen) and item.endswith(('.html', '.js', '.css', '.svg', '.ico')):
+            if os.path.isfile(origen) and nombre_archivo.endswith(('.html', '.js', '.css', '.svg', '.ico')):
                 try:
                     shutil.copy2(origen, destino)
-                    archivos_copiados += 1
-                    self.log(f"   ✅ {item}")
+                    return True
                 except Exception as e:
-                    self.log(f"   ⚠️ Error copiando {item}: {str(e)}")
-        
-        # 2. Buscar en dist/assets/ (si existe)
+                    self.log(f"   ⚠️ Error: {nombre_archivo} - {str(e)}")
+            return False
+
+        # Copiar desde dist/
+        for item in os.listdir(dist_path):
+            if copiar_archivo(os.path.join(dist_path, item), assets_destino):
+                archivos_copiados += 1
+                self.log(f"   ✅ {item}")
+
+        # Copiar desde dist/assets/
         assets_dist = os.path.join(dist_path, "assets")
         if os.path.exists(assets_dist):
             for item in os.listdir(assets_dist):
-                origen = os.path.join(assets_dist, item)
-                destino = os.path.join(assets_destino, item)
-                
-                if os.path.isfile(origen) and item.endswith(('.js', '.css', '.svg')):
-                    try:
-                        shutil.copy2(origen, destino)
-                        archivos_copiados += 1
-                        self.log(f"   ✅ {item}")
-                    except Exception as e:
-                        self.log(f"   ⚠️ Error copiando {item}: {str(e)}")
-        
+                if copiar_archivo(os.path.join(assets_dist, item), assets_destino):
+                    archivos_copiados += 1
+                    self.log(f"   ✅ assets/{item}")
+
         self.log(f"✅ {archivos_copiados} archivos frontend copiados")
         
-        # ✅ VERIFICAR estructura final COMPLETA
-        self.mostrar_estructura_final(assets_destino)
+        if self.backend_path:
+            self.mostrar_estructura_final(assets_destino)
         
-        return True
+        return imagenes_copiadas or archivos_copiados > 0
 
     def mostrar_estructura_final(self, assets_destino):
         """Mostrar estructura final COMPLETA con imágenes"""
@@ -218,8 +269,13 @@ class BuildDeployThread(QThread):
             
         except Exception as e:
             self.log(f"⚠️ Error mostrando estructura: {str(e)}")
+
     def update_flask_for_assets(self):
         """Actualizar Flask para servir desde assets/"""
+        if not self.backend_path:
+            self.log("⚠️ Backend no disponible - No se puede actualizar Flask", "INFO")
+            return
+            
         try:
             api_path = os.path.join(self.backend_path, "api.py")
             if not os.path.exists(api_path):
@@ -265,12 +321,18 @@ class BuildDeployThread(QThread):
                 self.finished_signal.emit(False, "Error copiando archivos")
                 return
 
-            # 3. Actualizar Flask
+            # 3. Actualizar Flask (si hay backend)
             self.progress_signal.emit(90)
-            self.update_flask_for_assets()
+            if self.backend_path:
+                self.update_flask_for_assets()
 
             self.progress_signal.emit(100)
-            self.finished_signal.emit(True, "Build & Deploy completado + Integración Flask realizada (assets/)")
+            
+            mensaje_final = "Build completado"
+            if self.backend_path:
+                mensaje_final += " + Integración Flask realizada (assets/)"
+                
+            self.finished_signal.emit(True, mensaje_final)
             self.log("✅ PROCESO COMPLETADO EXITOSAMENTE")
             
         except Exception as e:
@@ -278,7 +340,7 @@ class BuildDeployThread(QThread):
             self.finished_signal.emit(False, f"Error: {str(e)}")
 
 # -------------------------
-# INTERFAZ PyQt5 (MANTENER IGUAL)
+# INTERFAZ PyQt5 ACTUALIZADA
 # -------------------------
 class DialogoBuildDeploy(QDialog):
     def __init__(self, parent=None, project_path=None):
@@ -308,8 +370,8 @@ class DialogoBuildDeploy(QDialog):
         # Información
         info_group = QGroupBox("📋 Información del Sistema")
         info_layout = QVBoxLayout()
-        self.lbl_proyecto = QLabel(f"📁 Frontend: turismo-frontend")
-        self.lbl_backend = QLabel(f"🐍 Backend: turismo-backend")
+        self.lbl_proyecto = QLabel("📁 Frontend: Detectando...")
+        self.lbl_backend = QLabel("🐍 Backend: Detectando...")
         self.lbl_npm = QLabel("📦 npm: Verificando...")
         info_layout.addWidget(self.lbl_proyecto)
         info_layout.addWidget(self.lbl_backend)
@@ -384,24 +446,30 @@ class DialogoBuildDeploy(QDialog):
 
     def verificar_sistema(self):
         """Verificar que todo esté listo"""
-        # Verificar npm
+        # Crear thread temporal para detección
         thread = BuildDeployThread(self.project_path)
+        
+        # Actualizar interfaz con información detectada
         if thread.npm_path:
             self.lbl_npm.setText(f"📦 npm: ✅ {thread.npm_path}")
         else:
             self.lbl_npm.setText("📦 npm: ❌ No encontrado")
             
-        # Verificar carpetas
-        frontend_path = r"E:\Sistemas de app para androide\turismo-app\turismo-frontend"
-        backend_path = r"E:\Sistemas de app para androide\turismo-app\turismo-backend"
-        
-        frontend_ok = os.path.exists(frontend_path)
-        backend_ok = os.path.exists(backend_path)
-        
-        if frontend_ok and backend_ok:
-            self.log("✅ Sistema verificado: Frontend y Backend encontrados")
+        if thread.frontend_path:
+            self.lbl_proyecto.setText(f"📁 Frontend: ✅ {os.path.basename(thread.frontend_path)}")
         else:
-            self.log("❌ Error: No se encontraron las carpetas del proyecto")
+            self.lbl_proyecto.setText("📁 Frontend: ❌ No encontrado")
+            
+        if thread.backend_path:
+            self.lbl_backend.setText(f"🐍 Backend: ✅ {os.path.basename(thread.backend_path)}")
+        else:
+            self.lbl_backend.setText("🐍 Backend: ⚠️ No encontrado (solo build)")
+        
+        # Verificar estado general
+        if thread.npm_path and thread.frontend_path:
+            self.log("✅ Sistema listo para build")
+        else:
+            self.log("❌ Problemas detectados en la configuración")
 
     def iniciar_build(self):
         """Iniciar proceso de build"""
@@ -426,9 +494,9 @@ class DialogoBuildDeploy(QDialog):
         
         if exito:
             QMessageBox.information(self, "✅ Éxito", 
-                                  "Build & Deploy completado exitosamente!\n\n"
+                                  f"{mensaje}\n\n"
                                   "✅ Build de React generado\n"
-                                  "✅ Archivos copiados a Flask (assets/)\n"
+                                  "✅ Archivos copiados a Flask (assets/)\n" 
                                   "✅ Estructura correcta sin duplicaciones\n"
                                   "✅ Flask configurado para producción\n\n"
                                   "🎯 Ahora ejecuta backend_deploy.py")
@@ -445,4 +513,4 @@ if __name__ == "__main__":
     app = QApplication([])
     dialogo = DialogoBuildDeploy()
     dialogo.show()
-    app.exec_() 
+    app.exec_()

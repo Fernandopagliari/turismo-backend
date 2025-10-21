@@ -1,3 +1,4 @@
+# backend_deploy.py - VERSIÓN PARA DISTRIBUCIÓN (SIN RUTAS HARCODEADAS)
 # -*- coding: utf-8 -*-
 import os
 import subprocess
@@ -11,17 +12,54 @@ from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 
 class BackendDeployThread(QThread):
-    """Hilo para ejecutar deploy COMPLETO del backend incluyendo assets - UNIVERSAL"""
+    """Hilo para ejecutar deploy COMPLETO del backend - VERSIÓN PORTABLE"""
     log_signal = pyqtSignal(str)
     progress_signal = pyqtSignal(int)
     finished_signal = pyqtSignal(bool, str)
     
     def __init__(self, backend_path, servidor_config=None):
         super().__init__()
-        self.backend_path = backend_path
+        self.backend_path = self.find_backend_path(backend_path)
         self.servidor_config = servidor_config or {}
         self.datos_hosting = servidor_config.get('datos_hosting', {})
         
+    def find_backend_path(self, backend_path):
+        """Buscar automáticamente la carpeta del backend"""
+        if backend_path and os.path.exists(backend_path):
+            return backend_path
+            
+        # Buscar en ubicaciones comunes
+        posibles_rutas = [
+            os.path.join(os.getcwd(), "turismo-backend"),
+            os.path.join(os.getcwd(), "backend"),
+            os.path.join(os.path.dirname(os.getcwd()), "turismo-backend"),
+            os.path.join(os.path.dirname(os.getcwd()), "backend"),
+        ]
+        
+        for ruta in posibles_rutas:
+            api_py = os.path.join(ruta, "api.py")
+            if os.path.exists(ruta) and os.path.exists(api_py):
+                return os.path.abspath(ruta)
+        
+        # Si no encuentra, usar el directorio actual
+        return os.getcwd()
+    
+    def find_frontend_path(self):
+        """Buscar automáticamente la carpeta del frontend"""
+        posibles_rutas = [
+            os.path.join(os.path.dirname(self.backend_path), "turismo-frontend"),
+            os.path.join(os.path.dirname(self.backend_path), "frontend"),
+            os.path.join(self.backend_path, "..", "turismo-frontend"),
+            os.path.join(os.getcwd(), "turismo-frontend"),
+        ]
+        
+        for ruta in posibles_rutas:
+            package_json = os.path.join(ruta, "package.json")
+            if os.path.exists(ruta) and os.path.exists(package_json):
+                return os.path.abspath(ruta)
+        
+        return None
+
     def run(self):
         try:
             self.log_signal.emit("🚀 INICIANDO DEPLOY COMPLETO UNIVERSAL")
@@ -48,9 +86,12 @@ class BackendDeployThread(QThread):
             
             self.progress_signal.emit(20)
             
-            # Paso 3: Copiar assets MANTENIENDO ESTRUCTURA
-            if not self.copiar_assets_al_repositorio():
-                return
+            # Paso 3: Verificar assets (opcional)
+            assets_path = os.path.join(self.backend_path, "assets")
+            if os.path.exists(assets_path):
+                self.log_signal.emit("✅ Carpeta assets encontrada")
+            else:
+                self.log_signal.emit("⚠️  No se encontró carpeta assets")
             
             self.progress_signal.emit(40)
             
@@ -168,7 +209,7 @@ type = "web"
 LOCAL_DB_HOST=localhost
 LOCAL_DB_USER=root
 LOCAL_DB_PASSWORD=
-LOCAL_DB_NAME=databaseapp
+LOCAL_DB_NAME=turismo_db
 LOCAL_DB_PORT=3306
 
 # PRODUCCIÓN (Render/Railway/Heroku)
@@ -195,7 +236,7 @@ PORT=10000
             "Procfile": "Configuración proceso (Render/Heroku)",
             "railway.toml": "Configuración Railway",
             "render.yaml": "Configuración Render",
-            "assets/": "Archivos estáticos"
+            "assets/": "Archivos estáticos (opcional)"
         }
         
         todos_encontrados = True
@@ -204,212 +245,14 @@ PORT=10000
             if os.path.exists(ruta_archivo):
                 self.log_signal.emit(f"✅ {archivo} - {descripcion}")
             else:
-                self.log_signal.emit(f"❌ {archivo} - {descripcion} - FALTANTE")
                 if archivo in ["api.py", "requirements.txt"]:
+                    self.log_signal.emit(f"❌ {archivo} - {descripcion} - FALTANTE")
                     todos_encontrados = False
+                else:
+                    self.log_signal.emit(f"⚠️  {archivo} - {descripcion} - Opcional")
         
         self.log_signal.emit("🎯 Configurado para: Render, Railway, Heroku y más")
         return todos_encontrados
-    
-    def copiar_assets_al_repositorio(self):
-        """✅ VERSIÓN MEJORADA: Maneja errores de archivos en uso"""
-        try:
-            assets_destino = os.path.join(self.backend_path, "assets")
-            
-            self.log_signal.emit("🔄 COPIANDO ARCHIVOS DEL BUILD...")
-            
-            # ✅ PRIMERO: Limpiar carpeta assets CON MANEJO DE ERRORES
-            if os.path.exists(assets_destino):
-                self.log_signal.emit("🧹 Limpiando carpeta assets existente...")
-                try:
-                    shutil.rmtree(assets_destino)
-                    self.log_signal.emit("✅ Carpeta assets limpiada exitosamente")
-                except Exception as e:
-                    self.log_signal.emit(f"⚠️  No se pudo limpiar assets: {str(e)}")
-                    self.log_signal.emit("🔄 Intentando limpiar archivo por archivo...")
-                    
-                    # Limpiar archivo por archivo
-                    for root, dirs, files in os.walk(assets_destino, topdown=False):
-                        for name in files:
-                            file_path = os.path.join(root, name)
-                            try:
-                                os.remove(file_path)
-                                self.log_signal.emit(f"   🗑️  Eliminado: {name}")
-                            except Exception as file_error:
-                                self.log_signal.emit(f"   ⚠️  No se pudo eliminar {name}: {str(file_error)}")
-                        
-                        for name in dirs:
-                            dir_path = os.path.join(root, name)
-                            try:
-                                os.rmdir(dir_path)
-                            except:
-                                pass  # Ignorar directorios no vacíos
-            
-            # ✅ SEGUNDO: Generar build de React (si es necesario)
-            frontend_path = os.path.join(os.path.dirname(self.backend_path), "turismo-frontend")
-            build_path = None
-            
-            if os.path.exists(frontend_path):
-                self.log_signal.emit("🔄 Generando build de React...")
-                try:
-                    os.chdir(frontend_path)
-                    result = subprocess.run(["npm", "run", "build"], capture_output=True, text=True, timeout=120)
-                    if result.returncode == 0:
-                        self.log_signal.emit("✅ Build de React generado exitosamente")
-                    else:
-                        self.log_signal.emit(f"⚠️  Error en build React: {result.stderr}")
-                except Exception as e:
-                    self.log_signal.emit(f"⚠️  Error generando build: {str(e)}")
-            
-            # ✅ TERCERO: Buscar carpeta build/dist
-            posibles_build_paths = [
-                os.path.join(frontend_path, "dist"),  # Vite
-                os.path.join(frontend_path, "build"), # Create React App
-            ]
-            
-            for path in posibles_build_paths:
-                if os.path.exists(path):
-                    build_path = path
-                    self.log_signal.emit(f"📦 Build encontrado en: {path}")
-                    break
-            
-            if not build_path:
-                self.log_signal.emit("❌ No se encontró carpeta de build")
-                return False
-            
-            # ✅ CUARTO: COPIAR TODO EL CONTENIDO DEL BUILD
-            self.log_signal.emit("📦 Copiando TODO el contenido del build...")
-            
-            # Crear carpeta assets
-            os.makedirs(assets_destino, exist_ok=True)
-            
-            # ✅ CORRECCIÓN CRÍTICA: Copiar TODOS los archivos y carpetas del build
-            items_copiados = 0
-            
-            for item in os.listdir(build_path):
-                origen_item = os.path.join(build_path, item)
-                destino_item = os.path.join(assets_destino, item)
-                
-                try:
-                    if os.path.isfile(origen_item):
-                        # Copiar archivos individuales (index.html, *.js, *.css)
-                        shutil.copy2(origen_item, destino_item)
-                        items_copiados += 1
-                        self.log_signal.emit(f"   📄 {item}")
-                        
-                    elif os.path.isdir(origen_item):
-                        # Copiar carpetas completas (imagenes/, assets/, etc.)
-                        shutil.copytree(origen_item, destino_item, dirs_exist_ok=True)
-                        
-                        # Contar archivos en la carpeta
-                        count = sum([len(files) for r, d, files in os.walk(destino_item)])
-                        items_copiados += count
-                        self.log_signal.emit(f"   📁 {item}/ ({count} archivos)")
-                        
-                except Exception as e:
-                    self.log_signal.emit(f"   ⚠️  Error copiando {item}: {str(e)}")
-            
-            self.log_signal.emit(f"✅ {items_copiados} archivos copiados a assets/")
-            
-            # ✅ QUINTO: VERIFICAR ARCHIVOS ESENCIALES
-            self.log_signal.emit("🔍 Verificando archivos esenciales...")
-            
-            archivos_encontrados = []
-            for root, dirs, files in os.walk(assets_destino):
-                for file in files:
-                    archivos_encontrados.append(file)
-            
-            # Verificar archivos críticos
-            esenciales_verificados = {
-                "index.html": False,
-                "js_files": False,
-                "css_files": False
-            }
-            
-            for archivo in archivos_encontrados:
-                if archivo == "index.html":
-                    esenciales_verificados["index.html"] = True
-                elif archivo.endswith('.js'):
-                    esenciales_verificados["js_files"] = True
-                elif archivo.endswith('.css'):
-                    esenciales_verificados["css_files"] = True
-            
-            # Mostrar resultados
-            for archivo, encontrado in esenciales_verificados.items():
-                icono = "✅" if encontrado else "❌"
-                self.log_signal.emit(f"   {icono} {archivo}")
-            
-            # Verificar estructura final
-            self.mostrar_estructura_final(assets_destino)
-            
-            return True
-            
-        except Exception as e:
-            self.log_signal.emit(f"❌ Error copiando assets: {str(e)}")
-            return False
-
-    def mostrar_estructura_final(self, ruta_assets):
-        """Mostrar estructura final simplificada"""
-        try:
-            self.log_signal.emit("📂 ESTRUCTURA FINAL DE assets/:")
-            
-            for item in os.listdir(ruta_assets):
-                item_path = os.path.join(ruta_assets, item)
-                
-                if os.path.isfile(item_path):
-                    # Mostrar solo archivos esenciales
-                    if item in ['index.html'] or item.endswith(('.js', '.css')):
-                        size = os.path.getsize(item_path) / 1024
-                        self.log_signal.emit(f"   📄 {item} ({size:.1f} KB)")
-                    else:
-                        self.log_signal.emit(f"   📄 {item}")
-                        
-                elif os.path.isdir(item_path):
-                    if item == "imagenes":
-                        # Mostrar subcarpetas de imágenes
-                        subcarpetas = []
-                        for sub in os.listdir(item_path):
-                            sub_path = os.path.join(item_path, sub)
-                            if os.path.isdir(sub_path):
-                                archivos_count = len(os.listdir(sub_path))
-                                subcarpetas.append(f"{sub}/ ({archivos_count} archivos)")
-                        
-                        self.log_signal.emit(f"   📁 {item}/")
-                        for sub_info in subcarpetas[:5]:  # Mostrar primeras 5
-                            self.log_signal.emit(f"      📂 {sub_info}")
-                            
-                        if len(subcarpetas) > 5:
-                            self.log_signal.emit(f"      ... y {len(subcarpetas) - 5} más")
-                    else:
-                        archivos_count = len(os.listdir(item_path))
-                        self.log_signal.emit(f"   📁 {item}/ ({archivos_count} archivos)")
-                        
-        except Exception as e:
-            self.log_signal.emit(f"⚠️  Error mostrando estructura: {str(e)}")
-
-    def mostrar_estructura_assets_simple(self, ruta_assets):
-        """Mostrar estructura simplificada de assets"""
-        try:
-            self.log_signal.emit("📂 Estructura final de assets:")
-            for item in os.listdir(ruta_assets):
-                item_path = os.path.join(ruta_assets, item)
-                if os.path.isfile(item_path):
-                    self.log_signal.emit(f"   📄 {item}")
-                elif os.path.isdir(item_path):
-                    if item == "imagenes":
-                        # Mostrar subcarpetas de imágenes
-                        subcarpetas = os.listdir(item_path)
-                        self.log_signal.emit(f"   📁 {item}/ ({len(subcarpetas)} subcarpetas)")
-                        for sub in subcarpetas[:3]:  # Mostrar primeras 3
-                            sub_path = os.path.join(item_path, sub)
-                            if os.path.isdir(sub_path):
-                                archivos = os.listdir(sub_path)
-                                self.log_signal.emit(f"      📂 {sub}/ ({len(archivos)} archivos)")
-                    else:
-                        archivos = os.listdir(item_path)
-                        self.log_signal.emit(f"   📁 {item}/ ({len(archivos)} archivos)")
-        except Exception as e:
-            self.log_signal.emit(f"⚠️  Error mostrando estructura: {str(e)}")
 
     def ejecutar_deploy(self, tipo, servidor, comando_personalizado=""):
         """Ejecutar deploy según el tipo de servidor - UNIVERSAL"""
@@ -659,9 +502,6 @@ PORT=10000
                         if linea.strip() and any(x in linea for x in ['Writing objects', 'To http', 'master ->', 'main ->']):
                             self.log_signal.emit(f"   📤 {linea.strip()}")
                 
-                # Verificar assets en GitHub
-                self.verificar_assets_en_git()
-                
                 self.log_signal.emit("🔄 Las plataformas detectarán los cambios automáticamente...")
                 self.log_signal.emit("⏳ El deploy puede tomar 2-5 minutos")
                 self.log_signal.emit("🚀 Configurado para PRODUCCIÓN con Gunicorn")
@@ -677,31 +517,6 @@ PORT=10000
         except Exception as e:
             self.log_signal.emit(f"❌ Error: {str(e)}")
             return False
-    
-    def verificar_assets_en_git(self):
-        """Verificar que los assets se subieron a GitHub"""
-        try:
-            result = subprocess.run(
-                ["git", "ls-tree", "-r", "HEAD", "--name-only"], 
-                capture_output=True, 
-                text=True
-            )
-            
-            if result.returncode == 0:
-                archivos = result.stdout.split('\n')
-                assets_subidos = [f for f in archivos if f.startswith('assets/')]
-                
-                if assets_subidos:
-                    self.log_signal.emit(f"✅ {len(assets_subidos)} assets subidos a GitHub")
-                    # Mostrar primeros 5 assets como ejemplo
-                    for asset in assets_subidos[:5]:
-                        self.log_signal.emit(f"   📄 {asset}")
-                    if len(assets_subidos) > 5:
-                        self.log_signal.emit(f"   ... y {len(assets_subidos) - 5} más")
-                else:
-                    self.log_signal.emit("⚠️  No se detectaron assets en el repositorio")
-        except Exception as e:
-            self.log_signal.emit(f"⚠️  No se pudo verificar assets: {str(e)}")
     
     def verificar_deploy(self):
         """Verificar que el deploy funcionó correctamente en CUALQUIER servidor"""
@@ -727,18 +542,6 @@ PORT=10000
                     response = requests.get(url, timeout=15)
                     if response.status_code == 200:
                         self.log_signal.emit(f"✅ {endpoint} - FUNCIONA")
-                        if endpoint == "/api/health":
-                            try:
-                                data = response.json()
-                                info_extra = []
-                                if 'entorno' in data:
-                                    info_extra.append(f"Entorno: {data['entorno']}")
-                                if 'base_datos' in data:
-                                    info_extra.append(f"BD: {data['base_datos']}")
-                                if info_extra:
-                                    self.log_signal.emit(f"   📊 {' | '.join(info_extra)}")
-                            except:
-                                pass
                     else:
                         self.log_signal.emit(f"⚠️  {endpoint} - Error {response.status_code}")
                         todos_funcionan = False
@@ -748,7 +551,6 @@ PORT=10000
             
             if todos_funcionan:
                 self.log_signal.emit("🎊 ¡TODOS LOS ENDPOINTS FUNCIONAN EN PRODUCCIÓN!")
-                self.log_signal.emit("✅ Servidor configurado con Gunicorn para producción")
             else:
                 self.log_signal.emit("⚠️  Algunos endpoints tienen problemas")
                 self.log_signal.emit("💡 El deploy puede estar en progreso...")
@@ -770,9 +572,6 @@ PORT=10000
                 timeout=10
             )
             return result.returncode == 0
-        except subprocess.TimeoutExpired:
-            self.log_signal.emit(f"⚠️  Timeout verificando {herramienta}")
-            return False
         except:
             return False
 
@@ -781,10 +580,27 @@ class DialogoBackendDeploy(QDialog):
     
     def __init__(self, parent=None, backend_path=None):
         super().__init__(parent)
-        self.backend_path = backend_path or r"E:\Sistemas de app para androide\turismo-app\turismo-backend"
+        self.backend_path = backend_path or self.find_backend_path()
         self.datos_hosting = None
         self.setup_ui()
         self.cargar_configuracion_desde_bd()
+    
+    def find_backend_path(self):
+        """Buscar automáticamente la carpeta del backend"""
+        posibles_rutas = [
+            os.path.join(os.getcwd(), "turismo-backend"),
+            os.path.join(os.getcwd(), "backend"),
+            os.path.join(os.path.dirname(os.getcwd()), "turismo-backend"),
+            os.path.dirname(os.getcwd()),  # Directorio padre
+            os.getcwd()  # Directorio actual
+        ]
+        
+        for ruta in posibles_rutas:
+            api_py = os.path.join(ruta, "api.py")
+            if os.path.exists(ruta) and os.path.exists(api_py):
+                return os.path.abspath(ruta)
+        
+        return os.getcwd()  # Fallback al directorio actual
     
     def cargar_configuracion_desde_bd(self):
         """Cargar configuración desde BD"""
@@ -1046,7 +862,6 @@ class DialogoBackendDeploy(QDialog):
                                   f"✅ Configurado para MULTIPLATAFORMA\n"
                                   f"✅ Gunicorn como servidor WSGI\n"
                                   f"✅ Sincronización con GitHub completada\n"
-                                  f"✅ Assets copiados al repositorio\n"
                                   f"✅ Archivos para Render, Railway, Heroku\n"
                                   f"🎯 Compatible con cualquier hosting")
         else:
