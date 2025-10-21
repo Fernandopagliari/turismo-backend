@@ -82,7 +82,7 @@
         </widget>
         <widget class="QLineEdit" name="lineEdit_logo_app">
          <property name="enabled">
-          <bool>false</bool>
+          <bool>true</bool>
          </property>
          <property name="geometry">
           <rect>
@@ -163,7 +163,7 @@ min-height: 100px;
         </widget>
         <widget class="QLineEdit" name="lineEdit_hero_imagen">
          <property name="enabled">
-          <bool>false</bool>
+          <bool>true</bool>
          </property>
          <property name="geometry">
           <rect>
@@ -424,7 +424,7 @@ min-height: 50px;
         </widget>
         <widget class="QLineEdit" name="lineEdit_icono_abrir">
          <property name="enabled">
-          <bool>false</bool>
+          <bool>true</bool>
          </property>
          <property name="geometry">
           <rect>
@@ -495,7 +495,7 @@ min-height: 50px;
         </widget>
         <widget class="QLineEdit" name="lineEdit_icono_cerrar">
          <property name="enabled">
-          <bool>false</bool>
+          <bool>true</bool>
          </property>
          <property name="geometry">
           <rect>
