@@ -20,35 +20,26 @@ def imagen_a_base64(ruta_imagen):
         return None
 
 def convertir_ruta_produccion(ruta_absoluta):
-    """Convierte rutas absolutas a rutas relativas - VERSIÓN DEBUG CON QMESSAGEBOX"""
+    """Convierte rutas absolutas a rutas relativas - VERSIÓN FINAL"""
     from PyQt5.QtWidgets import QMessageBox
     
-    # Debug 1: Ruta recibida
-    QMessageBox.information(None, "DEBUG 1 - Ruta Recibida", f"Función llamada con ruta:\n{ruta_absoluta}")
-    
     if not ruta_absoluta or not os.path.exists(ruta_absoluta):
-        QMessageBox.warning(None, "DEBUG - Ruta Inválida", "❌ Ruta vacía o no existe")
         return ""
     
     ruta_normalizada = os.path.normpath(ruta_absoluta)
-    QMessageBox.information(None, "DEBUG 2 - Ruta Normalizada", f"📁 Ruta normalizada:\n{ruta_normalizada}")
     
     # Buscar "assets/imagenes"
     target = "assets" + os.sep + "imagenes" + os.sep
-    QMessageBox.information(None, "DEBUG 3 - Target", f"🎯 Buscando:\n{target}")
-    
     idx = ruta_normalizada.lower().find(target.lower())
-    QMessageBox.information(None, "DEBUG 4 - Índice", f"🔍 Índice encontrado: {idx}")
     
     if idx != -1:
         ruta_relativa = ruta_normalizada[idx + len(target):]
-        resultado = f"assets/imagenes/{ruta_relativa}"
-        QMessageBox.information(None, "DEBUG 5 - Resultado", f"✅ Resultado final:\n{resultado}")
+        # ✅ NORMALIZAR a barras simples para web
+        resultado = f"assets/imagenes/{ruta_relativa}".replace("\\", "/")
         return resultado
     
     nombre_archivo = os.path.basename(ruta_absoluta)
     resultado = f"assets/imagenes/{nombre_archivo}"
-    QMessageBox.information(None, "DEBUG 6 - Fallback", f"⚠️ Usando fallback:\n{resultado}")
     return resultado
 
 class VentanaConfiguracion(QWidget):
@@ -519,17 +510,10 @@ class VentanaConfiguracion(QWidget):
             self, "Seleccionar logo", "", "Imágenes (*.png *.jpg *.jpeg *.bmp *.gif)"
         )
         
-        # Debug 1: Ruta seleccionada del diálogo
-        QMessageBox.information(self, "DEBUG - Ruta Seleccionada", f"🖼️ Ruta seleccionada del diálogo:\n{ruta_absoluta}")
-        
         if not ruta_absoluta:
-            QMessageBox.information(self, "DEBUG - Sin Selección", "❌ No se seleccionó ninguna imagen")
             return
 
         ruta_relativa = convertir_ruta_produccion(ruta_absoluta)
-        
-        # Debug 2: Ruta relativa calculada
-        QMessageBox.information(self, "DEBUG - Ruta Relativa", f"📤 Ruta relativa calculada:\n{ruta_relativa}")
         
         # Mostrar ruta absoluta en QLineEdit (solo para visualización)
         self.lineEdit_logo_app.setText(ruta_absoluta)
@@ -551,9 +535,7 @@ class VentanaConfiguracion(QWidget):
             """, (ruta_absoluta, ruta_relativa, imagen_a_base64(ruta_absoluta), self.config_seleccionada_id))
             conexion.commit()
             conexion.close()
-            
-            # Debug 3: Confirmación de guardado en BD
-            QMessageBox.information(self, "DEBUG - BD Actualizada", f"✅ Guardado en base de datos:\nRuta Absoluta: {ruta_absoluta}\nRuta Relativa: {ruta_relativa}")
+
     def seleccionar_icono_abrir(self):
         ruta_absoluta, _ = QFileDialog.getOpenFileName(
             self, "Seleccionar icono abrir", "", "Iconos (*.png *.jpg *.jpeg *.bmp *.gif)"
