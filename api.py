@@ -353,6 +353,113 @@ def obtener_regiones():
         return jsonify(regiones)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    
+
+# =========================
+# ENDPOINTS DE DEBUG - ELIMINAR DESPUÉS DE USAR
+# =========================
+
+@app.route('/api/debug/tablas')
+def debug_tablas():
+    """Ver todas las tablas y sus datos"""
+    try:
+        conn = conectar_bd()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Obtener lista de tablas
+        cursor.execute("SHOW TABLES")
+        tablas = [list(tabla.values())[0] for tabla in cursor.fetchall()]
+        
+        resultado = {}
+        for tabla in tablas:
+            cursor.execute(f"SELECT * FROM {tabla} LIMIT 10")  # Límite para no saturar
+            resultado[tabla] = cursor.fetchall()
+        
+        cursor.close()
+        conn.close()
+        return jsonify(resultado)
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/debug/imagenes')
+def debug_imagenes():
+    """Ver específicamente las rutas de imágenes"""
+    try:
+        conn = conectar_bd()
+        cursor = conn.cursor(dictionary=True)
+        
+        resultados = {}
+        
+        # Verificar regiones
+        cursor.execute("SELECT id_region_zona, nombre_region_zona, imagen_region_zona_ruta_relativa FROM regiones_zonas")
+        resultados['regiones'] = cursor.fetchall()
+        
+        # Verificar secciones
+        cursor.execute("SELECT id_seccion, nombre_seccion, icono_seccion FROM secciones")
+        resultados['secciones'] = cursor.fetchall()
+        
+        # Verificar subsecciones
+        cursor.execute("SELECT id_sub_seccion, nombre_sub_seccion, imagen_ruta_relativa, icono_ruta_relativa, foto1_ruta_relativa, foto2_ruta_relativa, foto3_ruta_relativa, foto4_ruta_relativa FROM sub_secciones")
+        resultados['subsecciones'] = cursor.fetchall()
+        
+        # Verificar configuración
+        cursor.execute("SELECT id_config, titulo_app, logo_app_ruta_relativa, icono_hamburguesa_ruta_relativa, icono_cerrar_ruta_relativa, hero_imagen_ruta_relativa FROM configuracion_app")
+        resultados['configuracion'] = cursor.fetchall()
+        
+        cursor.close()
+        conn.close()
+        return jsonify(resultados)
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/debug/corregir-rutas')
+def corregir_rutas():
+    """Corregir automáticamente las rutas de imágenes"""
+    try:
+        conn = conectar_bd()
+        cursor = conn.cursor()
+        
+        # Mapeo de rutas viejas a nuevas
+        correcciones = {
+            'assets/imagenes/valle_fertil_turismo_regional.jpg': 'assets/imagenes/lugares/ischigualasto.jpg',
+            'assets/imagenes/hongo_ischigualasto.jpg': 'assets/imagenes/lugares/hongo_ischigualasto.jpg'
+        }
+        
+        resultados = {}
+        
+        # Corregir tabla regiones_zonas
+        for vieja_ruta, nueva_ruta in correcciones.items():
+            cursor.execute("""
+                UPDATE regiones_zonas 
+                SET imagen_region_zona_ruta_relativa = %s 
+                WHERE imagen_region_zona_ruta_relativa = %s
+            """, (nueva_ruta, vieja_ruta))
+            resultados[f'regiones_{vieja_ruta}'] = cursor.rowcount
+        
+        # Corregir tabla sub_secciones
+        for tabla in ['sub_secciones']:
+            for vieja_ruta, nueva_ruta in correcciones.items():
+                cursor.execute(f"""
+                    UPDATE {tabla} 
+                    SET imagen_ruta_relativa = %s 
+                    WHERE imagen_ruta_relativa = %s
+                """, (nueva_ruta, vieja_ruta))
+                resultados[f'{tabla}_imagen_{vieja_ruta}'] = cursor.rowcount
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        return jsonify({
+            'mensaje': 'Rutas corregidas automáticamente',
+            'resultados': resultados
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 
 # =========================
 # INICIALIZACIÓN
@@ -386,4 +493,3 @@ if __name__ == '__main__':
         print(f"❌ Error crítico: {e}")
     
     app.run(host='0.0.0.0', port=port, debug=(entorno == 'local'))
-    
