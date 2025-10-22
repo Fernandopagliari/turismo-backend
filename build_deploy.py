@@ -204,44 +204,55 @@ class BuildDeployThread(QThread):
             self.log("❌ No se encontró frontend")
             return False
 
-        # ✅ VERIFICAR AMBAS UBICACIONES
         dist_path = os.path.join(self.frontend_path, "dist")
-        backend_assets_path = os.path.join(self.backend_path, "assets") if self.backend_path else None
-        
-        # ✅ SI ya está en backend/assets (tu configuración), NO hacer nada
-        if backend_assets_path and os.path.exists(backend_assets_path):
-            self.log("✅ Los archivos YA están en backend/assets (configuración Vite)")
-            self.log("📁 Estructura existente:")
-            for root, dirs, files in os.walk(backend_assets_path):
-                nivel = root.replace(backend_assets_path, '').count(os.sep)
-                indent = "  " * nivel
-                carpeta = os.path.basename(root) if root != backend_assets_path else "assets"
-                self.log(f"{indent}📁 {carpeta}/")
-                for file in files[:3]:
-                    self.log(f"{indent}  📄 {file}")
+        if not os.path.exists(dist_path):
+            self.log("❌ No existe dist/ - ejecuta build primero")
+            return False
+
+        if not self.backend_path:
+            self.log("⚠️ Backend no encontrado - solo build")
             return True
-        
-        # ✅ SI está en dist/, copiar a backend
-        elif os.path.exists(dist_path):
-            if not self.backend_path:
-                self.log("⚠️ Backend no encontrado - solo build")
-                return True
 
-            assets_destino = os.path.join(self.backend_path, "assets")
-            self.log(f"Copiando de dist/ a: {assets_destino}")
+        assets_destino = os.path.join(self.backend_path, "assets")
+        self.log(f"📁 Copiando desde: {dist_path}")
+        self.log(f"📁 Copiando hacia: {assets_destino}")
 
-            if os.path.exists(assets_destino):
-                shutil.rmtree(assets_destino)
+        # Limpiar destino anterior
+        if os.path.exists(assets_destino):
+            shutil.rmtree(assets_destino)
 
-            try:
+        try:
+            # ✅ COPIAR Y CORREGIR ESTRUCTURA
+            # Si dist/ tiene estructura assets/assets/, corregirla
+            dist_assets_path = os.path.join(dist_path, "assets")
+            
+            if os.path.exists(dist_assets_path):
+                self.log("🔍 Estructura encontrada en dist/:")
+                for item in os.listdir(dist_assets_path):
+                    self.log(f"   - {item}")
+                
+                # ✅ COPIAR DIRECTAMENTE el contenido de dist/assets/ a assets_destino/
+                shutil.copytree(dist_assets_path, assets_destino)
+                self.log("✅ Estructura corregida: dist/assets/ → backend/assets/")
+            else:
+                # ✅ COPIAR todo dist/ normalmente
                 shutil.copytree(dist_path, assets_destino)
-                self.log("✅ Copia recursiva completada")
-                return True
-            except Exception as e:
-                self.log(f"❌ Error en copia: {e}")
-                return False
-        else:
-            self.log("❌ No existe dist/ ni backend/assets - ejecuta build primero")
+                self.log("✅ Copia normal completada")
+            
+            # ✅ VERIFICAR ESTRUCTURA FINAL
+            self.log("📁 Estructura final en backend/assets/:")
+            for root, dirs, files in os.walk(assets_destino):
+                nivel = root.replace(assets_destino, '').count(os.sep)
+                indent = "  " * nivel
+                carpeta = os.path.basename(root) if root != assets_destino else "assets"
+                self.log(f"{indent}📁 {carpeta}/")
+                for file in files[:5]:
+                    self.log(f"{indent}  📄 {file}")
+            
+            return True
+            
+        except Exception as e:
+            self.log(f"❌ Error en copia: {e}")
             return False
         
     def run(self):
