@@ -1,4 +1,4 @@
-# build_deploy.py - VERSIÓN CON MANEJO DE ERRORES MEJORADO
+# build_deploy.py - VERSIÓN COMPLETA CORREGIDA
 # -*- coding: utf-8 -*-
 import os
 import subprocess
@@ -26,30 +26,6 @@ class BuildDeployThread(QThread):
         self.backend_path = self.find_backend_path()
         self.npm_path = self.find_npm()
 
-    def find_frontend_path(self):
-        posibles_rutas = [
-            os.path.join(self.project_path, "turismo-frontend"),
-            os.path.join(self.project_path, "frontend"),
-            self.project_path
-        ]
-        for ruta in posibles_rutas:
-            package_json = os.path.join(ruta, "package.json")
-            if os.path.exists(ruta) and os.path.exists(package_json):
-                return os.path.abspath(ruta)
-        return self.project_path
-
-    def find_backend_path(self):
-        posibles_rutas = [
-            os.path.join(self.project_path, "turismo-backend"),
-            os.path.join(self.project_path, "backend"),
-            os.path.join(self.project_path, "..", "turismo-backend")
-        ]
-        for ruta in posibles_rutas:
-            api_py = os.path.join(ruta, "api.py")
-            if os.path.exists(ruta) and os.path.exists(api_py):
-                return os.path.abspath(ruta)
-        return None
-
     def find_npm(self):
         """Buscar npm de forma más agresiva"""
         commands = ["npm"]
@@ -58,7 +34,6 @@ class BuildDeployThread(QThread):
         
         for cmd in commands:
             try:
-                # Intentar con 'which' en Linux/Mac o 'where' en Windows
                 if platform.system() == "Windows":
                     find_cmd = f"where {cmd}"
                 else:
@@ -70,7 +45,6 @@ class BuildDeployThread(QThread):
             except:
                 continue
         
-        # Último intento directo
         for cmd in commands:
             try:
                 result = subprocess.run([cmd, "--version"], capture_output=True, text=True, timeout=5)
@@ -79,6 +53,42 @@ class BuildDeployThread(QThread):
             except:
                 continue
         
+        return None
+
+    def find_frontend_path(self):
+        """Buscar frontend de forma más precisa"""
+        posibles_rutas = [
+            os.path.join(self.project_path, "turismo-frontend"),
+            os.path.join(self.project_path, "frontend"),
+            os.path.join(self.project_path, "..", "turismo-frontend"),
+            self.project_path
+        ]
+        
+        for ruta in posibles_rutas:
+            ruta_abs = os.path.abspath(ruta)
+            package_json = os.path.join(ruta_abs, "package.json")
+            
+            if os.path.exists(ruta_abs) and os.path.exists(package_json):
+                return ruta_abs
+                
+        return None
+
+    def find_backend_path(self):
+        """Buscar backend de forma más precisa"""
+        posibles_rutas = [
+            os.path.join(self.project_path, "turismo-backend"),
+            os.path.join(self.project_path, "backend"),
+            os.path.join(self.project_path, "..", "turismo-backend")
+        ]
+        
+        for ruta in posibles_rutas:
+            ruta_abs = os.path.abspath(ruta)
+            api_py = os.path.join(ruta_abs, "api.py")
+            requirements = os.path.join(ruta_abs, "requirements.txt")
+            
+            if os.path.exists(ruta_abs) and (os.path.exists(api_py) or os.path.exists(requirements)):
+                return ruta_abs
+                
         return None
 
     def log(self, mensaje, nivel="INFO"):
@@ -97,46 +107,39 @@ class BuildDeployThread(QThread):
             return False, "", str(e)
 
     def ejecutar_git(self):
-        """Git mejorado - continúa aunque falle el commit"""
         if not self.hacer_git:
             self.log("Git deshabilitado - continuando con build")
             return True
 
         self.log("Ejecutando Git...")
         
-        # 1. Git status para ver cambios
         ok, out, err = self.run_subprocess("git status --porcelain", cwd=self.frontend_path)
         if not ok:
             self.log("❌ Error en git status")
             return False
             
-        if not out.strip():  # No hay cambios
+        if not out.strip():
             self.log("⚠️ No hay cambios para commit - continuando")
             return True
 
         self.log(f"📝 Cambios detectados: {len(out.splitlines())} archivos")
 
-        # 2. Git add
         ok, out, err = self.run_subprocess("git add .", cwd=self.frontend_path)
         if not ok:
             self.log(f"❌ Error en git add: {err}")
-            # Continuar de todos modos
             self.log("⚠️ Continuando sin Git add")
             return True
             
         self.log("✅ Git add completado")
 
-        # 3. Git commit (con manejo de error)
         commit_msg = 'Auto: Actualización automática'
         ok, out, err = self.run_subprocess(f'git commit -m "{commit_msg}"', cwd=self.frontend_path)
         if not ok:
             self.log(f"⚠️ Git commit falló (posiblemente sin cambios): {err}")
-            # NO salir - continuar con el proceso
             self.log("Continuando proceso sin commit")
         else:
             self.log("✅ Git commit completado")
 
-        # 4. Git push (opcional - si hay commit)
         ok, out, err = self.run_subprocess("git push origin main", cwd=self.frontend_path)
         if not ok:
             self.log(f"⚠️ Git push falló: {err}")
@@ -153,19 +156,32 @@ class BuildDeployThread(QThread):
             self.log("💡 Solución: Instala Node.js desde https://nodejs.org")
             return False
 
-        self.log(f"Usando npm: {self.npm_path}")
+        if not self.frontend_path:
+            self.log("❌ ERROR: No se encontró el frontend")
+            return False
+
+        package_json_path = os.path.join(self.frontend_path, "package.json")
+        if not os.path.exists(package_json_path):
+            self.log(f"❌ ERROR: No hay package.json en {self.frontend_path}")
+            return False
+
+        self.log(f"📁 Construyendo desde: {self.frontend_path}")
+        self.log(f"🔧 Usando npm: {self.npm_path}")
         self.log("Ejecutando npm run build...")
         
-        ok, out, err = self.run_subprocess([self.npm_path, "run", "build"], cwd=self.frontend_path, timeout=600)
+        ok, out, err = self.run_subprocess(
+            [self.npm_path, "run", "build"], 
+            cwd=self.frontend_path,
+            timeout=600
+        )
         
         if ok:
             dist_path = os.path.join(self.frontend_path, "dist")
             if os.path.exists(dist_path):
                 self.log("✅ Build de React completado")
-                # Mostrar contenido de dist/
                 archivos = os.listdir(dist_path)
                 self.log(f"📁 Archivos en dist/: {len(archivos)}")
-                for archivo in archivos[:5]:  # Mostrar primeros 5
+                for archivo in archivos[:5]:
                     self.log(f"   - {archivo}")
                 return True
             else:
@@ -194,12 +210,10 @@ class BuildDeployThread(QThread):
         assets_destino = os.path.join(self.backend_path, "assets")
         self.log(f"Copiando a: {assets_destino}")
 
-        # Limpiar destino anterior
         if os.path.exists(assets_destino):
             shutil.rmtree(assets_destino)
         os.makedirs(assets_destino)
 
-        # Copiar archivos
         archivos_copiados = 0
         for item in os.listdir(dist_path):
             origen = os.path.join(dist_path, item)
@@ -210,7 +224,6 @@ class BuildDeployThread(QThread):
                 archivos_copiados += 1
                 self.log(f"✅ {item}")
 
-        # Copiar assets si existen
         assets_dist = os.path.join(dist_path, "assets")
         if os.path.exists(assets_dist):
             for item in os.listdir(assets_dist):
@@ -229,27 +242,36 @@ class BuildDeployThread(QThread):
             self.progress_signal.emit(10)
             self.log("🚀 Iniciando proceso completo...")
 
-            # Verificar npm
+            if not self.frontend_path:
+                self.finished_signal.emit(False, "No se encontró el frontend (turismo-frontend)")
+                return
+
             if not self.npm_path:
                 self.finished_signal.emit(False, "npm no encontrado. Instala Node.js")
                 return
 
-            # 1. Git (si está habilitado)
+            self.log(f"📍 Frontend: {self.frontend_path}")
+            if self.backend_path:
+                self.log(f"📍 Backend: {self.backend_path}")
+            else:
+                self.log("📍 Backend: No detectado (solo build)")
+
             if self.hacer_git:
                 self.progress_signal.emit(30)
-                self.ejecutar_git()  # No salir si falla
+                self.ejecutar_git()
 
-            # 2. Build React
             self.progress_signal.emit(50)
             if not self.ejecutar_build_react():
                 self.finished_signal.emit(False, "Falló el build de React")
                 return
 
-            # 3. Copiar archivos
             self.progress_signal.emit(80)
-            if not self.copiar_archivos_correctamente():
-                self.finished_signal.emit(False, "Error copiando archivos")
-                return
+            if self.backend_path:
+                if not self.copiar_archivos_correctamente():
+                    self.finished_signal.emit(False, "Error copiando archivos")
+                    return
+            else:
+                self.log("⚠️ No se copian archivos - backend no detectado")
 
             self.progress_signal.emit(100)
             self.finished_signal.emit(True, "✅ Proceso completado exitosamente")
@@ -270,23 +292,20 @@ class DialogoBuildDeploy(QDialog):
 
     def setup_ui(self):
         self.setWindowTitle("🚀 Build & Deploy")
-        self.setFixedSize(600, 500)  # Más compacto
+        self.setFixedSize(600, 500)
 
         layout = QVBoxLayout()
         layout.setSpacing(8)
         layout.setContentsMargins(10, 10, 10, 10)
 
-        # Título
         titulo = QLabel("Build & Deploy Automático")
         titulo.setStyleSheet("font-size: 14px; font-weight: bold;")
         layout.addWidget(titulo)
 
-        # Checkbox Git
         self.chk_git = QCheckBox("Incluir Git (subir a GitHub)")
         self.chk_git.setChecked(True)
         layout.addWidget(self.chk_git)
 
-        # Grupo info
         info_group = QGroupBox("Estado del Sistema")
         info_layout = QVBoxLayout()
         self.lbl_frontend = QLabel("Frontend: Verificando...")
@@ -298,26 +317,22 @@ class DialogoBuildDeploy(QDialog):
         info_group.setLayout(info_layout)
         layout.addWidget(info_group)
 
-        # Log
         self.log_output = QTextEdit()
         self.log_output.setMaximumHeight(200)
         self.log_output.setReadOnly(True)
         self.log_output.setStyleSheet("font-family: 'Consolas'; font-size: 9px;")
         layout.addWidget(self.log_output)
 
-        # Progress
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
         layout.addWidget(self.progress_bar)
 
-        # Botones en una sola línea
         botones_layout = QHBoxLayout()
         self.btn_build = QPushButton("Ejecutar")
         self.btn_verificar = QPushButton("Verificar")
         self.btn_limpiar = QPushButton("Limpiar")
         self.btn_cerrar = QPushButton("Cerrar")
 
-        # Estilos compactos
         btn_style = "QPushButton { padding: 6px; font-size: 11px; }"
         self.btn_build.setStyleSheet(btn_style + "background-color: #27ae60; color: white;")
         self.btn_verificar.setStyleSheet(btn_style + "background-color: #3498db; color: white;")
@@ -332,7 +347,6 @@ class DialogoBuildDeploy(QDialog):
 
         self.setLayout(layout)
 
-        # Conexiones
         self.btn_build.clicked.connect(self.iniciar_build)
         self.btn_verificar.clicked.connect(self.verificar_sistema)
         self.btn_limpiar.clicked.connect(self.limpiar_log)
