@@ -9,14 +9,6 @@ app = Flask(__name__)
 CORS(app)
 
 # =========================
-# CONFIGURACIÓN PARA SERVIR BUILD DE REACT
-# =========================
-app.static_folder = os.path.join(os.path.dirname(__file__), "assets")  
-app.static_url_path = ""
-
-
-
-# =========================
 # CONFIGURACIÓN MEJORADA - BD LOCAL Y REMOTA
 # =========================
 
@@ -163,24 +155,12 @@ def conectar_bd():
             return conectar_a_bd_local()
 
 # =========================
-# SERVIR ARCHIVOS ESTÁTICOS
+# SERVIR ARCHIVOS ESTÁTICOS - ✅ VERSIÓN CORREGIDA
 # =========================
 
-@app.route("/assets/<path:filename>")
-def servir_imagenes(filename):
-    """Servir archivos estáticos"""
-    try:
-        assets_path = os.path.join(os.path.dirname(__file__), 'assets')
-        return send_from_directory(assets_path, filename)
-    except Exception as e:
-        return jsonify({"error": "Archivo no encontrado"}), 404
-    
-# =========================
-# SERVIR FRONTEND REACT - ✅ CORREGIDA
-# =========================
 @app.route('/')
 def serve_react_app():
-    """Servir solo la ruta principal - VERSIÓN SIMPLE"""
+    """Servir index.html desde la raíz de assets/"""
     try:
         assets_path = os.path.join(os.path.dirname(__file__), 'assets')
         return send_from_directory(assets_path, 'index.html')
@@ -189,14 +169,24 @@ def serve_react_app():
 
 @app.route('/<path:path>')
 def serve_static_files(path):
-    """Servir archivos estáticos"""
+    """Servir archivos estáticos - BUSCA EN AMBAS UBICACIONES"""
     try:
+        # ✅ PRIMERO: Buscar en assets/assets/ (CSS/JS)
+        assets_assets_path = os.path.join(os.path.dirname(__file__), 'assets', 'assets')
+        if os.path.exists(os.path.join(assets_assets_path, path)):
+            return send_from_directory(assets_assets_path, path)
+        
+        # ✅ SEGUNDO: Buscar en assets/ (imágenes, etc.)
         assets_path = os.path.join(os.path.dirname(__file__), 'assets')
-        return send_from_directory(assets_path, path)
+        if os.path.exists(os.path.join(assets_path, path)):
+            return send_from_directory(assets_path, path)
+        
+        # ✅ Si no existe en ninguna, devolver 404
+        return jsonify({"error": "Archivo no encontrado", "path": path}), 404
+        
     except Exception as e:
-        return jsonify({"error": "Archivo no encontrado"}), 404
+        return jsonify({"error": "Error interno del servidor"}), 500
 
-    
 # =========================
 # ENDPOINTS PRINCIPALES - SOLO RUTAS RELATIVAS
 # =========================
@@ -353,115 +343,6 @@ def obtener_regiones():
         return jsonify(regiones)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-    
-
-# =========================
-# ENDPOINTS DE DEBUG - ELIMINAR DESPUÉS DE USAR
-# =========================
-
-@app.route('/api/debug/tablas')
-def debug_tablas():
-    """Ver todas las tablas y sus datos"""
-    try:
-        conn = conectar_bd()
-        cursor = conn.cursor(dictionary=True)
-        
-        # Obtener lista de tablas
-        cursor.execute("SHOW TABLES")
-        tablas = [list(tabla.values())[0] for tabla in cursor.fetchall()]
-        
-        resultado = {}
-        for tabla in tablas:
-            cursor.execute(f"SELECT * FROM {tabla} LIMIT 10")  # Límite para no saturar
-            resultado[tabla] = cursor.fetchall()
-        
-        cursor.close()
-        conn.close()
-        return jsonify(resultado)
-        
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/debug/imagenes')
-def debug_imagenes():
-    """Ver específicamente las rutas de imágenes"""
-    try:
-        conn = conectar_bd()
-        cursor = conn.cursor(dictionary=True)
-        
-        resultados = {}
-        
-        # Verificar regiones
-        cursor.execute("SELECT id_region_zona, nombre_region_zona, imagen_region_zona_ruta_relativa FROM regiones_zonas")
-        resultados['regiones'] = cursor.fetchall()
-        
-        # Verificar secciones
-        cursor.execute("SELECT id_seccion, nombre_seccion, icono_seccion FROM secciones")
-        resultados['secciones'] = cursor.fetchall()
-        
-        # Verificar subsecciones
-        cursor.execute("SELECT id_sub_seccion, nombre_sub_seccion, imagen_ruta_relativa, icono_ruta_relativa, foto1_ruta_relativa, foto2_ruta_relativa, foto3_ruta_relativa, foto4_ruta_relativa FROM sub_secciones")
-        resultados['subsecciones'] = cursor.fetchall()
-        
-        # Verificar configuración
-        cursor.execute("SELECT id_config, titulo_app, logo_app_ruta_relativa, icono_hamburguesa_ruta_relativa, icono_cerrar_ruta_relativa, hero_imagen_ruta_relativa FROM configuracion_app")
-        resultados['configuracion'] = cursor.fetchall()
-        
-        cursor.close()
-        conn.close()
-        return jsonify(resultados)
-        
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/debug/corregir-rutas')
-def corregir_rutas():
-    """Corregir automáticamente las rutas de imágenes"""
-    try:
-        conn = conectar_bd()
-        cursor = conn.cursor()
-        
-        # Mapeo de rutas viejas a nuevas
-        correcciones = {
-            'assets/imagenes/valle_fertil_turismo_regional.jpg': 'assets/imagenes/lugares/ischigualasto.jpg',
-            'assets/imagenes/hongo_ischigualasto.jpg': 'assets/imagenes/lugares/hongo_ischigualasto.jpg'
-        }
-        
-        resultados = {}
-        
-        # Corregir tabla regiones_zonas
-        for vieja_ruta, nueva_ruta in correcciones.items():
-            cursor.execute("""
-                UPDATE regiones_zonas 
-                SET imagen_region_zona_ruta_relativa = %s 
-                WHERE imagen_region_zona_ruta_relativa = %s
-            """, (nueva_ruta, vieja_ruta))
-            resultados[f'regiones_{vieja_ruta}'] = cursor.rowcount
-        
-        # Corregir tabla sub_secciones
-        for tabla in ['sub_secciones']:
-            for vieja_ruta, nueva_ruta in correcciones.items():
-                cursor.execute(f"""
-                    UPDATE {tabla} 
-                    SET imagen_ruta_relativa = %s 
-                    WHERE imagen_ruta_relativa = %s
-                """, (nueva_ruta, vieja_ruta))
-                resultados[f'{tabla}_imagen_{vieja_ruta}'] = cursor.rowcount
-        
-        conn.commit()
-        cursor.close()
-        conn.close()
-        
-        return jsonify({
-            'mensaje': 'Rutas corregidas automáticamente',
-            'resultados': resultados
-        })
-        
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-    
-
-
 
 # =========================
 # INICIALIZACIÓN
