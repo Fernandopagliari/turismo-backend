@@ -460,14 +460,7 @@ def corregir_rutas():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
     
-# ✅ SOLUCIÓN MÍNIMA - AGREGAR AL FINAL DE api.py
-@app.route('/<path:path>')
-def serve_static(path):
-    return send_from_directory('assets', path)
 
-@app.route('/')
-def serve_index():
-    return send_from_directory('assets', 'index.html')
 
 
 # =========================
