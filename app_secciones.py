@@ -20,25 +20,27 @@ def ruta_absoluta_desde_relativa(relativa):
     return os.path.join(base_assets, relativa.lstrip("/"))
 
 def convertir_ruta_produccion(ruta_absoluta):
-    """Convierte rutas absolutas a rutas relativas para producción React"""
+    """Convierte rutas absolutas a rutas relativas - VERSIÓN FINAL"""
+    from PyQt5.QtWidgets import QMessageBox
+    
     if not ruta_absoluta or not os.path.exists(ruta_absoluta):
         return ""
     
+    ruta_normalizada = os.path.normpath(ruta_absoluta)
+    
+    # Buscar "assets/imagenes"
+    target = "assets" + os.sep + "imagenes" + os.sep
+    idx = ruta_normalizada.lower().find(target.lower())
+    
+    if idx != -1:
+        ruta_relativa = ruta_normalizada[idx + len(target):]
+        # ✅ NORMALIZAR a barras simples para web
+        resultado = f"assets/imagenes/{ruta_relativa}".replace("\\", "/")
+        return resultado
+    
     nombre_archivo = os.path.basename(ruta_absoluta)
-    
-    # ✅ MEJORADO: Detectar si ya es una ruta relativa
-    if ruta_absoluta.startswith('assets/') or ruta_absoluta.startswith('/assets/'):
-        return ruta_absoluta.lstrip('/')
-    
-    # ✅ MEJORADO: Detectar si está en la carpeta correcta
-    if 'public/assets/imagenes/iconos' in ruta_absoluta:
-        # Extraer la parte relativa desde public/
-        partes = ruta_absoluta.split('public' + os.sep)
-        if len(partes) > 1:
-            return partes[1].replace(os.sep, '/')
-    
-    # Para secciones, usar estructura específica de iconos
-    return f"assets/imagenes/iconos/{nombre_archivo}"
+    resultado = f"assets/imagenes/{nombre_archivo}"
+    return resultado
 
 class VentanaSecciones(QWidget):
     def __init__(self, parent=None):

@@ -30,24 +30,28 @@ def ruta_absoluta_desde_relativa(ruta_rel):
 
     return ruta_abs
 
-def convertir_ruta_produccion(ruta_absoluta, tipo_archivo):
-    """Convierte rutas absolutas a rutas relativas para producción React"""
+def convertir_ruta_produccion(ruta_absoluta):
+    """Convierte rutas absolutas a rutas relativas - VERSIÓN FINAL"""
+    from PyQt5.QtWidgets import QMessageBox
+    
     if not ruta_absoluta or not os.path.exists(ruta_absoluta):
         return ""
     
-    nombre_archivo = os.path.basename(ruta_absoluta)
+    ruta_normalizada = os.path.normpath(ruta_absoluta)
     
-    # Determinar estructura según tipo de archivo
-    if tipo_archivo == "icono":
-        return f"assets/imagenes/iconos/{nombre_archivo}"
-    elif tipo_archivo == "imagen_region":
-        return f"assets/imagenes/regiones_zonas/{nombre_archivo}"
-    elif tipo_archivo == "imagen_subseccion":
-        return f"assets/imagenes/sub_secciones/{nombre_archivo}"
-    elif tipo_archivo == "foto_subseccion":
-        return f"assets/imagenes/sub_secciones/{nombre_archivo}"
-    else:
-        return f"assets/imagenes/{nombre_archivo}"
+    # Buscar "assets/imagenes"
+    target = "assets" + os.sep + "imagenes" + os.sep
+    idx = ruta_normalizada.lower().find(target.lower())
+    
+    if idx != -1:
+        ruta_relativa = ruta_normalizada[idx + len(target):]
+        # ✅ NORMALIZAR a barras simples para web
+        resultado = f"assets/imagenes/{ruta_relativa}".replace("\\", "/")
+        return resultado
+    
+    nombre_archivo = os.path.basename(ruta_absoluta)
+    resultado = f"assets/imagenes/{nombre_archivo}"
+    return resultado
 
 def copiar_archivo_a_destino(ruta_origen, tipo_archivo):
     """Copia un archivo a la carpeta destino correspondiente y devuelve ruta relativa"""

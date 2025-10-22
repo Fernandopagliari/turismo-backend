@@ -153,16 +153,10 @@ class BuildDeployThread(QThread):
     def ejecutar_build_react(self):
         if not self.npm_path:
             self.log("❌ ERROR: npm no encontrado")
-            self.log("💡 Solución: Instala Node.js desde https://nodejs.org")
             return False
 
         if not self.frontend_path:
             self.log("❌ ERROR: No se encontró el frontend")
-            return False
-
-        package_json_path = os.path.join(self.frontend_path, "package.json")
-        if not os.path.exists(package_json_path):
-            self.log(f"❌ ERROR: No hay package.json en {self.frontend_path}")
             return False
 
         self.log(f"📁 Construyendo desde: {self.frontend_path}")
@@ -175,22 +169,34 @@ class BuildDeployThread(QThread):
             timeout=600
         )
         
+        # ✅ VERIFICAR AMBAS UBICACIONES POSIBLES
+        dist_path = os.path.join(self.frontend_path, "dist")
+        backend_assets_path = os.path.join(self.backend_path, "assets") if self.backend_path else None
+        
         if ok:
-            dist_path = os.path.join(self.frontend_path, "dist")
-            if os.path.exists(dist_path):
-                self.log("✅ Build de React completado")
+            # ✅ PRIMERO: Verificar si se creó en backend/assets (tu configuración)
+            if backend_assets_path and os.path.exists(backend_assets_path):
+                self.log("✅ Build de React completado (en backend/assets)")
+                archivos = os.listdir(backend_assets_path)
+                self.log(f"📁 Archivos en backend/assets/: {len(archivos)}")
+                for archivo in archivos[:5]:
+                    self.log(f"   - {archivo}")
+                return True
+            
+            # ✅ SEGUNDO: Verificar si se creó en frontend/dist (configuración normal)
+            elif os.path.exists(dist_path):
+                self.log("✅ Build de React completado (en frontend/dist)")
                 archivos = os.listdir(dist_path)
                 self.log(f"📁 Archivos en dist/: {len(archivos)}")
                 for archivo in archivos[:5]:
                     self.log(f"   - {archivo}")
                 return True
+            
             else:
-                self.log("❌ ERROR: No se creó la carpeta dist/")
+                self.log("❌ ERROR: No se creó carpeta de build en ninguna ubicación")
                 return False
         else:
             self.log(f"❌ ERROR en build React: {err}")
-            if "not found" in err.lower() or "command not found" in err.lower():
-                self.log("💡 npm no está en PATH. Verifica la instalación de Node.js")
             return False
 
     def copiar_archivos_correctamente(self):
@@ -198,53 +204,44 @@ class BuildDeployThread(QThread):
             self.log("❌ No se encontró frontend")
             return False
 
+        # ✅ VERIFICAR AMBAS UBICACIONES
         dist_path = os.path.join(self.frontend_path, "dist")
-        if not os.path.exists(dist_path):
-            self.log("❌ No existe dist/ - ejecuta build primero")
-            return False
-
-        if not self.backend_path:
-            self.log("⚠️ Backend no encontrado - solo build")
-            return True
-
-        assets_destino = os.path.join(self.backend_path, "assets")
-        self.log(f"Copiando a: {assets_destino}")
-
-        # Limpiar destino anterior
-        if os.path.exists(assets_destino):
-            shutil.rmtree(assets_destino)
-
-        # ✅ CORREGIDO: Copiar RECURSIVAMENTE toda la estructura
-        try:
-            shutil.copytree(dist_path, assets_destino)
-            self.log("✅ Copia recursiva completada")
-            
-            # Mostrar estructura copiada
-            archivos_copiados = 0
-            self.log("📁 Estructura copiada:")
-            for root, dirs, files in os.walk(assets_destino):
-                nivel = root.replace(assets_destino, '').count(os.sep)
+        backend_assets_path = os.path.join(self.backend_path, "assets") if self.backend_path else None
+        
+        # ✅ SI ya está en backend/assets (tu configuración), NO hacer nada
+        if backend_assets_path and os.path.exists(backend_assets_path):
+            self.log("✅ Los archivos YA están en backend/assets (configuración Vite)")
+            self.log("📁 Estructura existente:")
+            for root, dirs, files in os.walk(backend_assets_path):
+                nivel = root.replace(backend_assets_path, '').count(os.sep)
                 indent = "  " * nivel
-                carpeta = os.path.basename(root) if root != assets_destino else "assets"
-                
-                if nivel == 0:
-                    self.log(f"📁 {carpeta}/")
-                else:
-                    self.log(f"{indent}📁 {carpeta}/")
-                
-                for file in files:
-                    archivos_copiados += 1
-                    if archivos_copiados <= 10:  # Mostrar primeros 10 archivos
-                        self.log(f"{indent}  📄 {file}")
-            
-            if archivos_copiados > 10:
-                self.log(f"{indent}  ... y {archivos_copiados - 10} archivos más")
-            
-            self.log(f"📦 Total archivos copiados: {archivos_copiados}")
+                carpeta = os.path.basename(root) if root != backend_assets_path else "assets"
+                self.log(f"{indent}📁 {carpeta}/")
+                for file in files[:3]:
+                    self.log(f"{indent}  📄 {file}")
             return True
-            
-        except Exception as e:
-            self.log(f"❌ Error en copia recursiva: {e}")
+        
+        # ✅ SI está en dist/, copiar a backend
+        elif os.path.exists(dist_path):
+            if not self.backend_path:
+                self.log("⚠️ Backend no encontrado - solo build")
+                return True
+
+            assets_destino = os.path.join(self.backend_path, "assets")
+            self.log(f"Copiando de dist/ a: {assets_destino}")
+
+            if os.path.exists(assets_destino):
+                shutil.rmtree(assets_destino)
+
+            try:
+                shutil.copytree(dist_path, assets_destino)
+                self.log("✅ Copia recursiva completada")
+                return True
+            except Exception as e:
+                self.log(f"❌ Error en copia: {e}")
+                return False
+        else:
+            self.log("❌ No existe dist/ ni backend/assets - ejecuta build primero")
             return False
         
     def run(self):
