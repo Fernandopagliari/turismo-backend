@@ -210,33 +210,43 @@ class BuildDeployThread(QThread):
         assets_destino = os.path.join(self.backend_path, "assets")
         self.log(f"Copiando a: {assets_destino}")
 
+        # Limpiar destino anterior
         if os.path.exists(assets_destino):
             shutil.rmtree(assets_destino)
-        os.makedirs(assets_destino)
 
-        archivos_copiados = 0
-        for item in os.listdir(dist_path):
-            origen = os.path.join(dist_path, item)
-            destino = os.path.join(assets_destino, item)
+        # ✅ CORREGIDO: Copiar RECURSIVAMENTE toda la estructura
+        try:
+            shutil.copytree(dist_path, assets_destino)
+            self.log("✅ Copia recursiva completada")
             
-            if os.path.isfile(origen):
-                shutil.copy2(origen, destino)
-                archivos_copiados += 1
-                self.log(f"✅ {item}")
-
-        assets_dist = os.path.join(dist_path, "assets")
-        if os.path.exists(assets_dist):
-            for item in os.listdir(assets_dist):
-                origen = os.path.join(assets_dist, item)
-                destino = os.path.join(assets_destino, item)
-                if os.path.isfile(origen):
-                    shutil.copy2(origen, destino)
+            # Mostrar estructura copiada
+            archivos_copiados = 0
+            self.log("📁 Estructura copiada:")
+            for root, dirs, files in os.walk(assets_destino):
+                nivel = root.replace(assets_destino, '').count(os.sep)
+                indent = "  " * nivel
+                carpeta = os.path.basename(root) if root != assets_destino else "assets"
+                
+                if nivel == 0:
+                    self.log(f"📁 {carpeta}/")
+                else:
+                    self.log(f"{indent}📁 {carpeta}/")
+                
+                for file in files:
                     archivos_copiados += 1
-                    self.log(f"✅ assets/{item}")
-
-        self.log(f"📦 Total archivos copiados: {archivos_copiados}")
-        return archivos_copiados > 0
-
+                    if archivos_copiados <= 10:  # Mostrar primeros 10 archivos
+                        self.log(f"{indent}  📄 {file}")
+            
+            if archivos_copiados > 10:
+                self.log(f"{indent}  ... y {archivos_copiados - 10} archivos más")
+            
+            self.log(f"📦 Total archivos copiados: {archivos_copiados}")
+            return True
+            
+        except Exception as e:
+            self.log(f"❌ Error en copia recursiva: {e}")
+            return False
+        
     def run(self):
         try:
             self.progress_signal.emit(10)
