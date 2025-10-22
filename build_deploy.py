@@ -222,32 +222,28 @@ class BuildDeployThread(QThread):
             shutil.rmtree(assets_destino)
 
         try:
-            # ✅ COPIAR Y CORREGIR ESTRUCTURA
-            # Si dist/ tiene estructura assets/assets/, corregirla
-            dist_assets_path = os.path.join(dist_path, "assets")
+            # ✅ COPIAR TODO el contenido de dist/
+            shutil.copytree(dist_path, assets_destino)
             
-            if os.path.exists(dist_assets_path):
-                self.log("🔍 Estructura encontrada en dist/:")
-                for item in os.listdir(dist_assets_path):
-                    self.log(f"   - {item}")
-                
-                # ✅ COPIAR DIRECTAMENTE el contenido de dist/assets/ a assets_destino/
-                shutil.copytree(dist_assets_path, assets_destino)
-                self.log("✅ Estructura corregida: dist/assets/ → backend/assets/")
+            # ✅ VERIFICAR QUE index.html SE COPIÓ
+            index_destino = os.path.join(assets_destino, "index.html")
+            if os.path.exists(index_destino):
+                file_size = os.path.getsize(index_destino)
+                self.log(f"✅ index.html copiado ({file_size} bytes)")
             else:
-                # ✅ COPIAR todo dist/ normalmente
-                shutil.copytree(dist_path, assets_destino)
-                self.log("✅ Copia normal completada")
+                self.log("❌ ERROR: index.html NO se copió")
+                return False
             
-            # ✅ VERIFICAR ESTRUCTURA FINAL
+            # ✅ VERIFICAR ESTRUCTURA COMPLETA
             self.log("📁 Estructura final en backend/assets/:")
-            for root, dirs, files in os.walk(assets_destino):
-                nivel = root.replace(assets_destino, '').count(os.sep)
-                indent = "  " * nivel
-                carpeta = os.path.basename(root) if root != assets_destino else "assets"
-                self.log(f"{indent}📁 {carpeta}/")
-                for file in files[:5]:
-                    self.log(f"{indent}  📄 {file}")
+            for item in os.listdir(assets_destino):
+                item_path = os.path.join(assets_destino, item)
+                if os.path.isfile(item_path):
+                    size = os.path.getsize(item_path)
+                    self.log(f"   📄 {item} ({size} bytes)")
+                else:
+                    num_files = len(os.listdir(item_path))
+                    self.log(f"   📁 {item}/ ({num_files} archivos)")
             
             return True
             
