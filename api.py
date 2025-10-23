@@ -5,7 +5,7 @@ import mysql.connector
 import os
 from datetime import datetime
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='dist', static_url_path='')
 CORS(app)
 
 # =========================
@@ -155,65 +155,35 @@ def conectar_bd():
             return conectar_a_bd_local()
 
 # =========================
-# SERVIR ARCHIVOS ESTÁTICOS - ✅ VERSIÓN CORREGIDA
+# SERVIR FRONTEND DESDE CARPETA DIST
 # =========================
 
 @app.route('/')
-def serve_react_app():
-    """Servir index.html desde la RAÍZ"""
+def serve_frontend():
+    """Servir el frontend Vue.js desde la carpeta dist"""
     try:
-        # ✅ index.html está en la raíz del backend, NO en assets/
-        root_path = os.path.dirname(__file__)
-        index_path = os.path.join(root_path, 'index.html')
-        
-        if os.path.exists(index_path):
-            return send_from_directory(root_path, 'index.html')
-        else:
-            return jsonify({
-                "error": "index.html no encontrado",
-                "ruta_buscada": index_path,
-                "archivos_en_raiz": os.listdir(root_path)
-            }), 404
+        return send_from_directory('dist', 'index.html')
     except Exception as e:
-        return jsonify({"error": "Frontend no disponible", "details": str(e)}), 500
-    
+        return jsonify({
+            "error": "Frontend no disponible", 
+            "details": str(e),
+            "message": "Ejecuta: npm run build para construir el frontend"
+        }), 500
 
 @app.route('/<path:path>')
 def serve_static_files(path):
-    """Servir archivos estáticos - MANEJA CON Y SIN assets/"""
+    """Servir archivos estáticos del frontend"""
     try:
-        # ✅ PRIMERO: Buscar path directo (sin assets/)
-        assets_path = os.path.join(os.path.dirname(__file__), 'assets')
-        full_path = os.path.join(assets_path, path)
-        
-        if os.path.exists(full_path):
-            return send_from_directory(assets_path, path)
-        
-        # ✅ SEGUNDO: Si no existe, quitar "assets/" si está al inicio
-        if path.startswith('assets/'):
-            path_corregido = path[7:]  # Quitar "assets/"
-            full_path_corregido = os.path.join(assets_path, path_corregido)
-            
-            if os.path.exists(full_path_corregido):
-                return send_from_directory(assets_path, path_corregido)
-        
-        # ✅ Si no existe en ninguna, devolver 404 con debug
-        return jsonify({
-            "error": "Archivo no encontrado", 
-            "path_recibido": path,
-            "path_corregido": path_corregido if path.startswith('assets/') else "no aplica",
-            "assets_path": assets_path,
-            "contenido_assets": os.listdir(assets_path) if os.path.exists(assets_path) else []
-        }), 404
-        
+        return send_from_directory('dist', path)
     except Exception as e:
         return jsonify({
-            "error": "Error interno del servidor",
-            "detalle": str(e)
-        }), 500
-            
+            "error": "Archivo no encontrado",
+            "path": path,
+            "details": str(e)
+        }), 404
+
 # =========================
-# ENDPOINTS PRINCIPALES - SOLO RUTAS RELATIVAS
+# ENDPOINTS DE DIAGNÓSTICO (BAJO /api/)
 # =========================
 
 @app.route('/api/health', methods=['GET'])
@@ -243,7 +213,51 @@ def health_check():
             "entorno": detectar_entorno()
         }), 500
 
-# ✅ ENDPOINT MEJORADO PARA FRONTEND
+@app.route('/api/debug', methods=['GET'])
+def debug_info():
+    """Endpoint de diagnóstico completo"""
+    try:
+        import sys
+        
+        files = {}
+        if os.path.exists('dist'):
+            files['dist'] = os.listdir('dist')
+            if os.path.exists('dist/index.html'):
+                files['index_size'] = os.path.getsize('dist/index.html')
+        
+        return jsonify({
+            'status': 'running',
+            'python_version': sys.version,
+            'current_directory': os.getcwd(),
+            'files_in_root': os.listdir('.'),
+            'static_folder': app.static_folder,
+            'has_dist_folder': os.path.exists('dist'),
+            'files': files,
+            'environment': {
+                'MYSQLHOST': bool(os.environ.get('MYSQLHOST')),
+                'MYSQLDATABASE': bool(os.environ.get('MYSQLDATABASE')),
+                'PORT': os.environ.get('PORT')
+            }
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/info', methods=['GET'])
+def api_info():
+    """Información general de la API"""
+    return jsonify({
+        "message": "Turismo Regional API", 
+        "version": "1.0",
+        "frontend": "Vue.js",
+        "backend": "Flask",
+        "database": "MySQL",
+        "status": "online"
+    })
+
+# =========================
+# ENDPOINTS PRINCIPALES DE LA APLICACIÓN
+# =========================
+
 @app.route('/api/config/frontend', methods=['GET'])
 def config_frontend():
     """✅ Devuelve configuración para frontend desde BD CORRECTA"""
@@ -269,49 +283,6 @@ def config_frontend():
             'status': 'error',
             'message': 'No se pudo obtener configuración'
         })
-
-@app.route('/debug-assets')
-def debug_assets():
-    """✅ Ruta temporal para debuggear estructura de assets"""
-    import os
-    assets_path = os.path.join(os.path.dirname(__file__), 'assets')
-    
-    if not os.path.exists(assets_path):
-        return {"error": "No existe carpeta assets", "path": assets_path}
-    
-    estructura = {}
-    for root, dirs, files in os.walk(assets_path):
-        nivel = root.replace(assets_path, '').lstrip('/')
-        if nivel:
-            estructura[nivel] = files[:10]  # Primeros 10 archivos
-    
-    return {
-        "assets_path": assets_path,
-        "existe": os.path.exists(assets_path),
-        "estructura": estructura,
-        "contenido_raiz": os.listdir(assets_path) if os.path.exists(assets_path) else []
-    }
-    
-@app.route('/debug-images')
-def debug_images():
-    """✅ Verificar imágenes específicas"""
-    import os
-    base_path = os.path.join(os.path.dirname(__file__), 'assets')
-    
-    imagenes = {
-        "icono": os.path.join(base_path, 'imagenes', 'iconos', 'valle_fertil_turismo_regional.jpg'),
-        "hero": os.path.join(base_path, 'imagenes', 'portadas', 'hongo_ischigualasto.jpg')
-    }
-    
-    resultados = {}
-    for nombre, ruta in imagenes.items():
-        resultados[nombre] = {
-            "ruta": ruta,
-            "existe": os.path.exists(ruta),
-            "tamaño": os.path.getsize(ruta) if os.path.exists(ruta) else 0
-        }
-    
-    return resultados
 
 @app.route('/api/configuracion', methods=['GET'])
 def obtener_configuracion():
@@ -411,6 +382,53 @@ def obtener_regiones():
         return jsonify(regiones)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+# =========================
+# ENDPOINTS DE DIAGNÓSTICO DE ASSETS (TEMPORALES)
+# =========================
+
+@app.route('/api/debug-assets')
+def debug_assets():
+    """✅ Ruta temporal para debuggear estructura de assets"""
+    import os
+    assets_path = os.path.join(os.path.dirname(__file__), 'assets')
+    
+    if not os.path.exists(assets_path):
+        return jsonify({"error": "No existe carpeta assets", "path": assets_path})
+    
+    estructura = {}
+    for root, dirs, files in os.walk(assets_path):
+        nivel = root.replace(assets_path, '').lstrip('/')
+        if nivel:
+            estructura[nivel] = files[:10]  # Primeros 10 archivos
+    
+    return jsonify({
+        "assets_path": assets_path,
+        "existe": os.path.exists(assets_path),
+        "estructura": estructura,
+        "contenido_raiz": os.listdir(assets_path) if os.path.exists(assets_path) else []
+    })
+    
+@app.route('/api/debug-images')
+def debug_images():
+    """✅ Verificar imágenes específicas"""
+    import os
+    base_path = os.path.join(os.path.dirname(__file__), 'assets')
+    
+    imagenes = {
+        "icono": os.path.join(base_path, 'imagenes', 'iconos', 'valle_fertil_turismo_regional.jpg'),
+        "hero": os.path.join(base_path, 'imagenes', 'portadas', 'hongo_ischigualasto.jpg')
+    }
+    
+    resultados = {}
+    for nombre, ruta in imagenes.items():
+        resultados[nombre] = {
+            "ruta": ruta,
+            "existe": os.path.exists(ruta),
+            "tamaño": os.path.getsize(ruta) if os.path.exists(ruta) else 0
+        }
+    
+    return jsonify(resultados)
 
 # =========================
 # INICIALIZACIÓN
