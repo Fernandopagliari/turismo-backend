@@ -245,6 +245,49 @@ def config_frontend():
             'message': 'No se pudo obtener configuración'
         })
 
+@app.route('/debug-assets')
+def debug_assets():
+    """✅ Ruta temporal para debuggear estructura de assets"""
+    import os
+    assets_path = os.path.join(os.path.dirname(__file__), 'assets')
+    
+    if not os.path.exists(assets_path):
+        return {"error": "No existe carpeta assets", "path": assets_path}
+    
+    estructura = {}
+    for root, dirs, files in os.walk(assets_path):
+        nivel = root.replace(assets_path, '').lstrip('/')
+        if nivel:
+            estructura[nivel] = files[:10]  # Primeros 10 archivos
+    
+    return {
+        "assets_path": assets_path,
+        "existe": os.path.exists(assets_path),
+        "estructura": estructura,
+        "contenido_raiz": os.listdir(assets_path) if os.path.exists(assets_path) else []
+    }
+    
+@app.route('/debug-images')
+def debug_images():
+    """✅ Verificar imágenes específicas"""
+    import os
+    base_path = os.path.join(os.path.dirname(__file__), 'assets')
+    
+    imagenes = {
+        "icono": os.path.join(base_path, 'imagenes', 'iconos', 'valle_fertil_turismo_regional.jpg'),
+        "hero": os.path.join(base_path, 'imagenes', 'portadas', 'hongo_ischigualasto.jpg')
+    }
+    
+    resultados = {}
+    for nombre, ruta in imagenes.items():
+        resultados[nombre] = {
+            "ruta": ruta,
+            "existe": os.path.exists(ruta),
+            "tamaño": os.path.getsize(ruta) if os.path.exists(ruta) else 0
+        }
+    
+    return resultados
+
 @app.route('/api/configuracion', methods=['GET'])
 def obtener_configuracion():
     """✅ SOLO rutas relativas - basado en tu estructura real"""
