@@ -160,33 +160,50 @@ def conectar_bd():
 
 @app.route('/')
 def serve_react_app():
-    """Servir index.html desde la raíz de assets/"""
+    """Servir index.html desde la RAÍZ"""
     try:
-        assets_path = os.path.join(os.path.dirname(__file__), 'assets')
-        return send_from_directory(assets_path, 'index.html')
+        # ✅ index.html está en la raíz del backend, NO en assets/
+        root_path = os.path.dirname(__file__)
+        index_path = os.path.join(root_path, 'index.html')
+        
+        if os.path.exists(index_path):
+            return send_from_directory(root_path, 'index.html')
+        else:
+            return jsonify({
+                "error": "index.html no encontrado",
+                "ruta_buscada": index_path,
+                "archivos_en_raiz": os.listdir(root_path)
+            }), 404
     except Exception as e:
         return jsonify({"error": "Frontend no disponible", "details": str(e)}), 500
+    
 
 @app.route('/<path:path>')
 def serve_static_files(path):
-    """Servir archivos estáticos - BUSCA EN AMBAS UBICACIONES"""
+    """Servir archivos estáticos - SOLO buscar en assets/"""
     try:
-        # ✅ PRIMERO: Buscar en assets/assets/ (CSS/JS)
-        assets_assets_path = os.path.join(os.path.dirname(__file__), 'assets', 'assets')
-        if os.path.exists(os.path.join(assets_assets_path, path)):
-            return send_from_directory(assets_assets_path, path)
-        
-        # ✅ SEGUNDO: Buscar en assets/ (imágenes, etc.)
+        # ✅ SOLO buscar en assets/ (sin duplicación)
         assets_path = os.path.join(os.path.dirname(__file__), 'assets')
-        if os.path.exists(os.path.join(assets_path, path)):
+        full_path = os.path.join(assets_path, path)
+        
+        if os.path.exists(full_path):
             return send_from_directory(assets_path, path)
         
-        # ✅ Si no existe en ninguna, devolver 404
-        return jsonify({"error": "Archivo no encontrado", "path": path}), 404
+        # ✅ Si no existe, devolver 404 con información de debug
+        return jsonify({
+            "error": "Archivo no encontrado", 
+            "path": path,
+            "assets_path": assets_path,
+            "existe_assets": os.path.exists(assets_path),
+            "contenido_assets": os.listdir(assets_path) if os.path.exists(assets_path) else []
+        }), 404
         
     except Exception as e:
-        return jsonify({"error": "Error interno del servidor"}), 500
-
+        return jsonify({
+            "error": "Error interno del servidor",
+            "detalle": str(e)
+        }), 500
+        
 # =========================
 # ENDPOINTS PRINCIPALES - SOLO RUTAS RELATIVAS
 # =========================
