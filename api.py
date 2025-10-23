@@ -155,30 +155,145 @@ def conectar_bd():
             return conectar_a_bd_local()
 
 # =========================
-# SERVIR FRONTEND DESDE CARPETA DIST
+# SERVIR FRONTEND DESDE CARPETA DIST - CON DIAGNÓSTICO
 # =========================
 
 @app.route('/')
 def serve_frontend():
-    """Servir el frontend Vue.js desde la carpeta dist"""
+    """Servir el frontend Vue.js con diagnóstico integrado"""
     try:
+        # ✅ DIAGNÓSTICO: Verificar que dist/ existe
+        if not os.path.exists('dist'):
+            return """
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Error - No dist/</title>
+                <style>
+                    body { font-family: Arial; margin: 40px; background: #ffebee; color: #c62828; }
+                    .error-box { background: #ffcdd2; padding: 20px; border-radius: 5px; margin: 20px 0; }
+                </style>
+            </head>
+            <body>
+                <h1>❌ ERROR: No existe carpeta dist/</h1>
+                <div class="error-box">
+                    <p><strong>Problema:</strong> El frontend no fue construido o no se copió al backend.</p>
+                    <p><strong>Solución:</strong> Ejecuta <code>npm run build</code> en el frontend y copia la carpeta dist/ al backend.</p>
+                </div>
+                <p>Archivos en directorio actual:</p>
+                <pre>{}</pre>
+            </body>
+            </html>
+            """.format(os.listdir('.')), 500
+        
+        # ✅ DIAGNÓSTICO: Verificar index.html
+        index_path = os.path.join('dist', 'index.html')
+        if not os.path.exists(index_path):
+            archivos_dist = os.listdir('dist')
+            return f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Error - No index.html</title>
+                <style>
+                    body { font-family: Arial; margin: 40px; background: #fff3cd; color: #856404; }
+                    .warning-box { background: #fff3cd; padding: 20px; border-radius: 5px; margin: 20px 0; }
+                </style>
+            </head>
+            <body>
+                <h1>⚠️ ERROR: index.html no encontrado en dist/</h1>
+                <div class="warning-box">
+                    <p><strong>Contenido de dist/:</strong> {archivos_dist}</p>
+                    <p>El build de React no generó index.html correctamente.</p>
+                </div>
+            </body>
+            </html>
+            """, 500
+        
+        # ✅ DIAGNÓSTICO: Verificar assets/
+        assets_path = os.path.join('dist', 'assets')
+        if not os.path.exists(assets_path):
+            return """
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Error - No assets/</title>
+                <style>
+                    body { font-family: Arial; margin: 40px; background: #e3f2fd; color: #1565c0; }
+                    .info-box { background: #e3f2fd; padding: 20px; border-radius: 5px; margin: 20px 0; }
+                </style>
+            </head>
+            <body>
+                <h1>ℹ️ ADVERTENCIA: No existe carpeta assets/</h1>
+                <div class="info-box">
+                    <p>La carpeta assets/ no se encontró en dist/. Esto puede causar problemas de CSS/JS.</p>
+                    <p>Contenido de dist/: {}</p>
+                </div>
+                <p>Intentando servir el frontend de todas formas...</p>
+            </body>
+            </html>
+            """.format(os.listdir('dist')), 200
+        
+        # ✅ TODO BIEN: Servir el frontend normal
+        print("✅ Sirviendo frontend desde dist/index.html")
         return send_from_directory('dist', 'index.html')
+        
     except Exception as e:
-        return jsonify({
-            "error": "Frontend no disponible", 
-            "details": str(e),
-            "message": "Ejecuta: npm run build para construir el frontend"
-        }), 500
+        # ✅ ERROR CRÍTICO: Mostrar detalles completos
+        import traceback
+        return f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Error Crítico</title>
+            <style>
+                body {{ font-family: Arial; margin: 40px; background: #f8d7da; color: #721c24; }}
+                .error {{ background: #f5c6cb; padding: 20px; border-radius: 5px; margin: 10px 0; }}
+                .debug {{ background: #e2e3e5; padding: 15px; margin: 10px 0; font-family: monospace; font-size: 12px; }}
+            </style>
+        </head>
+        <body>
+            <h1>🚨 ERROR CRÍTICO Sirviendo Frontend</h1>
+            
+            <div class="error">
+                <h3>❌ Exception:</h3>
+                <pre>{str(e)}</pre>
+            </div>
+            
+            <div class="debug">
+                <h3>🔍 Debug Info:</h3>
+                <pre>Directorio actual: {os.getcwd()}</pre>
+                <pre>Existe dist/: {os.path.exists('dist')}</pre>
+                <pre>Contenido actual: {os.listdir('.')}</pre>
+                <pre>Traceback: {traceback.format_exc()}</pre>
+            </div>
+            
+            <div class="debug">
+                <h3>🔗 URLs de prueba:</h3>
+                <ul>
+                    <li><a href="/api/health">/api/health</a> - Health check</li>
+                    <li><a href="/api/debug">/api/debug</a> - Debug info</li>
+                    <li><a href="/assets/index-3zJ84eex.js">Archivo JS</a> - Verificar assets</li>
+                    <li><a href="/assets/index-DET4filr.css">Archivo CSS</a> - Verificar CSS</li>
+                </ul>
+            </div>
+        </body>
+        </html>
+        """, 500
 
 @app.route('/<path:path>')
 def serve_static_files(path):
-    """Servir archivos estáticos del frontend"""
+    """Servir archivos estáticos del frontend con diagnóstico"""
     try:
-        return send_from_directory('dist', path)
+        response = send_from_directory('dist', path)
+        print(f"✅ Sirviendo archivo estático: {path}")
+        return response
     except Exception as e:
+        print(f"❌ Error sirviendo {path}: {e}")
         return jsonify({
             "error": "Archivo no encontrado",
             "path": path,
+            "available_files": os.listdir('dist') if os.path.exists('dist') else [],
             "details": str(e)
         }), 404
 
