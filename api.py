@@ -180,21 +180,29 @@ def serve_react_app():
 
 @app.route('/<path:path>')
 def serve_static_files(path):
-    """Servir archivos estáticos - SOLO buscar en assets/"""
+    """Servir archivos estáticos - MANEJA CON Y SIN assets/"""
     try:
-        # ✅ SOLO buscar en assets/ (sin duplicación)
+        # ✅ PRIMERO: Buscar path directo (sin assets/)
         assets_path = os.path.join(os.path.dirname(__file__), 'assets')
         full_path = os.path.join(assets_path, path)
         
         if os.path.exists(full_path):
             return send_from_directory(assets_path, path)
         
-        # ✅ Si no existe, devolver 404 con información de debug
+        # ✅ SEGUNDO: Si no existe, quitar "assets/" si está al inicio
+        if path.startswith('assets/'):
+            path_corregido = path[7:]  # Quitar "assets/"
+            full_path_corregido = os.path.join(assets_path, path_corregido)
+            
+            if os.path.exists(full_path_corregido):
+                return send_from_directory(assets_path, path_corregido)
+        
+        # ✅ Si no existe en ninguna, devolver 404 con debug
         return jsonify({
             "error": "Archivo no encontrado", 
-            "path": path,
+            "path_recibido": path,
+            "path_corregido": path_corregido if path.startswith('assets/') else "no aplica",
             "assets_path": assets_path,
-            "existe_assets": os.path.exists(assets_path),
             "contenido_assets": os.listdir(assets_path) if os.path.exists(assets_path) else []
         }), 404
         
@@ -203,7 +211,7 @@ def serve_static_files(path):
             "error": "Error interno del servidor",
             "detalle": str(e)
         }), 500
-        
+            
 # =========================
 # ENDPOINTS PRINCIPALES - SOLO RUTAS RELATIVAS
 # =========================
