@@ -74,21 +74,31 @@ class BuildDeployThread(QThread):
         return None
 
     def find_backend_path(self):
-        """Buscar backend de forma más precisa"""
+        """Buscar backend de forma más precisa - VERSIÓN MEJORADA"""
         posibles_rutas = [
             os.path.join(self.project_path, "turismo-backend"),
-            os.path.join(self.project_path, "backend"),
-            os.path.join(self.project_path, "..", "turismo-backend")
+            os.path.join(self.project_path, "backend"), 
+            os.path.join(self.project_path, "..", "turismo-backend"),
+            os.path.join(self.project_path, "..", "backend"),
+            self.project_path  # ← POR SI ESTÁ TODO JUNTO
         ]
         
         for ruta in posibles_rutas:
             ruta_abs = os.path.abspath(ruta)
+            
+            # ✅ VERIFICAR MÚLTIPLES INDICADORES DE BACKEND
             api_py = os.path.join(ruta_abs, "api.py")
             requirements = os.path.join(ruta_abs, "requirements.txt")
+            has_git = os.path.exists(os.path.join(ruta_abs, ".git"))
             
+            # Si tiene api.py O requirements.txt, es backend
             if os.path.exists(ruta_abs) and (os.path.exists(api_py) or os.path.exists(requirements)):
+                self.log(f"📍 Backend detectado en: {ruta_abs}")
+                if has_git:
+                    self.log("📦 Backend tiene repositorio Git - perfecto para deploy")
                 return ruta_abs
-                
+        
+        self.log("⚠️ Backend no detectado en rutas comunes")
         return None
 
     def log(self, mensaje, nivel="INFO"):
@@ -216,60 +226,99 @@ class BuildDeployThread(QThread):
             return False
 
     def copiar_archivos_correctamente(self):
+        """✅ VERSIÓN CORREGIDA - Copia dist/ del frontend al backend"""
         if not self.frontend_path:
             self.log("❌ No se encontró frontend")
             return False
 
-        dist_path = os.path.join(self.frontend_path, "dist")
-        if not os.path.exists(dist_path):
-            self.log("❌ No existe dist/ - ejecuta build primero")
+        # Ruta de dist en frontend
+        dist_frontend = os.path.join(self.frontend_path, "dist")
+        if not os.path.exists(dist_frontend):
+            self.log("❌ No existe dist/ en frontend - ejecuta build primero")
             return False
 
         if not self.backend_path:
             self.log("⚠️ Backend no encontrado - solo build")
             return True
 
-        backend_destino = self.backend_path
-        self.log(f"📁 Copiando desde: {dist_path}")
-        self.log(f"📁 Copiando hacia: {backend_destino}")
+        # Ruta de destino en backend
+        dist_backend = os.path.join(self.backend_path, "dist")
+        
+        self.log(f"📁 Copiando desde: {dist_frontend}")
+        self.log(f"📁 Copiando hacia: {dist_backend}")
 
         try:
             # ✅ VERIFICAR QUE index.html EXISTE EN ORIGEN
-            index_origen = os.path.join(dist_path, "index.html")
+            index_origen = os.path.join(dist_frontend, "index.html")
             if not os.path.exists(index_origen):
-                self.log("❌ ERROR: index.html no existe en dist/")
+                self.log("❌ ERROR: index.html no existe en frontend/dist/")
                 return False
 
-            # ✅ COPIAR CONTENIDO DE dist/ AL BACKEND
-            for item in os.listdir(dist_path):
-                item_src = os.path.join(dist_path, item)
-                item_dst = os.path.join(backend_destino, item)
+            # ✅ 1. ELIMINAR dist/ EXISTENTE EN BACKEND (si existe)
+            if os.path.exists(dist_backend):
+                self.log("🧹 Eliminando dist/ anterior en backend...")
+                shutil.rmtree(dist_backend)
+
+            # ✅ 2. COPIAR NUEVA CARPETA dist/ COMPLETA AL BACKEND
+            self.log("📦 Copiando carpeta dist/ completa...")
+            shutil.copytree(dist_frontend, dist_backend)
+            self.log("✅ Carpeta dist/ copiada completamente")
+
+            # ✅ 3. VERIFICAR COPIA
+            if os.path.exists(dist_backend):
+                archivos = os.listdir(dist_backend)
+                self.log(f"📁 Archivos en backend/dist/: {len(archivos)}")
                 
-                if os.path.exists(item_dst):
-                    if os.path.isfile(item_dst):
-                        os.remove(item_dst)
-                    else:
-                        shutil.rmtree(item_dst)
+                for archivo in archivos:
+                    self.log(f"   ✅ {archivo}")
                 
-                if os.path.isfile(item_src):
-                    shutil.copy2(item_src, item_dst)
-                    self.log(f"✅ Copiado: {item}")
+                # Verificar index.html específicamente
+                index_destino = os.path.join(dist_backend, "index.html")
+                if os.path.exists(index_destino):
+                    file_size = os.path.getsize(index_destino)
+                    self.log(f"✅ index.html copiado correctamente ({file_size} bytes)")
+                    
+                    # ✅ 4. HACER GIT COMMIT EN BACKEND
+                    if self.hacer_git:
+                        self.log("💾 Agregando dist/ al repositorio del backend...")
+                        
+                        # Git add en backend
+                        ok, out, err = self.run_subprocess("git add dist/", cwd=self.backend_path)
+                        if ok:
+                            self.log("✅ dist/ agregada al staging del backend")
+                            
+                            # Git commit en backend
+                            commit_msg = 'ADD: Frontend built - ' + time.strftime("%Y-%m-%d %H:%M")
+                            ok, out, err = self.run_subprocess(
+                                f'git commit -m "{commit_msg}"', 
+                                cwd=self.backend_path
+                            )
+                            if ok:
+                                self.log("✅ Commit realizado en backend")
+                            else:
+                                self.log("⚠️ Commit falló (posiblemente sin cambios nuevos)")
+                            
+                            # Git push en backend
+                            ok, out, err = self.run_subprocess("git push origin main", cwd=self.backend_path)
+                            if ok:
+                                self.log("🎉 Push completado - frontend en GitHub!")
+                            else:
+                                self.log("⚠️ Push falló, pero archivos están en backend local")
+                        else:
+                            self.log("⚠️ Git add falló en backend")
+                    
+                    return True
                 else:
-                    shutil.copytree(item_src, item_dst)
-                    self.log(f"✅ Copiada carpeta: {item}/")
-            
-            # ✅ VERIFICAR COPIA
-            index_destino = os.path.join(backend_destino, "index.html")
-            if os.path.exists(index_destino):
-                file_size = os.path.getsize(index_destino)
-                self.log(f"✅ index.html copiado correctamente ({file_size} bytes)")
-                return True
+                    self.log("❌ ERROR: index.html no se copió a backend")
+                    return False
             else:
-                self.log("❌ ERROR: index.html no se copió")
+                self.log("❌ ERROR: No se creó dist/ en backend")
                 return False
-            
+                
         except Exception as e:
             self.log(f"❌ Error en copia: {e}")
+            import traceback
+            self.log(f"📋 Traceback: {traceback.format_exc()}")
             return False
             
     def run(self):
