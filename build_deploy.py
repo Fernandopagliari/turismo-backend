@@ -161,6 +161,13 @@ class BuildDeployThread(QThread):
 
         self.log(f"📁 Construyendo desde: {self.frontend_path}")
         self.log(f"🔧 Usando npm: {self.npm_path}")
+        
+        # ✅ LIMPIAR BUILD ANTERIOR
+        dist_path = os.path.join(self.frontend_path, "dist")
+        if os.path.exists(dist_path):
+            self.log("🧹 Limpiando build anterior...")
+            shutil.rmtree(dist_path)
+        
         self.log("Ejecutando npm run build...")
         
         ok, out, err = self.run_subprocess(
@@ -169,34 +176,43 @@ class BuildDeployThread(QThread):
             timeout=600
         )
         
-        # ✅ VERIFICAR AMBAS UBICACIONES POSIBLES
-        dist_path = os.path.join(self.frontend_path, "dist")
-        backend_assets_path = os.path.join(self.backend_path, "assets") if self.backend_path else None
-        
+        # ✅ SOLO VERIFICAR DIST/ EN FRONTEND (no backend aún)
         if ok:
-            # ✅ PRIMERO: Verificar si se creó en backend/assets (tu configuración)
-            if backend_assets_path and os.path.exists(backend_assets_path):
-                self.log("✅ Build de React completado (en backend/assets)")
-                archivos = os.listdir(backend_assets_path)
-                self.log(f"📁 Archivos en backend/assets/: {len(archivos)}")
-                for archivo in archivos[:5]:
-                    self.log(f"   - {archivo}")
-                return True
-            
-            # ✅ SEGUNDO: Verificar si se creó en frontend/dist (configuración normal)
-            elif os.path.exists(dist_path):
+            # ✅ VERIFICAR SI SE CREÓ dist/ EN FRONTEND
+            if os.path.exists(dist_path):
                 self.log("✅ Build de React completado (en frontend/dist)")
                 archivos = os.listdir(dist_path)
                 self.log(f"📁 Archivos en dist/: {len(archivos)}")
-                for archivo in archivos[:5]:
-                    self.log(f"   - {archivo}")
+                
+                # ✅ BUSCAR ESPECÍFICAMENTE index.html
+                index_path = os.path.join(dist_path, "index.html")
+                if os.path.exists(index_path):
+                    file_size = os.path.getsize(index_path)
+                    self.log(f"✅ index.html encontrado ({file_size} bytes)")
+                else:
+                    self.log("❌ index.html NO encontrado en dist/")
+                    # Mostrar qué archivos sí hay
+                    for archivo in archivos:
+                        self.log(f"   - {archivo}")
+                    return False
+                    
                 return True
-            
             else:
-                self.log("❌ ERROR: No se creó carpeta de build en ninguna ubicación")
+                self.log("❌ ERROR: No se creó carpeta dist/ en frontend")
+                # ✅ MOSTRAR QUÉ SÍ EXISTE en frontend_path para debug
+                self.log("📁 Contenido del frontend:")
+                for item in os.listdir(self.frontend_path):
+                    item_path = os.path.join(self.frontend_path, item)
+                    if os.path.isfile(item_path):
+                        self.log(f"   📄 {item}")
+                    else:
+                        num_files = len(os.listdir(item_path)) if os.path.exists(item_path) else 0
+                        self.log(f"   📁 {item}/ ({num_files} archivos)")
                 return False
         else:
             self.log(f"❌ ERROR en build React: {err}")
+            if out:
+                self.log(f"📋 Salida: {out}")
             return False
 
     def copiar_archivos_correctamente(self):
@@ -213,44 +229,49 @@ class BuildDeployThread(QThread):
             self.log("⚠️ Backend no encontrado - solo build")
             return True
 
-        assets_destino = os.path.join(self.backend_path, "assets")
+        backend_destino = self.backend_path
         self.log(f"📁 Copiando desde: {dist_path}")
-        self.log(f"📁 Copiando hacia: {assets_destino}")
-
-        # Limpiar destino anterior
-        if os.path.exists(assets_destino):
-            shutil.rmtree(assets_destino)
+        self.log(f"📁 Copiando hacia: {backend_destino}")
 
         try:
-            # ✅ COPIAR TODO el contenido de dist/
-            shutil.copytree(dist_path, assets_destino)
+            # ✅ VERIFICAR QUE index.html EXISTE EN ORIGEN
+            index_origen = os.path.join(dist_path, "index.html")
+            if not os.path.exists(index_origen):
+                self.log("❌ ERROR: index.html no existe en dist/")
+                return False
+
+            # ✅ COPIAR CONTENIDO DE dist/ AL BACKEND
+            for item in os.listdir(dist_path):
+                item_src = os.path.join(dist_path, item)
+                item_dst = os.path.join(backend_destino, item)
+                
+                if os.path.exists(item_dst):
+                    if os.path.isfile(item_dst):
+                        os.remove(item_dst)
+                    else:
+                        shutil.rmtree(item_dst)
+                
+                if os.path.isfile(item_src):
+                    shutil.copy2(item_src, item_dst)
+                    self.log(f"✅ Copiado: {item}")
+                else:
+                    shutil.copytree(item_src, item_dst)
+                    self.log(f"✅ Copiada carpeta: {item}/")
             
-            # ✅ VERIFICAR QUE index.html SE COPIÓ
-            index_destino = os.path.join(assets_destino, "index.html")
+            # ✅ VERIFICAR COPIA
+            index_destino = os.path.join(backend_destino, "index.html")
             if os.path.exists(index_destino):
                 file_size = os.path.getsize(index_destino)
-                self.log(f"✅ index.html copiado ({file_size} bytes)")
+                self.log(f"✅ index.html copiado correctamente ({file_size} bytes)")
+                return True
             else:
-                self.log("❌ ERROR: index.html NO se copió")
+                self.log("❌ ERROR: index.html no se copió")
                 return False
-            
-            # ✅ VERIFICAR ESTRUCTURA COMPLETA
-            self.log("📁 Estructura final en backend/assets/:")
-            for item in os.listdir(assets_destino):
-                item_path = os.path.join(assets_destino, item)
-                if os.path.isfile(item_path):
-                    size = os.path.getsize(item_path)
-                    self.log(f"   📄 {item} ({size} bytes)")
-                else:
-                    num_files = len(os.listdir(item_path))
-                    self.log(f"   📁 {item}/ ({num_files} archivos)")
-            
-            return True
             
         except Exception as e:
             self.log(f"❌ Error en copia: {e}")
             return False
-        
+            
     def run(self):
         try:
             self.progress_signal.emit(10)
