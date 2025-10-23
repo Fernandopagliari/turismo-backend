@@ -1,52 +1,68 @@
 import os
-import shutil
 
-def verificar_estructura():
-    print("🔍 VERIFICANDO ESTRUCTURA DE ARCHIVOS")
+def verificar_estructura_clara():
+    print("🎯 VERIFICACIÓN CLARA - ESTADO DEL DEPLOY")
     print("=" * 50)
     
     # Verificar frontend
-    frontend_paths = [
-        "turismo-frontend",
-        "frontend", 
-        "."
-    ]
-    
-    for path in frontend_paths:
-        dist_path = os.path.join(path, "dist")
-        if os.path.exists(dist_path):
-            print(f"✅ DIST encontrada en: {dist_path}")
-            archivos = os.listdir(dist_path)
-            print(f"   📁 Archivos: {len(archivos)}")
-            for archivo in archivos[:5]:  # Primeros 5
-                print(f"     - {archivo}")
-            if "index.html" in archivos:
-                print("   ✅ index.html presente")
-            break
+    frontend_dist = "turismo-frontend/dist"
+    if os.path.exists(frontend_dist):
+        print("✅ FRONTEND: dist/ construida correctamente")
+        archivos = os.listdir(frontend_dist)
+        print(f"   📁 Contenido: {len(archivos)} elementos")
     else:
-        print("❌ DIST no encontrada en ninguna ubicación")
+        print("❌ FRONTEND: No tiene dist/")
+        return False
     
     # Verificar backend
-    backend_paths = [
-        "turismo-backend", 
-        "backend",
-        "."
-    ]
-    
-    for path in backend_paths:
-        if os.path.exists(path):
-            dist_backend = os.path.join(path, "dist")
-            if os.path.exists(dist_backend):
-                print(f"✅ DIST en backend: {dist_backend}")
-            else:
-                print(f"❌ DIST NO en backend: {path}")
+    backend_dist = "turismo-backend/dist" 
+    if os.path.exists(backend_dist):
+        print("✅ BACKEND: dist/ copiada correctamente")
+        archivos_backend = os.listdir(backend_dist)
+        print(f"   📁 Contenido: {len(archivos_backend)} elementos")
+        
+        # Verificar archivos críticos
+        index_path = os.path.join(backend_dist, "index.html")
+        assets_path = os.path.join(backend_dist, "assets")
+        
+        if os.path.exists(index_path):
+            print("   ✅ index.html presente")
+        else:
+            print("   ❌ index.html FALTANTE")
             
-            # Verificar archivos clave
-            api_py = os.path.join(path, "api.py")
-            if os.path.exists(api_py):
-                print(f"✅ api.py en: {api_py}")
-            else:
-                print(f"❌ api.py NO en: {path}")
+        if os.path.exists(assets_path):
+            num_assets = len(os.listdir(assets_path))
+            print(f"   ✅ assets/ presente ({num_assets} archivos)")
+        else:
+            print("   ❌ assets/ FALTANTE")
+            
+        return True
+    else:
+        print("❌ BACKEND: NO tiene dist/ - No copiada")
+        return False
+
+def verificar_para_deploy():
+    print("\n" + "=" * 50)
+    print("🚀 ESTADO PARA DEPLOY:")
+    
+    backend_dist = "turismo-backend/dist"
+    api_py = "turismo-backend/api.py"
+    
+    if os.path.exists(backend_dist) and os.path.exists(api_py):
+        print("🎉 ✅ LISTO PARA DEPLOY!")
+        print("   • dist/ presente en backend ✓")
+        print("   • api.py presente ✓")
+        print("\n📝 Próximos pasos:")
+        print("   1. Ejecuta backend_deploy.py")
+        print("   2. O manualmente: git add, commit, push")
+        print("   3. Render detectará los cambios automáticamente")
+    else:
+        print("❌ NO LISTO - Faltan archivos")
+        if not os.path.exists(backend_dist):
+            print("   • dist/ no encontrada en backend")
+        if not os.path.exists(api_py):
+            print("   • api.py no encontrado")
 
 if __name__ == "__main__":
-    verificar_estructura()
+    verificar_estructura_clara()
+    verificar_para_deploy()
