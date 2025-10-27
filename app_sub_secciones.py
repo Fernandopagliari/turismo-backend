@@ -32,8 +32,6 @@ def ruta_absoluta_desde_relativa(ruta_rel):
 
 def convertir_ruta_produccion(ruta_absoluta):
     """Convierte rutas absolutas a rutas relativas - VERSIÓN FINAL"""
-    from PyQt5.QtWidgets import QMessageBox
-    
     if not ruta_absoluta or not os.path.exists(ruta_absoluta):
         return ""
     
@@ -53,72 +51,6 @@ def convertir_ruta_produccion(ruta_absoluta):
     resultado = f"assets/imagenes/{nombre_archivo}"
     return resultado
 
-def copiar_archivo_a_destino(ruta_origen, tipo_archivo):
-    """Copia un archivo a la carpeta destino correspondiente y devuelve ruta relativa"""
-    if not ruta_origen or not os.path.exists(ruta_origen):
-        return ""
-    
-    nombre_archivo = os.path.basename(ruta_origen)
-    
-    # Determinar carpeta destino según tipo
-    if tipo_archivo == "icono":
-        carpeta_destino = os.path.join(os.getcwd(), "public", "assets", "imagenes", "iconos")
-    elif tipo_archivo == "imagen_region":
-        carpeta_destino = os.path.join(os.getcwd(), "public", "assets", "imagenes", "regiones_zonas")
-    elif tipo_archivo in ["imagen_subseccion", "foto_subseccion"]:
-        carpeta_destino = os.path.join(os.getcwd(), "public", "assets", "imagenes", "sub_secciones")
-    else:
-        carpeta_destino = os.path.join(os.getcwd(), "public", "assets", "imagenes")
-    
-    # Crear carpeta si no existe
-    os.makedirs(carpeta_destino, exist_ok=True)
-    
-    ruta_destino = os.path.join(carpeta_destino, nombre_archivo)
-    
-    try:
-        # ✅ MEJORADO: Verificar si ya está en la carpeta destino
-        if os.path.abspath(ruta_origen) == os.path.abspath(ruta_destino):
-            # Ya está en la carpeta correcta, generar ruta relativa
-            return f"assets/imagenes/{os.path.basename(carpeta_destino)}/{nombre_archivo}"
-        
-        # ✅ MEJORADO: Si existe y es diferente, renombrar usando hash
-        if os.path.exists(ruta_destino):
-            def hash_archivo(path):
-                hasher = hashlib.md5()
-                with open(path, "rb") as f:
-                    while chunk := f.read(8192):
-                        hasher.update(chunk)
-                return hasher.hexdigest()
-            
-            # Solo renombrar si son archivos diferentes
-            if hash_archivo(ruta_destino) != hash_archivo(ruta_origen):
-                base, ext = os.path.splitext(nombre_archivo)
-                contador = 1
-                while True:
-                    nuevo_nombre = f"{base}_{contador}{ext}"
-                    nueva_ruta = os.path.join(carpeta_destino, nuevo_nombre)
-                    if not os.path.exists(nueva_ruta):
-                        ruta_destino = nueva_ruta
-                        nombre_archivo = nuevo_nombre
-                        break
-                    contador += 1
-        
-        # Copiar archivo
-        shutil.copy2(ruta_origen, ruta_destino)
-        
-        # ✅ MEJORADO: Generar ruta relativa consistente
-        if tipo_archivo == "icono":
-            return f"assets/imagenes/iconos/{nombre_archivo}"
-        elif tipo_archivo == "imagen_region":
-            return f"assets/imagenes/regiones_zonas/{nombre_archivo}"
-        elif tipo_archivo in ["imagen_subseccion", "foto_subseccion"]:
-            return f"assets/imagenes/sub_secciones/{nombre_archivo}"
-        else:
-            return f"assets/imagenes/{nombre_archivo}"
-            
-    except Exception as e:
-        print(f"Error copiando archivo: {e}")
-        return ""
 # -------------------------
 # CLASE PRINCIPAL
 # -------------------------
@@ -170,14 +102,14 @@ class VentanaSubSecciones(QWidget):
         self.btnLimpiarFormulario.clicked.connect(self.limpiar_formulario)
         self.btnCerrar.clicked.connect(self.close)
 
-        # ✅ CORREGIDO: Selección de imágenes con tipos específicos
+        # ✅ CORREGIDO: Usar convertir_ruta_produccion en lugar de copiar_archivo_a_destino
         self.btnBuscarImagen.clicked.connect(
             lambda: self.seleccionar_archivo_corregido(
                 self.label_imagen, self.lineEdit_imagen, 200, 150, "imagen_subseccion"
             )
         )
         
-        # ✅ CORREGIDO: Selección de fotos con tipos específicos
+        # ✅ CORREGIDO: Usar convertir_ruta_produccion en lugar de copiar_archivo_a_destino
         self.btnBuscarFoto1.clicked.connect(
             lambda: self.seleccionar_archivo_corregido(
                 self.label_foto_1, self.lineEdit_foto_1, 200, 150, "foto_subseccion"
@@ -347,8 +279,8 @@ class VentanaSubSecciones(QWidget):
         if not archivo:
             return
 
-        # ✅ CORREGIDO: Copiar archivo a destino y obtener ruta de producción
-        ruta_relativa_produccion = copiar_archivo_a_destino(archivo, tipo_archivo)
+        # ✅ CORREGIDO: Usar convertir_ruta_produccion en lugar de copiar_archivo_a_destino
+        ruta_relativa_produccion = convertir_ruta_produccion(archivo)
         
         if not ruta_relativa_produccion:
             QMessageBox.warning(self, "Error", "No se pudo procesar el archivo seleccionado")
@@ -403,6 +335,7 @@ class VentanaSubSecciones(QWidget):
         except Exception as e:
             print(f"❌ Error actualizando BD: {e}")
             QMessageBox.warning(self, "Error BD", f"No se pudo actualizar la ruta en la base de datos:\n{e}")
+
     # -------------------------
     # CARGA DE SUBSECCIONES
     # -------------------------
@@ -838,7 +771,7 @@ class VentanaSubSecciones(QWidget):
             QMessageBox.warning(self, "Error", "Debe seleccionar una región/zona")
             return
 
-        # ✅ CORREGIDO: Procesar rutas para producción
+        # ✅ CORREGIDO: Usar rutas relativas directamente
         imagen_rel = self.lineEdit_imagen.text().strip() or None
         icono_rel = self.lineEdit_icono.text().strip() or None
         foto1_rel = self.lineEdit_foto_1.text().strip() or None
@@ -909,7 +842,7 @@ class VentanaSubSecciones(QWidget):
             QMessageBox.warning(self, "Error", "Seleccione una subsección para modificar")
             return
 
-        # ✅ CORREGIDO: Procesar rutas para producción
+        # ✅ CORREGIDO: Usar rutas relativas directamente
         imagen_rel = self.lineEdit_imagen.text().strip() or None
         icono_rel = self.lineEdit_icono.text().strip() or None
         foto1_rel = self.lineEdit_foto_1.text().strip() or None
