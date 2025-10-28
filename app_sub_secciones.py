@@ -18,18 +18,40 @@ import hashlib
 # HELPERS GENERALES
 # -------------------------
 def ruta_absoluta_desde_relativa(ruta_rel):
-    """Convierte una ruta relativa en absoluta desde el directorio public/"""
+    """Convierte una ruta relativa en absoluta desde el directorio public/ - VERSIÓN CORREGIDA"""
     if not ruta_rel:
         return None
 
     # Normalizar para evitar que empiece con "/"
     ruta_rel = ruta_rel.lstrip("/")
 
-    base_dir = os.path.abspath("public")
+    # ✅ CORREGIDO: Buscar el directorio 'public' desde la raíz del proyecto
+    directorio_actual = os.path.abspath(os.path.dirname(__file__))
+    
+    # Buscar hacia arriba en la estructura hasta encontrar 'public'
+    base_dir = None
+    temp_dir = directorio_actual
+    
+    for _ in range(10):  # Máximo 10 niveles hacia arriba
+        public_path = os.path.join(temp_dir, "public")
+        if os.path.exists(public_path) and os.path.isdir(public_path):
+            base_dir = public_path
+            break
+        temp_dir = os.path.dirname(temp_dir)  # Subir un nivel
+    
+    # Si no encontró public, usar el directorio actual como fallback
+    if not base_dir:
+        base_dir = os.path.abspath("public")
+    
     ruta_abs = os.path.abspath(os.path.join(base_dir, ruta_rel))
-
+    
+    print(f"🔍 DEBUG ruta_absoluta_desde_relativa:")
+    print(f"   Relativa: {ruta_rel}")
+    print(f"   Base dir: {base_dir}") 
+    print(f"   Absoluta: {ruta_abs}")
+    print(f"   ¿Existe?: {os.path.exists(ruta_abs)}")
+    
     return ruta_abs
-
 def convertir_ruta_produccion(ruta_absoluta):
     """Convierte rutas absolutas a rutas relativas - VERSIÓN FINAL"""
     if not ruta_absoluta or not os.path.exists(ruta_absoluta):
