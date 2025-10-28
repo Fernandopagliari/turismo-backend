@@ -52,6 +52,7 @@ def ruta_absoluta_desde_relativa(ruta_rel):
     print(f"   ¿Existe?: {os.path.exists(ruta_abs)}")
     
     return ruta_abs
+
 def convertir_ruta_produccion(ruta_absoluta):
     """Convierte rutas absolutas a rutas relativas - VERSIÓN FINAL"""
     if not ruta_absoluta or not os.path.exists(ruta_absoluta):
@@ -531,27 +532,65 @@ class VentanaSubSecciones(QWidget):
         return card
 
     def cargar_imagen_icono(self, ruta, label_widget, size=None, fallback_text="Sin imagen"):
-        """Carga una imagen en un QLabel con manejo de errores"""
+        """Carga una imagen en un QLabel con manejo de errores - VERSIÓN MEJORADA"""
         if not ruta:
             label_widget.clear()
             label_widget.setText(fallback_text)
             return
 
-        ruta_a_usar = ruta
-        if not os.path.exists(ruta_a_usar):
-            ruta_abs = ruta_absoluta_desde_relativa(ruta_a_usar)
+        # ✅ ESTRATEGIA MEJORADA
+        ruta_a_usar = None
+        
+        # 1️⃣ Si es ruta absoluta y existe
+        if os.path.isabs(ruta) and os.path.exists(ruta):
+            ruta_a_usar = ruta
+            print(f"✅ Usando ruta absoluta: {ruta}")
+        
+        # 2️⃣ Si es relativa, convertir a absoluta
+        elif not os.path.isabs(ruta):
+            ruta_abs = ruta_absoluta_desde_relativa(ruta)
             if ruta_abs and os.path.exists(ruta_abs):
                 ruta_a_usar = ruta_abs
+                print(f"✅ Convertida de relativa a absoluta: {ruta_abs}")
             else:
+                # 3️⃣ Búsqueda en ubicaciones alternativas
+                rutas_posibles = [
+                    os.path.join(os.getcwd(), "public", ruta),
+                    os.path.join(os.path.dirname(__file__), "..", "..", "public", ruta),
+                    os.path.join(os.getcwd(), ruta),
+                ]
+                
+                for ruta_posible in rutas_posibles:
+                    if ruta_posible and os.path.exists(ruta_posible):
+                        ruta_a_usar = ruta_posible
+                        print(f"✅ Encontrada en ubicación alternativa: {ruta_posible}")
+                        break
+
+        # ❌ Si no se encontró
+        if not ruta_a_usar:
+            label_widget.clear()
+            label_widget.setText(fallback_text)
+            print(f"❌ No se pudo encontrar la imagen: {ruta}")
+            return
+
+        # ✅ CARGAR la imagen
+        try:
+            pixmap = QPixmap(ruta_a_usar)
+            if pixmap.isNull():
                 label_widget.clear()
-                label_widget.setText(fallback_text)
+                label_widget.setText("Imagen no válida")
                 return
-
-        pixmap = QPixmap(ruta_a_usar)
-        if size:
-            pixmap = pixmap.scaled(size[0], size[1], Qt.KeepAspectRatio, Qt.SmoothTransformation)
-        label_widget.setPixmap(pixmap)
-
+                
+            if size:
+                pixmap = pixmap.scaled(size[0], size[1], Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            
+            label_widget.setPixmap(pixmap)
+            print(f"✅ Imagen cargada exitosamente: {os.path.basename(ruta_a_usar)}")
+            
+        except Exception as e:
+            label_widget.clear()
+            label_widget.setText("Error al cargar")
+            print(f"❌ Error cargando imagen: {e}")
     # -------------------------
     # MANEJO DE CLICS EN CARDS
     # -------------------------
