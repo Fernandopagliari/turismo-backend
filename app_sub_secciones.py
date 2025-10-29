@@ -818,7 +818,7 @@ class VentanaSubSecciones(QWidget):
     # ✅ CORREGIDO: OPERACIONES CRUD
     # -------------------------
     def agregar_sub_seccion(self):
-        """Agrega una nueva subsección con rutas ABSOLUTAS y RELATIVAS correctas"""
+        """Agrega una nueva subsección con rutas de producción"""
         # Validaciones básicas
         nombre = self.lineEdit_nombre_subSeccion.text().strip()
         id_seccion = self.comboBox_seccion.currentData()
@@ -832,24 +832,13 @@ class VentanaSubSecciones(QWidget):
             QMessageBox.warning(self, "Error", "Debe seleccionar una región/zona")
             return
 
-        # ✅ CORREGIDO: Procesar rutas ABSOLUTAS y RELATIVAS correctamente
-        imagen_abs = self.lineEdit_imagen.text().strip() or None
-        imagen_rel = convertir_ruta_produccion(imagen_abs) if imagen_abs else None
-        
-        icono_abs = self.lineEdit_icono.text().strip() or None  
-        icono_rel = convertir_ruta_produccion(icono_abs) if icono_abs else None
-        
-        foto1_abs = self.lineEdit_foto_1.text().strip() or None
-        foto1_rel = convertir_ruta_produccion(foto1_abs) if foto1_abs else None
-        
-        foto2_abs = self.lineEdit_foto_2.text().strip() or None
-        foto2_rel = convertir_ruta_produccion(foto2_abs) if foto2_abs else None
-        
-        foto3_abs = self.lineEdit_foto_3.text().strip() or None
-        foto3_rel = convertir_ruta_produccion(foto3_abs) if foto3_abs else None
-        
-        foto4_abs = self.lineEdit_foto_4.text().strip() or None
-        foto4_rel = convertir_ruta_produccion(foto4_abs) if foto4_abs else None
+        # ✅ CORREGIDO: Usar rutas relativas directamente
+        imagen_rel = self.lineEdit_imagen.text().strip() or None
+        icono_rel = self.lineEdit_icono.text().strip() or None
+        foto1_rel = self.lineEdit_foto_1.text().strip() or None
+        foto2_rel = self.lineEdit_foto_2.text().strip() or None
+        foto3_rel = self.lineEdit_foto_3.text().strip() or None
+        foto4_rel = self.lineEdit_foto_4.text().strip() or None
 
         # Resto de campos
         domicilio = self.lineEdit_domicilio.text().strip()
@@ -881,32 +870,22 @@ class VentanaSubSecciones(QWidget):
             QMessageBox.warning(self, "Error", "Longitud inválida. Debe ser un número decimal entre -180 y 180")
             return
 
-        # Insertar en DB con RUTAS CORRECTAS
+        # Insertar en DB
         try:
             conexion = conectar_base_datos()
             cursor = conexion.cursor()
             cursor.execute("""
                 INSERT INTO sub_secciones 
                 (id_seccion, id_region_zona, nombre_sub_seccion, domicilio, latitud, longitud, 
-                distancia, numero_telefono, 
-                imagen, imagen_ruta_relativa,           -- ✅ imagen=ABS, imagen_ruta_relativa=REL
-                icono, icono_ruta_relativa,             -- ✅ icono=ABS, icono_ruta_relativa=REL
+                distancia, numero_telefono, imagen_ruta_relativa, icono_ruta_relativa, 
                 itinerario_maps, habilitar, fecha_desactivacion, orden, destacado,
-                foto1_ruta_absoluta, foto1_ruta_relativa,       -- ✅ ABS + REL
-                foto2_ruta_absoluta, foto2_ruta_relativa,       -- ✅ ABS + REL
-                foto3_ruta_absoluta, foto3_ruta_relativa,       -- ✅ ABS + REL
-                foto4_ruta_absoluta, foto4_ruta_relativa)       -- ✅ ABS + REL
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                foto1_ruta_relativa, foto2_ruta_relativa, foto3_ruta_relativa, foto4_ruta_relativa)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 id_seccion, id_region_zona, nombre, domicilio, latitud, longitud, 
-                distancia, telefono, 
-                imagen_abs, imagen_rel,           # ✅ ABSOLUTA + RELATIVA
-                icono_abs, icono_rel,             # ✅ ABSOLUTA + RELATIVA
+                distancia, telefono, imagen_rel, icono_rel, 
                 itinerario, habilitar, fecha, orden, destacado,
-                foto1_abs, foto1_rel,             # ✅ ABSOLUTA + RELATIVA
-                foto2_abs, foto2_rel,             # ✅ ABSOLUTA + RELATIVA
-                foto3_abs, foto3_rel,             # ✅ ABSOLUTA + RELATIVA
-                foto4_abs, foto4_rel              # ✅ ABSOLUTA + RELATIVA
+                foto1_rel, foto2_rel, foto3_rel, foto4_rel
             ))
             conexion.commit()
             conexion.close()
@@ -919,29 +898,18 @@ class VentanaSubSecciones(QWidget):
             QMessageBox.critical(self, "Error", f"No se pudo agregar la subsección: {str(e)}")
 
     def modificar_sub_seccion(self):
-        """Modifica una subsección existente con rutas ABSOLUTAS y RELATIVAS correctas"""
+        """Modifica una subsección existente con rutas de producción"""
         if not self.id_subseccion_seleccionada:
             QMessageBox.warning(self, "Error", "Seleccione una subsección para modificar")
             return
 
-        # ✅ CORREGIDO: Procesar rutas ABSOLUTAS y RELATIVAS correctamente
-        imagen_abs = self.lineEdit_imagen.text().strip() or None
-        imagen_rel = convertir_ruta_produccion(imagen_abs) if imagen_abs else None
-        
-        icono_abs = self.lineEdit_icono.text().strip() or None
-        icono_rel = convertir_ruta_produccion(icono_abs) if icono_abs else None
-        
-        foto1_abs = self.lineEdit_foto_1.text().strip() or None
-        foto1_rel = convertir_ruta_produccion(foto1_abs) if foto1_abs else None
-        
-        foto2_abs = self.lineEdit_foto_2.text().strip() or None
-        foto2_rel = convertir_ruta_produccion(foto2_abs) if foto2_abs else None
-        
-        foto3_abs = self.lineEdit_foto_3.text().strip() or None
-        foto3_rel = convertir_ruta_produccion(foto3_abs) if foto3_abs else None
-        
-        foto4_abs = self.lineEdit_foto_4.text().strip() or None
-        foto4_rel = convertir_ruta_produccion(foto4_abs) if foto4_abs else None
+        # ✅ CORREGIDO: Usar rutas relativas directamente
+        imagen_rel = self.lineEdit_imagen.text().strip() or None
+        icono_rel = self.lineEdit_icono.text().strip() or None
+        foto1_rel = self.lineEdit_foto_1.text().strip() or None
+        foto2_rel = self.lineEdit_foto_2.text().strip() or None
+        foto3_rel = self.lineEdit_foto_3.text().strip() or None
+        foto4_rel = self.lineEdit_foto_4.text().strip() or None
 
         # Resto de campos
         nombre = self.lineEdit_nombre_subSeccion.text().strip()
@@ -985,7 +953,7 @@ class VentanaSubSecciones(QWidget):
             QMessageBox.warning(self, "Error", "Longitud inválida. Debe ser un número decimal entre -180 y 180")
             return
 
-        # Actualizar en DB con RUTAS CORRECTAS
+        # Actualizar en DB
         try:
             conexion = conectar_base_datos()
             cursor = conexion.cursor()
@@ -999,34 +967,23 @@ class VentanaSubSecciones(QWidget):
                     longitud = %s,
                     distancia = %s,
                     numero_telefono = %s,
-                    imagen = %s,                    -- ✅ RUTA ABSOLUTA
-                    imagen_ruta_relativa = %s,      -- ✅ RUTA RELATIVA
-                    icono = %s,                     -- ✅ RUTA ABSOLUTA  
-                    icono_ruta_relativa = %s,       -- ✅ RUTA RELATIVA
+                    imagen_ruta_relativa = %s,
+                    icono_ruta_relativa = %s,
                     itinerario_maps = %s,
                     habilitar = %s,
                     fecha_desactivacion = %s,
                     orden = %s,
                     destacado = %s,
-                    foto1_ruta_absoluta = %s,       -- ✅ RUTA ABSOLUTA
-                    foto1_ruta_relativa = %s,       -- ✅ RUTA RELATIVA
-                    foto2_ruta_absoluta = %s,       -- ✅ RUTA ABSOLUTA
-                    foto2_ruta_relativa = %s,       -- ✅ RUTA RELATIVA
-                    foto3_ruta_absoluta = %s,       -- ✅ RUTA ABSOLUTA
-                    foto3_ruta_relativa = %s,       -- ✅ RUTA RELATIVA
-                    foto4_ruta_absoluta = %s,       -- ✅ RUTA ABSOLUTA
-                    foto4_ruta_relativa = %s        -- ✅ RUTA RELATIVA
+                    foto1_ruta_relativa = %s,
+                    foto2_ruta_relativa = %s,
+                    foto3_ruta_relativa = %s,
+                    foto4_ruta_relativa = %s
                 WHERE id_sub_seccion = %s
             """, (
                 id_seccion, id_region_zona, nombre, domicilio, latitud, longitud, 
-                distancia, telefono, 
-                imagen_abs, imagen_rel,           # ✅ ABSOLUTA + RELATIVA
-                icono_abs, icono_rel,             # ✅ ABSOLUTA + RELATIVA
+                distancia, telefono, imagen_rel, icono_rel, 
                 itinerario, habilitar, fecha, orden, destacado,
-                foto1_abs, foto1_rel,             # ✅ ABSOLUTA + RELATIVA
-                foto2_abs, foto2_rel,             # ✅ ABSOLUTA + RELATIVA  
-                foto3_abs, foto3_rel,             # ✅ ABSOLUTA + RELATIVA
-                foto4_abs, foto4_rel,             # ✅ ABSOLUTA + RELATIVA
+                foto1_rel, foto2_rel, foto3_rel, foto4_rel,
                 self.id_subseccion_seleccionada
             ))
             conexion.commit()
