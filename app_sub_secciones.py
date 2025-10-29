@@ -18,34 +18,43 @@ import hashlib
 # HELPERS GENERALES
 # -------------------------
 def ruta_absoluta_desde_relativa(ruta_rel):
-    """Convierte una ruta relativa en absoluta desde el directorio public/ - VERSIÓN CORREGIDA"""
+    """Convierte una ruta relativa en absoluta desde turismo-frontend/public/ - VERSIÓN CORREGIDA"""
     if not ruta_rel:
         return None
 
     # Normalizar para evitar que empiece con "/"
     ruta_rel = ruta_rel.lstrip("/")
 
-    # ✅ CORREGIDO: Buscar el directorio 'public' desde la raíz del proyecto
+    # ✅ CORREGIDO: Buscar el directorio 'turismo-frontend' desde la raíz del proyecto
     directorio_actual = os.path.abspath(os.path.dirname(__file__))
     
-    # Buscar hacia arriba en la estructura hasta encontrar 'public'
+    # Buscar hacia arriba hasta encontrar 'turismo-frontend'
     base_dir = None
     temp_dir = directorio_actual
     
     for _ in range(10):  # Máximo 10 niveles hacia arriba
-        public_path = os.path.join(temp_dir, "public")
-        if os.path.exists(public_path) and os.path.isdir(public_path):
-            base_dir = public_path
+        # Verificar si estamos en turismo-backend y existe turismo-frontend al mismo nivel
+        if os.path.basename(temp_dir) == "turismo-backend":
+            frontend_path = os.path.join(os.path.dirname(temp_dir), "turismo-frontend", "public")
+            if os.path.exists(frontend_path):
+                base_dir = frontend_path
+                break
+        
+        # También buscar directamente turismo-frontend
+        frontend_direct_path = os.path.join(temp_dir, "turismo-frontend", "public")
+        if os.path.exists(frontend_direct_path):
+            base_dir = frontend_direct_path
             break
+            
         temp_dir = os.path.dirname(temp_dir)  # Subir un nivel
     
-    # Si no encontró public, usar el directorio actual como fallback
+    # Si no encontró turismo-frontend, usar fallback
     if not base_dir:
-        base_dir = os.path.abspath("public")
+        base_dir = os.path.abspath(os.path.join("..", "turismo-frontend", "public"))
     
     ruta_abs = os.path.abspath(os.path.join(base_dir, ruta_rel))
     
-    print(f"🔍 DEBUG ruta_absoluta_desde_relativa:")
+    print(f"🔍 DEBUG ruta_absoluta_desde_relativa CORREGIDA:")
     print(f"   Relativa: {ruta_rel}")
     print(f"   Base dir: {base_dir}") 
     print(f"   Absoluta: {ruta_abs}")
@@ -544,19 +553,30 @@ class VentanaSubSecciones(QWidget):
         # 1️⃣ Si es ruta absoluta y existe
         if os.path.isabs(ruta) and os.path.exists(ruta):
             ruta_a_usar = ruta
-            print(f"✅ Usando ruta absoluta: {ruta}")
+            print(f"✅ Usando ruta absoluta existente: {ruta}")
         
-        # 2️⃣ Si es relativa, convertir a absoluta
+        # 2️⃣ Si es absoluta pero NO existe, intentar corregirla
+        elif os.path.isabs(ruta) and not os.path.exists(ruta):
+            print(f"⚠️  Ruta absoluta no existe, intentando corregir: {ruta}")
+            # Intentar convertir de backend a frontend
+            if "turismo-backend" in ruta:
+                ruta_corregida = ruta.replace("turismo-backend", "turismo-frontend")
+                if os.path.exists(ruta_corregida):
+                    ruta_a_usar = ruta_corregida
+                    print(f"✅ Ruta corregida: {ruta_corregida}")
+        
+        # 3️⃣ Si es relativa, convertir a absoluta
         elif not os.path.isabs(ruta):
             ruta_abs = ruta_absoluta_desde_relativa(ruta)
             if ruta_abs and os.path.exists(ruta_abs):
                 ruta_a_usar = ruta_abs
                 print(f"✅ Convertida de relativa a absoluta: {ruta_abs}")
             else:
-                # 3️⃣ Búsqueda en ubicaciones alternativas
+                # 4️⃣ Búsqueda en ubicaciones alternativas
                 rutas_posibles = [
-                    os.path.join(os.getcwd(), "public", ruta),
-                    os.path.join(os.path.dirname(__file__), "..", "..", "public", ruta),
+                    # Desde turismo-frontend/public/
+                    os.path.join(os.path.dirname(__file__), "..", "..", "turismo-frontend", "public", ruta),
+                    # Desde directorio actual
                     os.path.join(os.getcwd(), ruta),
                 ]
                 
