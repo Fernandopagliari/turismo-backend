@@ -338,9 +338,7 @@ def obtener_secciones():
                 SELECT 
                     id_sub_seccion, id_seccion, id_region_zona, nombre_sub_seccion,
                     domicilio, latitud, longitud, distancia, numero_telefono,
-                    imagen,
                     imagen_ruta_relativa, 
-                    icono,
                     icono_ruta_relativa, 
                     itinerario_maps,
                     habilitar, fecha_desactivacion, orden, destacado,
