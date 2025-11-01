@@ -306,30 +306,56 @@ class VentanaSubSecciones(QWidget):
     def seleccionar_archivo_corregido(self, label_obj, lineedit_obj, ancho, alto, tipo_archivo):
         """Abre diálogo para seleccionar archivo y lo procesa para producción"""
         archivo, _ = QFileDialog.getOpenFileName(
-            self, "Seleccionar archivo", "", "Imágenes (*.png *.jpg *.jpeg *.bmp)"
+            self, "Seleccionar archivo", "", 
+            "Medios soportados (*.png *.jpg *.jpeg *.bmp *.mp4 *.webm *.ogg);;"
+            "Imágenes (*.png *.jpg *.jpeg *.bmp);;"
+            "Videos (*.mp4 *.webm *.ogg)"
         )
         if not archivo:
             return
 
-        # ✅ CORREGIDO: Usar convertir_ruta_produccion en lugar de copiar_archivo_a_destino
+        # ✅ CORREGIDO: Usar convertir_ruta_produccion
         ruta_relativa_produccion = convertir_ruta_produccion(archivo)
         
         if not ruta_relativa_produccion:
             QMessageBox.warning(self, "Error", "No se pudo procesar el archivo seleccionado")
             return
 
-        # Mostrar imagen en el label
-        pixmap = QPixmap(archivo).scaled(ancho, alto, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-        label_obj.setPixmap(pixmap)
+        # ✅ CORREGIDO: Mostrar preview según el tipo de archivo
+        es_video = archivo.lower().endswith(('.mp4', '.webm', '.ogg'))
+        
+        if es_video:
+            # Para videos: mostrar ícono/thumbnail en lugar del video completo
+            label_obj.clear()
+            label_obj.setText("🎬 Video\nSeleccionado")
+            label_obj.setStyleSheet("background-color: #2d3748; color: #90cdf4; font-weight: bold; border: 2px dashed #4a5568;")
+            label_obj.setAlignment(Qt.AlignCenter)
+        else:
+            # Para imágenes: mostrar preview normal
+            try:
+                pixmap = QPixmap(archivo).scaled(ancho, alto, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                label_obj.setPixmap(pixmap)
+                label_obj.setStyleSheet("")  # Resetear estilo
+            except Exception as e:
+                label_obj.clear()
+                label_obj.setText("Error\ncargando\nimagen")
+                label_obj.setStyleSheet("background-color: #fed7d7; color: #c53030;")
+                print(f"Error cargando imagen preview: {e}")
 
         # ✅ CORREGIDO: Guardar ruta de producción en el lineedit
         lineedit_obj.setText(ruta_relativa_produccion)
-        label_obj.setToolTip(f"Ruta producción: {ruta_relativa_produccion}")
+        
+        tooltip_text = f"Ruta producción: {ruta_relativa_produccion}"
+        if es_video:
+            tooltip_text += f"\nTipo: Video ({os.path.basename(archivo).split('.')[-1].upper()})"
+        else:
+            tooltip_text += f"\nTipo: Imagen"
+        
+        label_obj.setToolTip(tooltip_text)
 
         # ✅ CORREGIDO: Actualizar automáticamente en BD si hay subsección seleccionada
         if hasattr(self, 'id_subseccion_seleccionada') and self.id_subseccion_seleccionada:
-            self.actualizar_ruta_en_bd(tipo_archivo, ruta_relativa_produccion, lineedit_obj)
-    
+            self.actualizar_ruta_en_bd(tipo_archivo, ruta_relativa_produccion, lineedit_obj)    
     def actualizar_ruta_en_bd(self, tipo_archivo, ruta_relativa, lineedit_obj=None):
         """Actualiza automáticamente la ruta en la base de datos"""
         try:
