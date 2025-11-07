@@ -30,10 +30,11 @@ def crear_tabla_datos_hosting(conexion):
         """)
         
         conexion.commit()
-        print("[OK] Tabla 'datos_hosting' creada/verificada en HOSTING")
+        # print("[OK] Tabla 'datos_hosting' creada/verificada en HOSTING")
         
     except Exception as e:
-        print(f"Error al crear tabla 'datos_hosting' en hosting: {e}")
+        # print(f"Error al crear tabla 'datos_hosting' en hosting: {e}")
+        pass
     finally:
         cursor.close()
 
@@ -44,7 +45,7 @@ def copiar_configuracion_a_hosting(conexion, parent=None):
         config_local = obtener_configuracion_hosting(parent)
         
         if not config_local:
-            print("[ERROR] No se pudo obtener configuración local para copiar")
+            # print("[ERROR] No se pudo obtener configuración local para copiar")
             return False
         
         cursor = conexion.cursor()
@@ -69,13 +70,13 @@ def copiar_configuracion_a_hosting(conexion, parent=None):
         conexion.commit()
         cursor.close()
         
-        print("[OK] ✅ Configuración COPIADA de BD local a hosting")
-        print(f"[DEBUG] Configuración copiada: {config_local['user']}@{config_local['host']} - URL: {config_local.get('base_url', '')}")
+        # print("[OK] ✅ Configuración COPIADA de BD local a hosting")
+        # print(f"[DEBUG] Configuración copiada: {config_local['user']}@{config_local['host']} - URL: {config_local.get('base_url', '')}")
         
         return True
         
     except Exception as e:
-        print(f"[ERROR] Error copiando configuración a hosting: {e}")
+        # print(f"[ERROR] Error copiando configuración a hosting: {e}")
         return False
 
 # =========================
@@ -90,10 +91,10 @@ def conectar_hosting(parent=None):
         # Obtener configuración desde la DB local
         config = obtener_configuracion_hosting(parent)
         if not config:
-            print("[ERROR] No se pudo obtener configuración del hosting desde DB local")
+            # print("[ERROR] No se pudo obtener configuración del hosting desde DB local")
             return None
         
-        print(f"[DEBUG] Conectando a hosting: {config['host']}:{config['port']}")
+        # print(f"[DEBUG] Conectando a hosting: {config['host']}:{config['port']}")
         
         conexion = mysql.connector.connect(
             host=config['host'],
@@ -105,11 +106,11 @@ def conectar_hosting(parent=None):
         )
         
         if conexion.is_connected():
-            print("[SUCCESS] Conexión a HOSTING exitosa")
+            # print("[SUCCESS] Conexión a HOSTING exitosa")
             return conexion
             
     except Error as e:
-        print(f"[ERROR] No se pudo conectar al hosting: {e}")
+        # print(f"[ERROR] No se pudo conectar al hosting: {e}")
         
         # Mostrar error en PyQt5
         if parent is None:
@@ -130,11 +131,11 @@ def inicializar_base_datos_hosting(parent=None):
     """
     conexion = conectar_hosting(parent)
     if not conexion:
-        print("[ERROR] No se pudo conectar al hosting para inicialización")
+        # print("[ERROR] No se pudo conectar al hosting para inicialización")
         return False
 
     try:
-        print("Inicializando base de datos del hosting...")
+        # print("Inicializando base de datos del hosting...")
         
         # Lista de funciones para crear tablas (AGREGAR LAS NUEVAS)
         funciones = [
@@ -152,14 +153,15 @@ def inicializar_base_datos_hosting(parent=None):
         for funcion in funciones:
             try:
                 funcion(conexion)
-                print(f"[OK] {funcion.__name__} completada")
+                # print(f"[OK] {funcion.__name__} completada")
             except Exception as e:
-                print(f"[ERROR] en {funcion.__name__}: {e}")
+                # print(f"[ERROR] en {funcion.__name__}: {e}")
+                pass
         
         return True
         
     except Exception as e:
-        print(f"[ERROR] Error durante inicialización del hosting: {e}")
+        # print(f"[ERROR] Error durante inicialización del hosting: {e}")
         return False
     finally:
         cerrar_conexion(conexion)
@@ -195,16 +197,18 @@ def verificar_y_agregar_campos_base64(conexion):
             for campo in campos:
                 try:
                     cursor.execute(f"ALTER TABLE {tabla} ADD COLUMN {campo}")
-                    print(f"[OK] Campo {campo} agregado a {tabla}")
+                    # print(f"[OK] Campo {campo} agregado a {tabla}")
                 except Exception as e:
-                    print(f"[INFO] Campo {campo} ya existe en {tabla} o error: {e}")
+                    # print(f"[INFO] Campo {campo} ya existe en {tabla} o error: {e}")
+                    pass
         
         conexion.commit()
         cursor.close()
-        print("[SUCCESS] Verificación de campos Base64 completada en HOSTING")
+        # print("[SUCCESS] Verificación de campos Base64 completada en HOSTING")
         
     except Exception as e:
-        print(f"[ERROR] En verificación de campos Base64: {e}")
+        # print(f"[ERROR] En verificación de campos Base64: {e}")
+        pass
 
 # ---------------- TABLAS (MANTENER IGUAL) ----------------
 def crear_tabla_usuarios(conexion):
@@ -228,9 +232,10 @@ def crear_tabla_usuarios(conexion):
                 activo INT NOT NULL DEFAULT 0
             )ENGINE=InnoDB;
         """)
-        print("[OK] Tabla 'usuarios' creada/verificada en HOSTING")
+        # print("[OK] Tabla 'usuarios' creada/verificada en HOSTING")
     except Exception as e:
-        print(f"Error al crear la tabla 'usuarios': {e}")
+        # print(f"Error al crear la tabla 'usuarios': {e}")
+        pass
     finally:
         cursor.close()
 
@@ -264,9 +269,10 @@ def crear_tabla_configuraciones(conexion):
             )ENGINE=InnoDB;
         """)
         conexion.commit()
-        print("[OK] Tabla 'configuracion_app' creada/verificada en HOSTING")
+        # print("[OK] Tabla 'configuracion_app' creada/verificada en HOSTING")
     except Exception as e:
-        print(f"Error al crear la tabla 'configuracion_app': {e}")
+        # print(f"Error al crear la tabla 'configuracion_app': {e}")
+        pass
     finally:
         cursor.close()
 
@@ -284,9 +290,10 @@ def crear_tabla_regiones_zona(conexion):
             ) ENGINE=InnoDB;
         """)
         conexion.commit()
-        print("[OK] Tabla 'regiones_zonas' creada/verificada en HOSTING")
+        # print("[OK] Tabla 'regiones_zonas' creada/verificada en HOSTING")
     except Exception as e:
-        print(f"Error al crear la tabla 'regiones_zonas': {e}")
+        # print(f"Error al crear la tabla 'regiones_zonas': {e}")
+        pass
     finally:
         cursor.close()
 
@@ -304,9 +311,10 @@ def crear_tabla_secciones(conexion):
             ) ENGINE=InnoDB;
         """)
         conexion.commit()
-        print("[OK] Tabla 'secciones' creada/verificada en HOSTING")
+        # print("[OK] Tabla 'secciones' creada/verificada en HOSTING")
     except Exception as e:
-        print(f"Error al crear la tabla 'secciones': {e}")
+        # print(f"Error al crear la tabla 'secciones': {e}")
+        pass
     finally:
         cursor.close()
 
@@ -352,9 +360,10 @@ def crear_tabla_sub_secciones(conexion):
             ) ENGINE=InnoDB;
         """)
         conexion.commit()
-        print("[OK] Tabla 'sub_secciones' creada/verificada en HOSTING")
+        # print("[OK] Tabla 'sub_secciones' creada/verificada en HOSTING")
     except Exception as e:
-        print(f"Error al crear la tabla 'sub_secciones': {e}")
+        # print(f"Error al crear la tabla 'sub_secciones': {e}")
+        pass
     finally:
         cursor.close()
 
@@ -373,7 +382,7 @@ def insert_initial_users(conexion):
             ("Usuario Prueba", "visor", "usuario@turismo.com", "usuario123", "visor", 1),
         ])
         conexion.commit()
-        print("[OK] Usuarios iniciales insertados en HOSTING")
+        # print("[OK] Usuarios iniciales insertados en HOSTING")
     cursor.close()
 
 def cerrar_conexion(conexion):
@@ -382,4 +391,4 @@ def cerrar_conexion(conexion):
     """
     if conexion and conexion.is_connected():
         conexion.close()
-        print("[OK] Conexión HOSTING cerrada")
+        # print("[OK] Conexión HOSTING cerrada")

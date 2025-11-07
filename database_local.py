@@ -20,7 +20,7 @@ def conectar_compatible(**kwargs):
         kwargs_compatible = kwargs.copy()
         kwargs_compatible['charset'] = 'utf8'
         kwargs_compatible['use_unicode'] = True
-        print(f"🔧 Intentando conexión COMPATIBLE (utf8)...")
+        # print(f"🔧 Intentando conexión COMPATIBLE (utf8)...")
         return _original_connect(**kwargs_compatible)
     except Error as e:
         if "utf8" in str(e).lower():
@@ -29,14 +29,14 @@ def conectar_compatible(**kwargs):
                 kwargs_clean = kwargs.copy()
                 kwargs_clean.pop('charset', None)
                 kwargs_clean.pop('use_unicode', None)
-                print(f"🔧 Intentando conexión SIN charset...")
+                # print(f"🔧 Intentando conexión SIN charset...")
                 return _original_connect(**kwargs_clean)
             except Error as e2:
                 # Si todo falla, intentar con latin1 (más compatible)
                 try:
                     kwargs_latin = kwargs.copy()
                     kwargs_latin['charset'] = 'latin1'
-                    print(f"🔧 Intentando conexión LATIN1...")
+                    # print(f"🔧 Intentando conexión LATIN1...")
                     return _original_connect(**kwargs_latin)
                 except:
                     raise e2
@@ -45,7 +45,44 @@ def conectar_compatible(**kwargs):
 
 # Aplicar el método compatible
 mysql.connector.connect = conectar_compatible
-print("🛡️  Modo COMPATIBILIDAD Windows Update activado")
+# print("🛡️  Modo COMPATIBILIDAD Windows Update activado")
+
+# ✅ FUNCIÓN PARA DETECCIÓN AUTOMÁTICA DE PUERTO
+def obtener_puerto_automatico():
+    """
+    Determina automáticamente qué puerto usar:
+    - En PCs nuevas: 3307 (MySQL portable)
+    - En PCs con MySQL existente: 3306 (MySQL local)
+    """
+    try:
+        # Primero probar puerto 3306 (MySQL local existente)
+        conexion = mysql.connector.connect(
+            host="localhost",
+            user="root",
+            password="",
+            port=3306,
+            connect_timeout=3
+        )
+        conexion.close()
+        # print("✅ MySQL local encontrado en puerto 3306")
+        return 3306
+    except:
+        try:
+            # Si falla, probar puerto 3307 (MySQL portable)
+            conexion = mysql.connector.connect(
+                host="localhost",
+                user="root",
+                password="", 
+                port=3307,
+                connect_timeout=3
+            )
+            conexion.close()
+            # print("✅ MySQL portable encontrado en puerto 3307")
+            return 3307
+        except:
+            # Si ambos fallan, usar 3307 por defecto para nueva instalación
+            # print("⚠️  No se encontró MySQL, usando puerto 3307 por defecto")
+            return 3307
 
 # ✅ VARIABLE GLOBAL TEMPORAL solo para primera instalación
 CREDENCIALES_LOCALES_TEMPORALES = None
@@ -117,8 +154,10 @@ class DialogoCredencialesMySQL(QDialog):
         
         layout.addWidget(QLabel("🔌 Puerto:"))
         self.puerto_input = QLineEdit()
-        self.puerto_input.setText("3306")
-        self.puerto_input.setPlaceholderText("3306")
+        # Usar puerto automático como valor por defecto
+        puerto_auto = obtener_puerto_automatico()
+        self.puerto_input.setText(str(puerto_auto))
+        self.puerto_input.setPlaceholderText(str(puerto_auto))
         self.puerto_input.setStyleSheet("padding: 4px; font-size: 11px; border: 1px solid #bdc3c7; border-radius: 2px;")
         layout.addWidget(self.puerto_input)
         
@@ -286,7 +325,7 @@ def obtener_credenciales_mysql(parent=None, es_reconfiguracion=False):
                 QMessageBox.warning(parent, "Instalación Cancelada", "La aplicación no puede continuar sin acceso a MySQL LOCAL.")
             return None
     except Exception as e:
-        print(f"Error al mostrar diálogo de credenciales LOCALES: {e}")
+        # print(f"Error al mostrar diálogo de credenciales LOCALES: {e}")
         return None
 
 def guardar_configuracion_externa(credenciales):
@@ -302,10 +341,10 @@ def guardar_configuracion_externa(credenciales):
         }
         with open(CONFIG_FILE, 'w') as f:
             json.dump(config, f, indent=4)
-        print(f"[SUCCESS] 💾 Configuración guardada en {CONFIG_FILE}")
+        # print(f"[SUCCESS] 💾 Configuración guardada en {CONFIG_FILE}")
         return True
     except Exception as e:
-        print(f"[ERROR] ❌ No se pudo guardar configuración externa: {e}")
+        # print(f"[ERROR] ❌ No se pudo guardar configuración externa: {e}")
         return False
 
 def cargar_configuracion_externa():
@@ -314,11 +353,11 @@ def cargar_configuracion_externa():
         if os.path.exists(CONFIG_FILE):
             with open(CONFIG_FILE, 'r') as f:
                 config = json.load(f)
-            print(f"[SUCCESS] 📂 Configuración cargada desde {CONFIG_FILE}")
+            # print(f"[SUCCESS] 📂 Configuración cargada desde {CONFIG_FILE}")
             return config
         return None
     except Exception as e:
-        print(f"[ERROR] ❌ No se pudo cargar configuración externa: {e}")
+        # print(f"[ERROR] ❌ No se pudo cargar configuración externa: {e}")
         return None
 
 def crear_tabla_licencia(conexion):
@@ -335,9 +374,10 @@ def crear_tabla_licencia(conexion):
                 hardware_id VARCHAR(255)
             ) ENGINE=InnoDB;
         """)
-        print("[OK] Tabla 'licencia' creada/verificada")
+        # print("[OK] Tabla 'licencia' creada/verificada")
     except Exception as e:
-        print(f"Error al crear tabla 'licencia': {e}")
+        # print(f"Error al crear tabla 'licencia': {e}")
+        pass
     finally:
         cursor.close()
 
@@ -360,10 +400,11 @@ def crear_tabla_datos_host_local(conexion):
         """)
         
         conexion.commit()
-        print("[OK] Tabla 'datos_host_local' creada/verificada")
+        # print("[OK] Tabla 'datos_host_local' creada/verificada")
         
     except Exception as e:
-        print(f"Error al crear tabla 'datos_host_local': {e}")
+        # print(f"Error al crear tabla 'datos_host_local': {e}")
+        pass
     finally:
         cursor.close()
 
@@ -386,10 +427,11 @@ def crear_tabla_datos_hosting(conexion):
         """)
         
         conexion.commit()
-        print("[OK] Tabla 'datos_hosting' creada/verificada")
+        # print("[OK] Tabla 'datos_hosting' creada/verificada")
         
     except Exception as e:
-        print(f"Error al crear tabla 'datos_hosting': {e}")
+        # print(f"Error al crear tabla 'datos_hosting': {e}")
+        pass
     finally:
         cursor.close()
 
@@ -399,14 +441,14 @@ def conectar_y_guardar_configuracion(credenciales, parent=None):
     """
     global CREDENCIALES_LOCALES_TEMPORALES
     
-    print(f"[DEBUG] 🛠️ Conectando y guardando: {credenciales['user']}@{credenciales['host']}")
+    # print(f"[DEBUG] 🛠️ Conectando y guardando: {credenciales['user']}@{credenciales['host']}")
     
     try:
         # ✅ GUARDAR como temporales inmediatamente
         CREDENCIALES_LOCALES_TEMPORALES = credenciales.copy()
         
         # Primero conectar sin base de datos para crearla
-        print("[DEBUG] Conectando sin base de datos...")
+        # print("[DEBUG] Conectando sin base de datos...")
         conexion = mysql.connector.connect(
             host=credenciales['host'],
             user=credenciales['user'],
@@ -416,11 +458,11 @@ def conectar_y_guardar_configuracion(credenciales, parent=None):
         )
         
         cursor = conexion.cursor()
-        print("[DEBUG] Creando base de datos si no existe...")
+        # print("[DEBUG] Creando base de datos si no existe...")
         cursor.execute("CREATE DATABASE IF NOT EXISTS databaseapp")
         
         # Ahora conectar a la base de datos específica
-        print("[DEBUG] Conectando a databaseapp...")
+        # print("[DEBUG] Conectando a databaseapp...")
         conexion_db = mysql.connector.connect(
             host=credenciales['host'],
             user=credenciales['user'],
@@ -431,13 +473,13 @@ def conectar_y_guardar_configuracion(credenciales, parent=None):
         )
         
         # Crear tablas si no existen
-        print("[DEBUG] Creando/verificando tablas...")
+        # print("[DEBUG] Creando/verificando tablas...")
         crear_tabla_licencia(conexion_db)
         crear_tabla_datos_host_local(conexion_db)
         crear_tabla_datos_hosting(conexion_db)
         
         # ✅ GUARDAR en tabla datos_host_local
-        print("[DEBUG] Guardando en tabla datos_host_local...")
+        # print("[DEBUG] Guardando en tabla datos_host_local...")
         cursor_db = conexion_db.cursor()
         
         # Limpiar configuraciones anteriores
@@ -460,41 +502,43 @@ def conectar_y_guardar_configuracion(credenciales, parent=None):
         conexion_db.commit()
         
         # ✅ GUARDAR en archivo externo
-        print("[DEBUG] Guardando en archivo externo...")
+        # print("[DEBUG] Guardando en archivo externo...")
         guardar_configuracion_externa(credenciales)
         
         # VERIFICAR que se guardó correctamente
         cursor_db.execute("SELECT host, usuario, base_url FROM datos_host_local WHERE activo = 1")
         verificacion = cursor_db.fetchone()
         if verificacion:
-            print(f"[DEBUG] ✅ Verificación: guardado correctamente - {verificacion[1]}@{verificacion[0]} - URL: {verificacion[2]}")
+            pass
+            # print(f"[DEBUG] ✅ Verificación: guardado correctamente - {verificacion[1]}@{verificacion[0]} - URL: {verificacion[2]}")
         else:
-            print("[DEBUG] ❌ Verificación: NO se pudo verificar el guardado")
+            pass
+            # print("[DEBUG] ❌ Verificación: NO se pudo verificar el guardado")
         
         cursor.close()
         conexion.close()
         cursor_db.close()
         conexion_db.close()
         
-        print(f"[SUCCESS] ✅ Configuración LOCAL guardada en tabla y archivo: {credenciales['user']}@{credenciales['host']}")
+        # print(f"[SUCCESS] ✅ Configuración LOCAL guardada en tabla y archivo: {credenciales['user']}@{credenciales['host']}")
         return True
         
     except Error as e:
-        print(f"[ERROR] ❌ No se pudo guardar configuración: {e}")
+        # print(f"[ERROR] ❌ No se pudo guardar configuración: {e}")
         return False
 
 def obtener_configuracion_automatica():
     """
     Obtener configuración automáticamente (archivo externo -> tabla)
     """
-    print("\n[DEBUG] 🔍 BUSCANDO CONFIGURACIÓN AUTOMÁTICA")
+    # print("\n[DEBUG] 🔍 BUSCANDO CONFIGURACIÓN AUTOMÁTICA")
     
     # 1. PRIMERO: Buscar en archivo externo
-    print("[DEBUG] 1. Buscando en archivo externo...")
+    # print("[DEBUG] 1. Buscando en archivo externo...")
     config_externa = cargar_configuracion_externa()
     
     if config_externa:
-        print(f"[DEBUG] ✅ Configuración externa encontrada: {config_externa['user']}@{config_externa['host']}")
+        # print(f"[DEBUG] ✅ Configuración externa encontrada: {config_externa['user']}@{config_externa['host']}")
         try:
             conexion = mysql.connector.connect(
                 host=config_externa['host'],
@@ -505,24 +549,27 @@ def obtener_configuracion_automatica():
                 connect_timeout=5
             )
             if conexion.is_connected():
-                print("[SUCCESS] ✅ Conexión desde archivo externo EXITOSA")
+                # print("[SUCCESS] ✅ Conexión desde archivo externo EXITOSA")
                 conexion.close()
                 return config_externa
         except Error as e:
-            print(f"[DEBUG] ❌ Configuración externa no funciona: {e}")
+            pass
+            # print(f"[DEBUG] ❌ Configuración externa no funciona: {e}")
     
     # 2. SEGUNDO: Intentar leer de la tabla con métodos alternativos
-    print("[DEBUG] 2. Intentando leer de tabla...")
+    # print("[DEBUG] 2. Intentando leer de tabla...")
     
+    # ✅ USAR PUERTO AUTOMÁTICO EN CONFIGURACIONES DE PRUEBA
+    puerto_auto = obtener_puerto_automatico()
     configuraciones_prueba = [
-        {'host': "localhost", 'user': "root", 'password': "", 'database': "databaseapp", 'port': 3306, 'base_url': "http://localhost:5000"},
-        {'host': "localhost", 'user': "root", 'password': "root", 'database': "databaseapp", 'port': 3306, 'base_url': "http://localhost:5000"},
-        {'host': "127.0.0.1", 'user': "root", 'password': "", 'database': "databaseapp", 'port': 3306, 'base_url': "http://localhost:5000"},
+        {'host': "localhost", 'user': "root", 'password': "", 'database': "databaseapp", 'port': puerto_auto, 'base_url': "http://localhost:5000"},
+        {'host': "localhost", 'user': "root", 'password': "root", 'database': "databaseapp", 'port': puerto_auto, 'base_url': "http://localhost:5000"},
+        {'host': "127.0.0.1", 'user': "root", 'password': "", 'database': "databaseapp", 'port': puerto_auto, 'base_url': "http://localhost:5000"},
     ]
     
     for config in configuraciones_prueba:
         try:
-            print(f"[DEBUG] 🔄 Probando: {config['user']}@{config['host']}")
+            # print(f"[DEBUG] 🔄 Probando: {config['user']}@{config['host']}")
             conexion = mysql.connector.connect(
                 host=config['host'],
                 user=config['user'], 
@@ -547,7 +594,7 @@ def obtener_configuracion_automatica():
                     'port': port,
                     'base_url': base_url or "http://localhost:5000"
                 }
-                print(f"[DEBUG] 📋 Configuración de tabla: {user}@{host} - URL: {config_tabla['base_url']}")
+                # print(f"[DEBUG] 📋 Configuración de tabla: {user}@{host} - URL: {config_tabla['base_url']}")
                 
                 # Probar si funciona
                 try:
@@ -560,7 +607,7 @@ def obtener_configuracion_automatica():
                         connect_timeout=3
                     )
                     if conexion_tabla.is_connected():
-                        print("[SUCCESS] ✅ Configuración de tabla FUNCIONA")
+                        # print("[SUCCESS] ✅ Configuración de tabla FUNCIONA")
                         
                         # Guardar en archivo externo para próxima vez
                         guardar_configuracion_externa(config_tabla)
@@ -571,32 +618,33 @@ def obtener_configuracion_automatica():
                         return config_tabla
                     conexion_tabla.close()
                 except Error as e:
-                    print(f"[DEBUG] ❌ Configuración de tabla no funciona: {e}")
+                    pass
+                    # print(f"[DEBUG] ❌ Configuración de tabla no funciona: {e}")
             
             cursor.close()
             conexion.close()
         except Error:
             continue
     
-    print("[DEBUG] ❌ No se pudo obtener configuración automática")
+    # print("[DEBUG] ❌ No se pudo obtener configuración automática")
     return None
 
 def conectar_local(parent=None):
     """
     Conexión DIRECTA a MySQL LOCAL para 'databaseapp' - MODO COMPATIBILIDAD
     """
-    print("\n" + "="*50)
-    print("[DEBUG] 🚀 INICIANDO CONEXIÓN LOCAL - MODO COMPATIBILIDAD")
-    print("="*50)
+    # print("\n" + "="*50)
+    # print("[DEBUG] 🚀 INICIANDO CONEXIÓN LOCAL - MODO COMPATIBILIDAD")
+    # print("="*50)
     
     global CREDENCIALES_LOCALES_TEMPORALES
     
     # PRIMERO: Intentar conexión automática
-    print("[DEBUG] 1. Intentando conexión automática...")
+    # print("[DEBUG] 1. Intentando conexión automática...")
     config_automatica = obtener_configuracion_automatica()
     
     if config_automatica:
-        print(f"[DEBUG] ✅ Configuración automática obtenida: {config_automatica['user']}@{config_automatica['host']}")
+        # print(f"[DEBUG] ✅ Configuración automática obtenida: {config_automatica['user']}@{config_automatica['host']}")
         try:
             conexion = mysql.connector.connect(
                 host=config_automatica['host'],
@@ -607,7 +655,7 @@ def conectar_local(parent=None):
                 connect_timeout=8
             )
             if conexion.is_connected():
-                print("[SUCCESS] 🎉 Conexión automática EXITOSA")
+                # print("[SUCCESS] 🎉 Conexión automática EXITOSA")
                 # Actualizar variables globales
                 CREDENCIALES_LOCALES_TEMPORALES = {
                     'host': config_automatica['host'],
@@ -618,19 +666,22 @@ def conectar_local(parent=None):
                 }
                 return conexion
         except Error as e:
-            print(f"[DEBUG] ❌ Conexión automática falló: {e}")
+            pass
+            # print(f"[DEBUG] ❌ Conexión automática falló: {e}")
     
     # SEGUNDO: Intentar configuraciones automáticas rápidas
-    print("[DEBUG] 2. Probando configuraciones rápidas...")
+    # print("[DEBUG] 2. Probando configuraciones rápidas...")
     
+    # ✅ USAR PUERTO AUTOMÁTICO EN CONFIGURACIONES RÁPIDAS
+    puerto_auto = obtener_puerto_automatico()
     configuraciones_rapidas = [
-        {'host': "localhost", 'user': "root", 'password': "", 'database': "databaseapp", 'port': 3306, 'base_url': "http://localhost:5000"},
-        {'host': "localhost", 'user': "root", 'password': "root", 'database': "databaseapp", 'port': 3306, 'base_url': "http://localhost:5000"},
+        {'host': "localhost", 'user': "root", 'password': "", 'database': "databaseapp", 'port': puerto_auto, 'base_url': "http://localhost:5000"},
+        {'host': "localhost", 'user': "root", 'password': "root", 'database': "databaseapp", 'port': puerto_auto, 'base_url': "http://localhost:5000"},
     ]
     
     for config in configuraciones_rapidas:
         try:
-            print(f"[DEBUG] 🔄 Probando rápida: {config['user']}@{config['host']}")
+            # print(f"[DEBUG] 🔄 Probando rápida: {config['user']}@{config['host']}")
             conexion = mysql.connector.connect(
                 host=config['host'],
                 user=config['user'],
@@ -640,7 +691,7 @@ def conectar_local(parent=None):
                 connect_timeout=3
             )
             if conexion.is_connected():
-                print(f"[SUCCESS] ✅ Conexión rápida exitosa")
+                # print(f"[SUCCESS] ✅ Conexión rápida exitosa")
                 
                 # Preguntar si guardar esta configuración
                 respuesta = QMessageBox.question(parent, "Configuración Encontrada", 
@@ -674,21 +725,21 @@ def conectar_local(parent=None):
             continue
     
     # TERCERO: Pedir credenciales al usuario (PRIMERA INSTALACIÓN)
-    print("[DEBUG] 3. Solicitando credenciales para primera instalación...")
+    # print("[DEBUG] 3. Solicitando credenciales para primera instalación...")
     
     credenciales = obtener_credenciales_mysql(parent, False)
     
     if not credenciales:
-        print("[ERROR] ❌ Usuario canceló la configuración")
+        # print("[ERROR] ❌ Usuario canceló la configuración")
         return None
     
-    print(f"[DEBUG] Credenciales obtenidas: {credenciales['user']}@{credenciales['host']}")
+    # print(f"[DEBUG] Credenciales obtenidas: {credenciales['user']}@{credenciales['host']}")
     
     # Procesar y guardar las nuevas credenciales
     CREDENCIALES_LOCALES_TEMPORALES = credenciales.copy()
     
     if conectar_y_guardar_configuracion(credenciales, parent):
-        print("[SUCCESS] ✅ Configuración guardada exitosamente")
+        # print("[SUCCESS] ✅ Configuración guardada exitosamente")
         return mysql.connector.connect(
             host=credenciales['host'],
             user=credenciales['user'],
@@ -698,7 +749,8 @@ def conectar_local(parent=None):
             connect_timeout=5
         )
     else:
-        print("[ERROR] ❌ No se pudo guardar la configuración")
+        # print("[ERROR] ❌ No se pudo guardar la configuración")
+        pass
     
     return None
 
@@ -706,26 +758,26 @@ def inicializar_base_datos_local(parent=None):
     """
     Función principal para inicializar solo la DB local
     """
-    print("Inicializando base de datos LOCAL...")
+    # print("Inicializando base de datos LOCAL...")
     conexion = conectar_local(parent)
     
     if conexion:
-        print("[SUCCESS] Base de datos local inicializada correctamente")
+        # print("[SUCCESS] Base de datos local inicializada correctamente")
         conexion.close()
         return True
     else:
-        print("[ERROR] No se pudo inicializar base de datos local")
+        # print("[ERROR] No se pudo inicializar base de datos local")
         return False
 
 def obtener_configuracion_hosting(parent=None):
     """
     Leer configuración del servidor REMOTO desde la tabla local
     """
-    print("\n[DEBUG] 🌐 BUSCANDO CONFIGURACIÓN HOSTING...")
+    # print("\n[DEBUG] 🌐 BUSCANDO CONFIGURACIÓN HOSTING...")
     
     conexion = conectar_local(parent)
     if not conexion:
-        print("[ERROR] ❌ No se pudo conectar localmente para leer hosting")
+        # print("[ERROR] ❌ No se pudo conectar localmente para leer hosting")
         return None
     
     try:
@@ -736,10 +788,10 @@ def obtener_configuracion_hosting(parent=None):
         
         if config:
             host, user, password, database, port, base_url = config
-            print(f"[DEBUG] 📋 Configuración HOSTING encontrada: {user}@{host}:{port}/{database} - URL: {base_url}")
+            # print(f"[DEBUG] 📋 Configuración HOSTING encontrada: {user}@{host}:{port}/{database} - URL: {base_url}")
             
             if host and host.strip():
-                print(f"[SUCCESS] ✅ Configuración HOSTING válida: {user}@{host}")
+                # print(f"[SUCCESS] ✅ Configuración HOSTING válida: {user}@{host}")
                 return {
                     'host': host,
                     'user': user, 
@@ -749,16 +801,18 @@ def obtener_configuracion_hosting(parent=None):
                     'base_url': base_url or ""
                 }
             else:
-                print("[DEBUG] ❌ Host HOSTING está vacío")
+                pass
+                # print("[DEBUG] ❌ Host HOSTING está vacío")
         else:
-            print("[DEBUG] ❌ No hay configuración HOSTING activa")
+            pass
+            # print("[DEBUG] ❌ No hay configuración HOSTING activa")
             
         # Si no hay configuración válida, mostrar diálogo
-        print("[DEBUG] Mostrando diálogo para configuración HOSTING...")
+        # print("[DEBUG] Mostrando diálogo para configuración HOSTING...")
         return mostrar_dialogo_configuracion_hosting(parent)
         
     except Exception as e:
-        print(f"[ERROR] ❌ Error al leer configuración HOSTING: {e}")
+        # print(f"[ERROR] ❌ Error al leer configuración HOSTING: {e}")
         return None
     finally:
         if conexion and conexion.is_connected():
@@ -782,10 +836,10 @@ def mostrar_dialogo_configuracion_hosting(parent=None):
         dialogo.setWindowTitle("🌐 Configuración de Hosting Remoto")
         
         resultado = dialogo.exec_()
-        print(f"[DEBUG] Resultado del diálogo hosting: {resultado}")
+        # print(f"[DEBUG] Resultado del diálogo hosting: {resultado}")
         
         if resultado == QDialog.Accepted:
-            print("[DEBUG] Diálogo hosting aceptado, guardando configuración...")
+            # print("[DEBUG] Diálogo hosting aceptado, guardando configuración...")
             
             # ✅ OBTENER los datos del diálogo directamente
             host = dialogo.host_input.text().strip()
@@ -795,21 +849,22 @@ def mostrar_dialogo_configuracion_hosting(parent=None):
             puerto = dialogo.puerto_input.value()
             base_url = dialogo.base_url_input.text().strip() if hasattr(dialogo, 'base_url_input') else ""
             
-            print(f"[DEBUG] Datos hosting a guardar: {usuario}@{host}:{puerto}/{base_datos} - URL: {base_url}")
+            # print(f"[DEBUG] Datos hosting a guardar: {usuario}@{host}:{puerto}/{base_datos} - URL: {base_url}")
             
             # ✅ GUARDAR directamente la configuración
             if guardar_configuracion_hosting(host, usuario, password, base_datos, puerto, base_url, parent):
-                print("[SUCCESS] ✅ Configuración HOSTING guardada correctamente")
+                # print("[SUCCESS] ✅ Configuración HOSTING guardada correctamente")
                 # ✅ LEER la configuración recién guardada
                 config_guardada = obtener_configuracion_hosting_sin_dialogo(parent)
                 if config_guardada:
-                    print(f"[SUCCESS] ✅ Configuración HOSTING verificada: {config_guardada['user']}@{config_guardada['host']}")
+                    # print(f"[SUCCESS] ✅ Configuración HOSTING verificada: {config_guardada['user']}@{config_guardada['host']}")
                     return config_guardada
                 else:
-                    print("[ERROR] ❌ No se pudo verificar la configuración HOSTING guardada")
+                    pass
+                    # print("[ERROR] ❌ No se pudo verificar la configuración HOSTING guardada")
                     return None
             else:
-                print("[ERROR] ❌ No se pudo guardar la configuración HOSTING")
+                # print("[ERROR] ❌ No se pudo guardar la configuración HOSTING")
                 return None
         else:
             QMessageBox.warning(parent, "Configuración Requerida", 
@@ -817,7 +872,7 @@ def mostrar_dialogo_configuracion_hosting(parent=None):
             return None
             
     except Exception as e:
-        print(f"[ERROR] ❌ Error en diálogo HOSTING: {e}")
+        # print(f"[ERROR] ❌ Error en diálogo HOSTING: {e}")
         return None
 
 def obtener_configuracion_hosting_sin_dialogo(parent=None):
@@ -847,7 +902,7 @@ def obtener_configuracion_hosting_sin_dialogo(parent=None):
         return None
         
     except Exception as e:
-        print(f"Error al leer configuración HOSTING: {e}")
+        # print(f"Error al leer configuración HOSTING: {e}")
         return None
     finally:
         if conexion.is_connected():
@@ -857,22 +912,22 @@ def guardar_configuracion_hosting(host, usuario, password, base_datos, puerto=33
     """
     Guardar configuración del servidor REMOTO en la tabla local
     """
-    print(f"[DEBUG] 🛠️ Guardando configuración HOSTING: {usuario}@{host}:{puerto}/{base_datos} - URL: {base_url}")
+    # print(f"[DEBUG] 🛠️ Guardando configuración HOSTING: {usuario}@{host}:{puerto}/{base_datos} - URL: {base_url}")
     
     conexion = conectar_local(parent)
     if not conexion:
-        print("[ERROR] ❌ No se pudo conectar localmente para guardar hosting")
+        # print("[ERROR] ❌ No se pudo conectar localmente para guardar hosting")
         return False
     
     try:
         cursor = conexion.cursor()
         
         # Limpiar configuraciones anteriores
-        print("[DEBUG] Limpiando configuraciones HOSTING anteriores...")
+        # print("[DEBUG] Limpiando configuraciones HOSTING anteriores...")
         cursor.execute("UPDATE datos_hosting SET activo = 0")
         
         # Insertar nueva configuración activa
-        print("[DEBUG] Insertando nueva configuración HOSTING...")
+        # print("[DEBUG] Insertando nueva configuración HOSTING...")
         cursor.execute("""
             INSERT INTO datos_hosting (host, usuario, password, base_datos, puerto, base_url, activo)
             VALUES (%s, %s, %s, %s, %s, %s, %s)
@@ -889,14 +944,14 @@ def guardar_configuracion_hosting(host, usuario, password, base_datos, puerto=33
         
         if verificacion:
             host_verif, usuario_verif, bd_verif, url_verif = verificacion
-            print(f"[SUCCESS] ✅ Configuración HOSTING guardada y verificada: {usuario_verif}@{host_verif}/{bd_verif} - URL: {url_verif}")
+            # print(f"[SUCCESS] ✅ Configuración HOSTING guardada y verificada: {usuario_verif}@{host_verif}/{bd_verif} - URL: {url_verif}")
             return True
         else:
-            print("[ERROR] ❌ No se pudo verificar el guardado HOSTING")
+            # print("[ERROR] ❌ No se pudo verificar el guardado HOSTING")
             return False
         
     except Exception as e:
-        print(f"[ERROR] ❌ Error al guardar configuración HOSTING: {e}")
+        # print(f"[ERROR] ❌ Error al guardar configuración HOSTING: {e}")
         try:
             if conexion.is_connected():
                 conexion.close()

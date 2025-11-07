@@ -3,10 +3,119 @@ from PyQt5 import uic
 from database_hosting import conectar_hosting as conectar_base_datos 
 from PyQt5.QtWidgets import QFileDialog, QTableWidgetItem, QApplication, QMainWindow, QWidget, QMessageBox
 from PyQt5.QtGui import QIcon, QPixmap, QPainter, QBrush, QPen, QColor, QPainterPath
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QRectF
 import os
 import shutil
 import hashlib
+import requests
+
+# -------------------------
+# MÉTODOS DE BÚSQUEDA HÍBRIDA (IGUAL QUE app_secciones.py)
+# -------------------------
+def _is_url(path):
+    """Verifica si una ruta es una URL"""
+    return isinstance(path, str) and (path.startswith("http://") or path.startswith("https://"))
+
+def obtener_url_remota(ruta_relativa: str) -> str:
+    """Construye URL remota basada en la configuración de hosting"""
+    try:
+        conn = conectar_base_datos()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT base_url FROM datos_hosting WHERE activo = 1 LIMIT 1")
+        resultado = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        
+        if resultado and resultado.get('base_url'):
+            base_url = resultado['base_url'].strip()
+            if base_url:
+                if not base_url.endswith('/'):
+                    base_url += '/'
+                ruta_limpia = ruta_relativa.lstrip('/')
+                url_completa = f"{base_url}{ruta_limpia}"
+                return url_completa
+    except Exception as e:
+        print(f"Error obteniendo URL remota: {e}")
+    return ""
+
+def verificar_url_remota(url: str) -> bool:
+    """Verifica si una URL remota es accesible"""
+    try:
+        response = requests.head(url, timeout=5)  # Timeout corto para no bloquear
+        return response.status_code == 200
+    except Exception:
+        return False
+
+def resolver_ruta_hibrida(ruta_absoluta_db: str, ruta_relativa_db: str) -> str:
+    """
+    Busca imágenes en REMOTO → LOCAL (igual que app_secciones.py)
+    """
+    # 1. PRIMERO: Buscar en REMOTO usando ruta relativa
+    if ruta_relativa_db:
+        url_remota = obtener_url_remota(ruta_relativa_db)
+        if url_remota and verificar_url_remota(url_remota):
+            print(f"✅ [USUARIOS] Encontrado en REMOTO: {url_remota}")
+            return url_remota
+        else:
+            print(f"⚠️  [USUARIOS] Remoto no disponible, buscando local: {ruta_relativa_db}")
+    
+    # 2. SEGUNDO: Buscar en LOCAL con ruta absoluta
+    if ruta_absoluta_db and os.path.exists(ruta_absoluta_db):
+        print(f"✅ [USUARIOS] Encontrado en LOCAL: {ruta_absoluta_db}")
+        return ruta_absoluta_db
+    
+    # 3. TERCERO: Buscar en estructura del proyecto
+    if ruta_relativa_db:
+        rutas_posibles = [
+            os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 
+                        "turismo-frontend", "public", ruta_relativa_db),
+            os.path.join(os.getcwd(), "turismo-frontend", "public", ruta_relativa_db),
+            ruta_absoluta_desde_relativa(ruta_relativa_db),  # Tu función existente
+        ]
+        
+        for ruta in rutas_posibles:
+            if ruta and os.path.exists(ruta):
+                print(f"✅ [USUARIOS] Encontrado en PROYECTO: {ruta}")
+                return ruta
+    
+    print(f"❌ [USUARIOS] No encontrado: {ruta_relativa_db}")
+    return ""
+
+def cargar_imagen_desde_ruta(ruta_imagen: str, size: tuple = None):
+    """
+    Carga imagen desde URL remota o archivo local
+    """
+    if not ruta_imagen:
+        return None
+
+    try:
+        # ✅ MANEJAR URL REMOTA (con timeout para no bloquear)
+        if _is_url(ruta_imagen):
+            response = requests.get(ruta_imagen, timeout=8)  # Timeout de 8 segundos
+            if response.status_code == 200:
+                pixmap = QPixmap()
+                pixmap.loadFromData(response.content)
+                if not pixmap.isNull():
+                    if size:
+                        pixmap = pixmap.scaled(size[0], size[1], Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                    print(f"✅ [USUARIOS] Imagen remota cargada: {ruta_imagen}")
+                    return pixmap
+            return None
+        
+        # ✅ MANEJAR ARCHIVO LOCAL (más rápido)
+        elif os.path.exists(ruta_imagen):
+            pixmap = QPixmap(ruta_imagen)
+            if not pixmap.isNull():
+                if size:
+                    pixmap = pixmap.scaled(size[0], size[1], Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                print(f"✅ [USUARIOS] Imagen local cargada: {ruta_imagen}")
+                return pixmap
+        
+        return None
+        
+    except Exception as e:
+        print(f"❌ [USUARIOS] Error cargando imagen: {e}")
+        return None
 
 def ruta_absoluta_desde_relativa(relativa: str) -> str:
     """
@@ -23,6 +132,26 @@ def ruta_absoluta_desde_relativa(relativa: str) -> str:
     ruta_limpia = relativa.lstrip("/\\")
     return os.path.normpath(os.path.join(base_assets, ruta_limpia))
 
+def convertir_ruta_produccion(ruta_absoluta):
+    """Convierte rutas absolutas a rutas relativas - VERSIÓN MEJORADA"""
+    if not ruta_absoluta or not os.path.exists(ruta_absoluta):
+        return ""
+    
+    ruta_normalizada = os.path.normpath(ruta_absoluta)
+    
+    # Buscar "assets/imagenes"
+    target = "assets" + os.sep + "imagenes" + os.sep
+    idx = ruta_normalizada.lower().find(target.lower())
+    
+    if idx != -1:
+        ruta_relativa = ruta_normalizada[idx + len(target):]
+        # ✅ NORMALIZAR a barras simples para web
+        resultado = f"assets/imagenes/{ruta_relativa}".replace("\\", "/")
+        return resultado
+    
+    nombre_archivo = os.path.basename(ruta_absoluta)
+    resultado = f"assets/imagenes/{nombre_archivo}"
+    return resultado
 
 class VentanaUsuarios(QWidget):
     def __init__(self, parent=None):
@@ -102,33 +231,20 @@ class VentanaUsuarios(QWidget):
         self.btnModificarUsuario.setEnabled(True)
         self.btnEliminarUsuario.setEnabled(True)
 
-        # Mostrar la foto usando ruta_absoluta_desde_relativa
+        # ✅ MEJORADO: Mostrar la foto usando sistema híbrido
         ruta_foto = obtener_texto(fila, 10)
-        if ruta_foto:
-            ruta_absoluta = ruta_absoluta_desde_relativa(ruta_foto)
-            if os.path.exists(ruta_absoluta):
-                self.label_foto_usuario.setText("")
-                self.redondear_imagen(
-                    ruta_absoluta,
-                    self.label_foto_usuario,
-                    circular=True,
-                    size=100
-                )
-            else:
-                self.label_foto_usuario.clear()
-                self.label_foto_usuario.setText("Sin foto")
-        else:
-            self.label_foto_usuario.clear()
-            self.label_foto_usuario.setText("Sin foto")
+        self.cargar_foto_usuario_hibrida(ruta_foto)
             
     def convertir_ruta_windows_a_relativa(self, ruta_windows):
         """Convierte rutas absolutas de Windows a rutas relativas para producción"""
-        if not ruta_windows or not ruta_windows.startswith('E:/'):
+        if not ruta_windows:
             return ruta_windows
+            
+        # ✅ MEJORADO: Usar función unificada
+        if ruta_windows.startswith(('E:/', 'C:/', 'D:/')) or os.path.isabs(ruta_windows):
+            return convertir_ruta_produccion(ruta_windows)
         
-        # Extraer solo el nombre del archivo y construir ruta relativa
-        nombre_archivo = os.path.basename(ruta_windows)
-        return f"/assets/imagenes/fotos_usuarios/{nombre_archivo}"
+        return ruta_windows
 
     def seleccionar_usuario_inactivo(self, fila, columna):
         item = self.tabla_usuarios_inactivos.item(fila, 0)
@@ -136,28 +252,80 @@ class VentanaUsuarios(QWidget):
             self.usuario_inactivo_id = item.text()
             self.btnReactivarUsuario.setEnabled(True)
 
-            # Mostrar foto del usuario inactivo
+            # ✅ MEJORADO: Mostrar foto del usuario inactivo usando sistema híbrido
             def obtener_texto_inactivo(f, c):
                 item = self.tabla_usuarios_inactivos.item(f, c)
                 return item.text() if item else ""
 
-            ruta_foto = obtener_texto_inactivo(fila, 10)
-            if ruta_foto:
-                ruta_absoluta = ruta_absoluta_desde_relativa(ruta_foto)
-                if os.path.exists(ruta_absoluta):
+            ruta_foto = obtener_texto_inactivo(fila, 3)  # Asumiendo que la foto está en columna 3
+            self.cargar_foto_usuario_hibrida(ruta_foto)
+
+    def cargar_foto_usuario_hibrida(self, ruta_relativa):
+        """Carga la foto del usuario usando sistema híbrido REMOTO → LOCAL"""
+        if not ruta_relativa:
+            self.mostrar_foto_placeholder("Sin foto")
+            return
+
+        try:
+            # ✅ NUEVO: Usar sistema híbrido
+            ruta_encontrada = resolver_ruta_hibrida("", ruta_relativa)
+            
+            if ruta_encontrada:
+                pixmap = cargar_imagen_desde_ruta(ruta_encontrada, (100, 100))
+                if pixmap and not pixmap.isNull():
+                    # Redondear la imagen
+                    pixmap_redondeada = self.redondear_imagen_pixmap(pixmap, circular=True, size=100)
+                    self.label_foto_usuario.setPixmap(pixmap_redondeada)
                     self.label_foto_usuario.setText("")
-                    self.redondear_imagen(
-                        ruta_absoluta,
-                        self.label_foto_usuario,
-                        circular=True,
-                        size=100
-                    )
+                    self.label_foto_usuario.setToolTip(f"Foto: {ruta_relativa}")
                 else:
-                    self.label_foto_usuario.clear()
-                    self.label_foto_usuario.setText("Sin foto")
+                    self.mostrar_foto_placeholder("Error cargando")
             else:
-                self.label_foto_usuario.clear()
-                self.label_foto_usuario.setText("Sin foto")
+                self.mostrar_foto_placeholder("Foto no encontrada")
+                
+        except Exception as e:
+            print(f"❌ Error cargando foto usuario {ruta_relativa}: {e}")
+            self.mostrar_foto_placeholder("Error")
+
+    def mostrar_foto_placeholder(self, texto):
+        """Muestra un placeholder cuando no hay foto"""
+        self.label_foto_usuario.clear()
+        self.label_foto_usuario.setText(texto)
+        self.label_foto_usuario.setStyleSheet("""
+            QLabel {
+                background-color: #f7fafc; 
+                color: #4a5568; 
+                border: 2px dashed #cbd5e0;
+                border-radius: 50px;
+                font-weight: bold;
+                font-size: 10px;
+            }
+        """)
+        self.label_foto_usuario.setAlignment(Qt.AlignCenter)
+
+    def redondear_imagen_pixmap(self, pixmap: QPixmap, circular=False, size=None):
+        """Redondea un QPixmap ya cargado (para imágenes remotas y locales)"""
+        if pixmap.isNull():
+            return QPixmap()
+
+        # Ajustar tamaño si se indicó
+        if size:
+            pixmap = pixmap.scaled(size, size, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+
+        if circular:
+            # Crear máscara circular
+            mask = QPixmap(pixmap.size())
+            mask.fill(Qt.transparent)
+            painter = QPainter(mask)
+            painter.setRenderHint(QPainter.Antialiasing)
+            path = QPainterPath()
+            path.addEllipse(QRectF(0, 0, pixmap.width(), pixmap.height()))
+            painter.setClipPath(path)
+            painter.drawPixmap(0, 0, pixmap)
+            painter.end()
+            pixmap = mask
+
+        return pixmap
 
     def reactivar_usuario(self):
         if not hasattr(self, 'usuario_inactivo_id') or not self.usuario_inactivo_id:
@@ -185,53 +353,63 @@ class VentanaUsuarios(QWidget):
             QMessageBox.critical(self, "Error", f"No se pudo reactivar el usuario:\n{e}")
 
     def cargar_usuarios(self):
-        conexion = conectar_base_datos()
-        cursor = conexion.cursor()
-        cursor.execute("""
-            SELECT id_usuario, apellido_nombres_usuario, dni_usuario, domicilio_usuario,
-                   localidad_usuario, provincia_usuario, telefono_usuario, email_usuario,
-                   nombre_usuario_acceso, password_usuario, foto_usuario, rol_usuario
-            FROM usuarios
-            WHERE activo = 1
-        """)
-        resultados = cursor.fetchall()
-        conexion.close()
+        try:
+            conexion = conectar_base_datos()
+            cursor = conexion.cursor()
+            cursor.execute("""
+                SELECT id_usuario, apellido_nombres_usuario, dni_usuario, domicilio_usuario,
+                       localidad_usuario, provincia_usuario, telefono_usuario, email_usuario,
+                       nombre_usuario_acceso, password_usuario, foto_usuario, rol_usuario
+                FROM usuarios
+                WHERE activo = 1
+            """)
+            resultados = cursor.fetchall()
+            conexion.close()
 
-        columnas = [
-            "ID", "Nombre", "DNI", "Domicilio", "Localidad", "Provincia",
-            "Teléfono", "Email", "Usuario", "Contraseña", "Foto", "Rol"
-        ]
-        self.tabla_usuarios_activos.setColumnCount(len(columnas))
-        self.tabla_usuarios_activos.setHorizontalHeaderLabels(columnas)
-        self.tabla_usuarios_activos.setRowCount(0)
+            columnas = [
+                "ID", "Nombre", "DNI", "Domicilio", "Localidad", "Provincia",
+                "Teléfono", "Email", "Usuario", "Contraseña", "Foto", "Rol"
+            ]
+            self.tabla_usuarios_activos.setColumnCount(len(columnas))
+            self.tabla_usuarios_activos.setHorizontalHeaderLabels(columnas)
+            self.tabla_usuarios_activos.setRowCount(0)
 
-        for row_number, row_data in enumerate(resultados):
-            self.tabla_usuarios_activos.insertRow(row_number)
-            for column_number, data in enumerate(row_data):
-                item = QTableWidgetItem(str(data))
-                self.tabla_usuarios_activos.setItem(row_number, column_number, item)
+            for row_number, row_data in enumerate(resultados):
+                self.tabla_usuarios_activos.insertRow(row_number)
+                for column_number, data in enumerate(row_data):
+                    item = QTableWidgetItem(str(data))
+                    self.tabla_usuarios_activos.setItem(row_number, column_number, item)
+                    
+        except Exception as e:
+            print(f"❌ Error cargando usuarios: {e}")
+            QMessageBox.warning(self, "Error", f"No se pudieron cargar los usuarios: {e}")
 
     def cargar_usuarios_inactivos(self):
-        conexion = conectar_base_datos()
-        cursor = conexion.cursor()
-        cursor.execute("""
-            SELECT id_usuario, apellido_nombres_usuario, dni_usuario, email_usuario
-            FROM usuarios
-            WHERE activo = 0
-        """)
-        resultados = cursor.fetchall()
-        conexion.close()
+        try:
+            conexion = conectar_base_datos()
+            cursor = conexion.cursor()
+            cursor.execute("""
+                SELECT id_usuario, apellido_nombres_usuario, dni_usuario, email_usuario, foto_usuario
+                FROM usuarios
+                WHERE activo = 0
+            """)
+            resultados = cursor.fetchall()
+            conexion.close()
 
-        columnas = ["ID", "Nombre", "DNI", "Email"]
-        self.tabla_usuarios_inactivos.setColumnCount(len(columnas))
-        self.tabla_usuarios_inactivos.setHorizontalHeaderLabels(columnas)
-        self.tabla_usuarios_inactivos.setRowCount(0)
+            columnas = ["ID", "Nombre", "DNI", "Email", "Foto"]
+            self.tabla_usuarios_inactivos.setColumnCount(len(columnas))
+            self.tabla_usuarios_inactivos.setHorizontalHeaderLabels(columnas)
+            self.tabla_usuarios_inactivos.setRowCount(0)
 
-        for row_number, row_data in enumerate(resultados):
-            self.tabla_usuarios_inactivos.insertRow(row_number)
-            for column_number, data in enumerate(row_data):
-                item = QTableWidgetItem(str(data))
-                self.tabla_usuarios_inactivos.setItem(row_number, column_number, item)
+            for row_number, row_data in enumerate(resultados):
+                self.tabla_usuarios_inactivos.insertRow(row_number)
+                for column_number, data in enumerate(row_data):
+                    item = QTableWidgetItem(str(data))
+                    self.tabla_usuarios_inactivos.setItem(row_number, column_number, item)
+                    
+        except Exception as e:
+            print(f"❌ Error cargando usuarios inactivos: {e}")
+            QMessageBox.warning(self, "Error", f"No se pudieron cargar los usuarios inactivos: {e}")
 
     def agregar_usuario(self):
         apellido_nombre = self.lineEdit_apellido_nombre_usuario.text().strip()
@@ -257,8 +435,8 @@ class VentanaUsuarios(QWidget):
                 INSERT INTO usuarios (
                     apellido_nombres_usuario, dni_usuario, domicilio_usuario,
                     localidad_usuario, provincia_usuario, telefono_usuario, email_usuario,
-                    nombre_usuario_acceso, password_usuario, foto_usuario, rol_usuario
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    nombre_usuario_acceso, password_usuario, foto_usuario, rol_usuario, activo
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1)
             """, (apellido_nombre, dni, domicilio, localidad, provincia, telefono, email,
                   usuario_acceso, password, ruta_foto, rol))
             conexion.commit()
@@ -276,10 +454,9 @@ class VentanaUsuarios(QWidget):
             QMessageBox.warning(self, "Modificación", "Seleccione un usuario de la tabla para modificar.")
             return
 
-        # ✅ CORREGIDO: Sanitizar ruta de foto antes de guardar
+        # ✅ MEJORADO: Sanitizar ruta de foto usando función unificada
         ruta_foto = self.lineEdit_ruta_foto.text().strip()
-        if ruta_foto and ruta_foto.startswith('E:/'):
-            # Convertir ruta absoluta de Windows a relativa
+        if ruta_foto and (ruta_foto.startswith(('E:/', 'C:/', 'D:/')) or os.path.isabs(ruta_foto)):
             ruta_foto = self.convertir_ruta_windows_a_relativa(ruta_foto)
 
         try:
@@ -314,6 +491,7 @@ class VentanaUsuarios(QWidget):
             QMessageBox.critical(self, "Error", f"Ocurrió un error al modificar el usuario:\n{str(e)}")
         finally:
             conexion.close()
+
     def eliminar_usuario(self):
         if not self.usuario_seleccionado_id:
             QMessageBox.warning(self, "Selección requerida", "Por favor seleccione un usuario.")
@@ -326,16 +504,20 @@ class VentanaUsuarios(QWidget):
         )
 
         if respuesta == QMessageBox.Yes:
-            conexion = conectar_base_datos()
-            cursor = conexion.cursor()
-            cursor.execute("UPDATE usuarios SET activo = 0 WHERE id_usuario = %s", (self.usuario_seleccionado_id,))
-            conexion.commit()
-            conexion.close()
+            try:
+                conexion = conectar_base_datos()
+                cursor = conexion.cursor()
+                cursor.execute("UPDATE usuarios SET activo = 0 WHERE id_usuario = %s", (self.usuario_seleccionado_id,))
+                conexion.commit()
+                conexion.close()
 
-            QMessageBox.information(self, "Usuario desactivado", "El usuario fue desactivado correctamente.")
-            self.cargar_usuarios()
-            self.cargar_usuarios_inactivos()
-            self.limpiar_formulario()
+                QMessageBox.information(self, "Usuario desactivado", "El usuario fue desactivado correctamente.")
+                self.cargar_usuarios()
+                self.cargar_usuarios_inactivos()
+                self.limpiar_formulario()
+                
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"No se pudo desactivar el usuario: {str(e)}")
             
     def seleccionar_foto_usuario(self):
         ruta_origen, _ = QFileDialog.getOpenFileName(
@@ -344,96 +526,48 @@ class VentanaUsuarios(QWidget):
 
         if not ruta_origen:
             self.lineEdit_ruta_foto.clear()
-            self.label_foto_usuario.clear()
-            self.label_foto_usuario.setText("Sin foto")
+            self.mostrar_foto_placeholder("Sin foto")
             return
-
-        # ✅ CORREGIDO: Carpeta destino usando ruta absoluta
-        carpeta_destino = ruta_absoluta_desde_relativa("/assets/imagenes/fotos_usuarios")
-        
-        # Asegurar que la carpeta existe
-        os.makedirs(carpeta_destino, exist_ok=True)
-
-        nombre_archivo = os.path.basename(ruta_origen)
-        nombre_base, extension = os.path.splitext(nombre_archivo)
-        ruta_destino = os.path.join(carpeta_destino, nombre_archivo)
 
         try:
-            if os.path.exists(ruta_destino) and os.path.samefile(ruta_origen, ruta_destino):
-                # Ya está en la carpeta destino → no copiamos
-                ruta_final = ruta_destino
-            else:
-                # Si ya existe pero es diferente, renombramos con sufijo _1, _2...
-                def hash_archivo(path):
-                    hasher = hashlib.md5()
-                    with open(path, "rb") as f:
-                        while chunk := f.read(8192):
-                            hasher.update(chunk)
-                    return hasher.hexdigest()
+            # ✅ MEJORADO: Carpeta destino usando sistema unificado
+            carpeta_destino = ruta_absoluta_desde_relativa("/assets/imagenes/fotos_usuarios")
+            os.makedirs(carpeta_destino, exist_ok=True)
 
-                if os.path.exists(ruta_destino):
-                    if hash_archivo(ruta_destino) != hash_archivo(ruta_origen):
-                        contador = 1
-                        while True:
-                            nuevo_nombre = f"{nombre_base}_{contador}{extension}"
-                            nueva_ruta = os.path.join(carpeta_destino, nuevo_nombre)
-                            if not os.path.exists(nueva_ruta):
-                                ruta_destino = nueva_ruta
-                                break
-                            contador += 1
+            nombre_archivo = os.path.basename(ruta_origen)
+            ruta_destino = os.path.join(carpeta_destino, nombre_archivo)
 
-                shutil.copy(ruta_origen, ruta_destino)
-                ruta_final = ruta_destino
+            # Manejar archivos duplicados
+            contador = 1
+            nombre_base, extension = os.path.splitext(nombre_archivo)
+            while os.path.exists(ruta_destino):
+                nuevo_nombre = f"{nombre_base}_{contador}{extension}"
+                ruta_destino = os.path.join(carpeta_destino, nuevo_nombre)
+                contador += 1
+
+            # Copiar archivo
+            shutil.copy2(ruta_origen, ruta_destino)
+
+            # ✅ MEJORADO: Convertir a ruta relativa usando función unificada
+            ruta_relativa = convertir_ruta_produccion(ruta_destino)
+            self.lineEdit_ruta_foto.setText(ruta_relativa)
+
+            # Mostrar preview
+            pixmap = QPixmap(ruta_destino)
+            if not pixmap.isNull():
+                pixmap_redondeada = self.redondear_imagen_pixmap(pixmap, circular=True, size=100)
+                self.label_foto_usuario.setPixmap(pixmap_redondeada)
+                self.label_foto_usuario.setText("")
+                self.label_foto_usuario.setToolTip(f"Foto: {ruta_relativa}")
+
+            # Actualizar en BD si hay usuario seleccionado
+            if hasattr(self, 'usuario_seleccionado_id') and self.usuario_seleccionado_id:
+                self.actualizar_foto_en_bd(ruta_relativa)
 
         except Exception as e:
-            QMessageBox.warning(self, "Error", f"No se pudo copiar la foto:\n{e}")
-            return
+            QMessageBox.warning(self, "Error", f"No se pudo procesar la foto:\n{e}")
+            self.mostrar_foto_placeholder("Error")
 
-        # ✅ CORREGIDO: Guardamos SOLO la ruta relativa
-        ruta_relativa = f"/assets/imagenes/fotos_usuarios/{os.path.basename(ruta_destino)}"
-
-        # ✅ CORREGIDO: Forzar que solo se guarde la ruta relativa
-        self.lineEdit_ruta_foto.setText(ruta_relativa)
-        
-        # Mostrar imagen
-        pixmap_foto = self.redondear_imagen(ruta_final, self.label_foto_usuario, circular=True, size=100)
-        self.label_foto_usuario.setPixmap(pixmap_foto)
-        self.label_foto_usuario.setText("")
-
-        # ✅ CORREGIDO: Actualizar automáticamente en BD si hay usuario seleccionado
-        if hasattr(self, 'usuario_seleccionado_id') and self.usuario_seleccionado_id:
-            self.actualizar_foto_en_bd(ruta_relativa)
-    def redondear_imagen(self, ruta_imagen, label, circular=False, size=None):
-        from PyQt5.QtGui import QPixmap, QPainter, QPainterPath
-        from PyQt5.QtCore import Qt, QRectF
-
-        pixmap = QPixmap(ruta_imagen)
-
-        # Ajustar tamaño si se indicó
-        if size:
-            pixmap = pixmap.scaled(size, size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-
-        if circular:
-            # Hacer circular la imagen
-            mask = QPixmap(pixmap.size())
-            mask.fill(Qt.transparent)
-
-            painter = QPainter(mask)
-            painter.setRenderHint(QPainter.Antialiasing)
-            path = QPainterPath()
-            path.addEllipse(QRectF(0, 0, pixmap.width(), pixmap.height()))
-            painter.setClipPath(path)
-            painter.drawPixmap(0, 0, pixmap)
-            painter.end()
-
-            pixmap = mask
-
-        # Mostrar en el QLabel
-        label.setPixmap(pixmap)
-        label.setScaledContents(True)
-
-        return pixmap
-    
     def actualizar_foto_en_bd(self, ruta_relativa):
         """Actualiza automáticamente la foto en la base de datos"""
         try:
@@ -449,22 +583,29 @@ class VentanaUsuarios(QWidget):
             print(f"✅ Foto actualizada en BD: {ruta_relativa}")
         except Exception as e:
             print(f"❌ Error actualizando foto en BD: {e}")
+            QMessageBox.warning(self, "Error BD", f"No se pudo actualizar la foto en la base de datos:\n{e}")
 
     def existe_foto_en_uso(self, ruta_foto, id_actual=None):
-        conexion = conectar_base_datos()
-        cursor = conexion.cursor()
-        if id_actual:
-            cursor.execute("""
-                SELECT COUNT(*) FROM usuarios
-                WHERE foto_usuario = %s AND id_usuario != %s
-            """, (ruta_foto, id_actual))
-        else:
-            cursor.execute("SELECT COUNT(*) FROM usuarios WHERE foto_usuario = %s", (ruta_foto,))
-        resultado = cursor.fetchone()[0]
-        conexion.close()
-        return resultado > 0
+        """Verifica si una foto ya está siendo usada por otro usuario"""
+        try:
+            conexion = conectar_base_datos()
+            cursor = conexion.cursor()
+            if id_actual:
+                cursor.execute("""
+                    SELECT COUNT(*) FROM usuarios
+                    WHERE foto_usuario = %s AND id_usuario != %s
+                """, (ruta_foto, id_actual))
+            else:
+                cursor.execute("SELECT COUNT(*) FROM usuarios WHERE foto_usuario = %s", (ruta_foto,))
+            resultado = cursor.fetchone()[0]
+            conexion.close()
+            return resultado > 0
+        except Exception as e:
+            print(f"❌ Error verificando foto en uso: {e}")
+            return False
 
     def limpiar_formulario(self):
+        """Limpia todos los campos del formulario"""
         self.lineEdit_apellido_nombre_usuario.clear()
         self.lineEdit_dni_usuario.clear()
         self.lineEdit_domicilio_usuario.clear()
@@ -478,11 +619,12 @@ class VentanaUsuarios(QWidget):
         self.comboBox_provincia_usuario.setCurrentIndex(0)
         self.comboBox_rol_usuario.setCurrentIndex(0)
 
-        self.label_foto_usuario.clear()
-        self.label_foto_usuario.setText("Sin foto")
+        self.mostrar_foto_placeholder("Sin foto")
 
         self.usuario_seleccionado_id = None
+        self.usuario_inactivo_id = None
         
         self.btnAgregarUsuario.setEnabled(True)
         self.btnModificarUsuario.setEnabled(False)
         self.btnEliminarUsuario.setEnabled(False)
+        self.btnReactivarUsuario.setEnabled(False)

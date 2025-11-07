@@ -7,6 +7,108 @@ from PyQt5.QtCore import Qt, QRectF
 import os
 import shutil
 import hashlib
+import requests
+
+# -------------------------
+# MÉTODOS DE BÚSQUEDA HÍBRIDA (igual que en ventana_principal)
+# -------------------------
+def _is_url(path):
+    """Verifica si una ruta es una URL"""
+    return isinstance(path, str) and (path.startswith("http://") or path.startswith("https://"))
+
+def obtener_url_remota(ruta_relativa: str) -> str:
+    """Construye URL remota basada en la configuración de hosting"""
+    try:
+        conn = conectar_base_datos()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT base_url FROM datos_hosting WHERE activo = 1 LIMIT 1")
+        resultado = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        
+        if resultado and resultado.get('base_url'):
+            base_url = resultado['base_url'].strip()
+            if base_url:
+                if not base_url.endswith('/'):
+                    base_url += '/'
+                ruta_limpia = ruta_relativa.lstrip('/')
+                url_completa = f"{base_url}assets/{ruta_limpia}"
+                return url_completa
+    except Exception as e:
+        print(f"Error obteniendo URL remota: {e}")
+    return ""
+
+def verificar_url_remota(url: str) -> bool:
+    """Verifica si una URL remota es accesible"""
+    try:
+        response = requests.head(url, timeout=5)
+        return response.status_code == 200
+    except Exception:
+        return False
+
+def resolver_ruta_hibrida(ruta_absoluta_db: str, ruta_relativa_db: str) -> str:
+    """
+    Busca imágenes en REMOTO → LOCAL (igual que ventana_principal)
+    """
+    # 1. PRIMERO: Buscar en REMOTO usando ruta relativa
+    if ruta_relativa_db:
+        url_remota = obtener_url_remota(ruta_relativa_db)
+        if url_remota and verificar_url_remota(url_remota):
+            print(f"✅ [SECCIONES] Encontrado en REMOTO: {url_remota}")
+            return url_remota
+    
+    # 2. SEGUNDO: Buscar en LOCAL con ruta absoluta
+    if ruta_absoluta_db and os.path.exists(ruta_absoluta_db):
+        print(f"✅ [SECCIONES] Encontrado en LOCAL: {ruta_absoluta_db}")
+        return ruta_absoluta_db
+    
+    # 3. TERCERO: Buscar en estructura del proyecto
+    if ruta_relativa_db:
+        rutas_posibles = [
+            os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 
+                        "turismo-frontend", "public", ruta_relativa_db),
+            os.path.join(os.getcwd(), "turismo-frontend", "public", ruta_relativa_db),
+        ]
+        
+        for ruta in rutas_posibles:
+            if os.path.exists(ruta):
+                print(f"✅ [SECCIONES] Encontrado en PROYECTO: {ruta}")
+                return ruta
+    
+    print(f"❌ [SECCIONES] No encontrado: {ruta_relativa_db}")
+    return ""
+
+def cargar_imagen_desde_ruta(ruta_imagen: str, size: int = 75):
+    """
+    Carga imagen desde URL remota o archivo local
+    """
+    if not ruta_imagen:
+        return None
+
+    try:
+        # ✅ MANEJAR URL REMOTA (AGREGAR TIMEOUT)
+        if _is_url(ruta_imagen):
+            response = requests.get(ruta_imagen, timeout=8)  # ⬅️ AGREGAR ESTO
+            if response.status_code == 200:
+                pixmap = QPixmap()
+                pixmap.loadFromData(response.content)
+                if not pixmap.isNull():
+                    print(f"✅ [SECCIONES] Imagen remota cargada: {ruta_imagen}")
+                    return pixmap
+            return None
+        
+        # ✅ MANEJAR ARCHIVO LOCAL
+        elif os.path.exists(ruta_imagen):
+            pixmap = QPixmap(ruta_imagen)
+            if not pixmap.isNull():
+                print(f"✅ [SECCIONES] Imagen local cargada: {ruta_imagen}")
+                return pixmap
+        
+        return None
+        
+    except Exception as e:
+        print(f"❌ [SECCIONES] Error cargando imagen: {e}")
+        return None
 
 def ruta_absoluta_desde_relativa(relativa):
     """
@@ -131,23 +233,17 @@ class VentanaSecciones(QWidget):
         item = lambda f, c: self.Tabla_secciones_activas.item(f, c)
         self.seccion_seleccionada_id = item(fila, 0).text() if item(fila, 0) else ""
         self.lineEdit_nombre_seccion_app.setText(item(fila, 1).text() if item(fila, 1) else "")
-        self.lineEdit_icono_seccion.setText(item(fila, 2).text() if item(fila, 2) else "")
+        
+        # ✅ NUEVO: Usar búsqueda híbrida para el icono
+        ruta_relativa = item(fila, 2).text() if item(fila, 2) else ""
+        ruta_encontrada = resolver_ruta_hibrida("", ruta_relativa)  # Solo necesitamos la ruta relativa
+        
+        self.lineEdit_icono_seccion.setText(ruta_encontrada)
         self.spinBox_orden_seccion.setValue(int(item(fila, 3).text()) if item(fila, 3) else 0)
 
-        # Mostrar icono
-        ruta_relativa = item(fila, 2).text() if item(fila, 2) else ""
-        if ruta_relativa:
-            # Convertir a ruta absoluta, asegurando que la barra inicial no sea un problema
-            ruta_relativa = ruta_relativa.lstrip("/\\")  # elimina barras al inicio
-            ruta_absoluta = os.path.join(os.getcwd(), "public", ruta_relativa.replace("/", os.sep))
-            
-            if os.path.exists(ruta_absoluta):
-                pixmap_icono = self.cargar_imagen_en_label(ruta_absoluta, self.label_icono_seccion, size=75, circular=True)
-                self.label_icono_seccion.setPixmap(pixmap_icono)
-                self.label_icono_seccion.setText("")
-            else:
-                self.label_icono_seccion.clear()
-                self.label_icono_seccion.setText("Sin icono")
+        # Mostrar icono con soporte para URLs remotas
+        if ruta_encontrada:
+            self.mostrar_icono_seccion(ruta_encontrada)
         else:
             self.label_icono_seccion.clear()
             self.label_icono_seccion.setText("Sin icono")
@@ -157,6 +253,43 @@ class VentanaSecciones(QWidget):
         self.btnEliminarSeccion.setEnabled(True)
         self.btnDesactivarSeccion.setEnabled(True)
         self.btnReactivarSeccion.setEnabled(False)
+
+    def mostrar_icono_seccion(self, ruta_imagen: str):
+        """
+        NUEVO: Muestra icono de sección desde URL remota o archivo local
+        """
+        pixmap = cargar_imagen_desde_ruta(ruta_imagen, 75)
+        if pixmap and not pixmap.isNull():
+            pixmap_redondeada = self.redondear_imagen_pixmap(pixmap, 75)
+            self.label_icono_seccion.setPixmap(pixmap_redondeada)
+            self.label_icono_seccion.setText("")
+            self.label_icono_seccion.setAlignment(Qt.AlignCenter)
+        else:
+            self.label_icono_seccion.clear()
+            self.label_icono_seccion.setText("Sin icono")
+
+    def redondear_imagen_pixmap(self, pixmap: QPixmap, size: int) -> QPixmap:
+        """
+        Redondea un QPixmap ya cargado (para imágenes remotas y locales)
+        """
+        if pixmap.isNull():
+            return QPixmap()
+
+        # Escalar la imagen
+        pixmap = pixmap.scaled(size, size, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+
+        # Crear máscara circular
+        mask = QPixmap(size, size)
+        mask.fill(Qt.transparent)
+        painter = QPainter(mask)
+        painter.setRenderHint(QPainter.Antialiasing)
+        path = QPainterPath()
+        path.addEllipse(QRectF(0, 0, size, size))
+        painter.setClipPath(path)
+        painter.drawPixmap(0, 0, pixmap)
+        painter.end()
+        
+        return mask
 
     def seleccionar_seccion_inactiva(self, fila, columna):
         item = self.Tabla_secciones_inactivas.item(fila, 0)
@@ -175,7 +308,7 @@ class VentanaSecciones(QWidget):
         
         # ✅ CORREGIDO: Convertir ruta absoluta a ruta de producción
         ruta_absoluta_actual = icono
-        ruta_relativa_corregida = convertir_ruta_produccion(ruta_absoluta_actual) if ruta_absoluta_actual else None
+        ruta_relativa_corregida = convertir_ruta_produccion(ruta_absoluta_actual) if ruta_absoluta_actual and not _is_url(ruta_absoluta_actual) else ""
         
         try:
             conexion = conectar_base_datos()
@@ -199,7 +332,7 @@ class VentanaSecciones(QWidget):
         
         # ✅ CORREGIDO: Convertir ruta absoluta a ruta de producción
         ruta_absoluta_actual = self.lineEdit_icono_seccion.text().strip()
-        ruta_relativa_corregida = convertir_ruta_produccion(ruta_absoluta_actual) if ruta_absoluta_actual else None
+        ruta_relativa_corregida = convertir_ruta_produccion(ruta_absoluta_actual) if ruta_absoluta_actual and not _is_url(ruta_absoluta_actual) else ""
         
         try:
             conexion = conectar_base_datos()
@@ -374,10 +507,8 @@ class VentanaSecciones(QWidget):
         # Mostrar ruta absoluta en el lineEdit (para visualización local)
         self.lineEdit_icono_seccion.setText(ruta_final)
 
-        # Mostrar icono
-        pixmap_icono = self.cargar_imagen_en_label(ruta_final, self.label_icono_seccion, size=75, circular=True)
-        self.label_icono_seccion.setPixmap(pixmap_icono)
-        self.label_icono_seccion.setText("")
+        # Mostrar icono con soporte para búsqueda híbrida
+        self.mostrar_icono_seccion(ruta_final)
 
         # ✅ CORREGIDO: Si hay una sección seleccionada, actualizar en BD con ruta de producción
         if hasattr(self, 'seccion_seleccionada_id') and self.seccion_seleccionada_id:
@@ -397,33 +528,3 @@ class VentanaSecciones(QWidget):
         else:
             # Si no hay sección seleccionada, solo mostrar mensaje informativo
             print(f"ℹ️  Icono preparado para nueva sección: {ruta_relativa}")
-    # ------------------ Función reusable para imágenes -------------------
-    def cargar_imagen_en_label(self, ruta_imagen, label=None, size=75, circular=True, center=True):
-        """
-        Carga una imagen en un QLabel, opcionalmente la recorta circular y ajusta tamaño.
-        Devuelve el QPixmap resultante.
-        """
-        pixmap = QPixmap(ruta_imagen)
-        if pixmap.isNull():
-            return QPixmap()
-
-        pixmap = pixmap.scaled(size, size, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
-
-        if circular:
-            mask = QPixmap(size, size)
-            mask.fill(Qt.transparent)
-            painter = QPainter(mask)
-            painter.setRenderHint(QPainter.Antialiasing)
-            path = QPainterPath()
-            path.addEllipse(QRectF(0, 0, size, size))
-            painter.setClipPath(path)
-            painter.drawPixmap(0, 0, pixmap)
-            painter.end()
-            pixmap = mask
-
-        if center and label:
-            label.setAlignment(Qt.AlignCenter)
-
-        if label:
-            label.setPixmap(pixmap)
-        return pixmap

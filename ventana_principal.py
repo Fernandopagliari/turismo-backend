@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
-# ventana_principal.py
+# ventana_principal.py - VERSIÓN CON BÚSQUEDA REMOTO → LOCAL
 import os
 import sys
+import requests
 from PyQt5.QtWidgets import QMainWindow, QApplication, QMessageBox
 from PyQt5 import uic
 from PyQt5.QtGui import QIcon, QPixmap, QPainter, QBrush
@@ -58,25 +59,84 @@ class VentanaPrincipal(QMainWindow):
         # Cargar imagen central (hero)
         self.cargar_imagen_central()
         
-        
-    def ruta_absoluta_desde_relativa(self, relativa: str) -> str:
-        """
-        Convierte rutas relativas tipo '/assets/...' a ruta absoluta dentro del proyecto.
-        """
-        if not relativa:
-            return ""
-        
-        # Subimos dos niveles desde src/backend a la raíz del proyecto
-        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-        base_assets = os.path.join(base_dir, "public")  # carpeta public donde están los assets
-        
-        # Limpiamos la ruta relativa de posibles "/" o "\"
-        ruta_limpia = relativa.lstrip("/\\")
-        
-        return os.path.normpath(os.path.join(base_assets, ruta_limpia))
-
     # -------------------------
-    # Helpers: resolver rutas
+    # NUEVOS MÉTODOS PARA BÚSQUEDA REMOTA
+    # -------------------------
+    def obtener_url_remota(self, ruta_relativa: str) -> str:
+        """
+        Construye URL remota basada en la configuración de hosting
+        """
+        try:
+            # Obtener base_url desde la BD de hosting
+            conn = conectar_base_datos()
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute("SELECT base_url FROM datos_hosting WHERE activo = 1 LIMIT 1")
+            resultado = cursor.fetchone()
+            cursor.close()
+            conn.close()
+            
+            if resultado and resultado.get('base_url'):
+                base_url = resultado['base_url'].strip()
+                if base_url:
+                    # Asegurar que base_url termine con /
+                    if not base_url.endswith('/'):
+                        base_url += '/'
+                    
+                    # Construir URL completa: base_url + assets/ + ruta_relativa
+                    ruta_limpia = ruta_relativa.lstrip('/')
+                    url_completa = f"{base_url}assets/{ruta_limpia}"
+                    print(f"[URL REMOTA] Construida: {url_completa}")
+                    return url_completa
+                    
+        except Exception as e:
+            print(f"Error obteniendo URL remota: {e}")
+        
+        return ""
+
+    def verificar_url_remota(self, url: str) -> bool:
+        """
+        Verifica si una URL remota es accesible
+        """
+        try:
+            response = requests.head(url, timeout=5)
+            return response.status_code == 200
+        except Exception as e:
+            print(f"URL no accesible {url}: {e}")
+            return False
+
+    def mostrar_imagen_desde_url(self, url: str):
+        """
+        Carga y muestra imagen desde URL remota
+        """
+        try:
+            response = requests.get(url, timeout=10)
+            if response.status_code == 200:
+                # Crear QPixmap desde los datos de la respuesta
+                pixmap = QPixmap()
+                pixmap.loadFromData(response.content)
+                
+                if not pixmap.isNull():
+                    scaled_pixmap = pixmap.scaled(
+                        self.label_imagen_central.size(),
+                        Qt.KeepAspectRatio,
+                        Qt.SmoothTransformation
+                    )
+                    self.label_imagen_central.setPixmap(scaled_pixmap)
+                    self.label_imagen_central.setAlignment(Qt.AlignCenter)
+                    print(f"✅ Imagen remota cargada: {url}")
+                else:
+                    print("❌ No se pudo cargar imagen desde URL")
+                    self.mostrar_imagen_alternativa()
+            else:
+                print(f"❌ Error HTTP {response.status_code} al cargar {url}")
+                self.mostrar_imagen_alternativa()
+                
+        except Exception as e:
+            print(f"❌ Error cargando imagen desde URL: {e}")
+            self.mostrar_imagen_alternativa()
+        
+    # -------------------------
+    # Helpers: resolver rutas - MODIFICADO
     # -------------------------
     def _is_url(self, path):
         return isinstance(path, str) and (path.startswith("http://") or path.startswith("https://"))
@@ -120,11 +180,7 @@ class VentanaPrincipal(QMainWindow):
 
     def resolve_asset_path(self, ruta):
         """
-        Devuelve la primera ruta absoluta existente para la ruta 'ruta' guardada en BD.
-        Si 'ruta' es URL, devuelve la URL (pero NOTA: QPixmap/QIcon no cargan http directamente).
-        Si no encuentra nada, devuelve None.
-
-        Imprime por consola las candidatas y cuál existe (diagnóstico ampliado).
+        MODIFICADO: Primero busca en REMOTO, luego en LOCAL
         """
         if not ruta:
             return None
@@ -132,11 +188,21 @@ class VentanaPrincipal(QMainWindow):
         ruta_raw = ruta
         ruta = ruta.replace("\\", "/").strip()
 
-        # si es URL HTTP/HTTPS devolvemos tal cual (no se descarga automáticamente)
+        # ✅ 1. PRIMERO: Ver si es URL directa
         if self._is_url(ruta):
-            print(f"[resolve_asset_path] Ruta es URL: {ruta} (no se descarga automáticamente)")
+            print(f"[resolve_asset_path] Ruta es URL directa: {ruta}")
             return ruta
+        
+        # ✅ 2. INTENTAR REPOSITORIO REMOTO
+        print(f"[resolve_asset_path] Intentando repositorio REMOTO para: {ruta}")
+        url_remota = self.obtener_url_remota(ruta)
+        if url_remota and self.verificar_url_remota(url_remota):
+            print(f"[resolve_asset_path] ✅ Encontrado en REMOTO: {url_remota}")
+            return url_remota
 
+        # ✅ 3. SEGUNDO: Buscar en LOCAL (tu código original)
+        print(f"[resolve_asset_path] No encontrado en REMOTO, buscando en LOCAL...")
+        
         # si es path absoluto en Windows ó Unix y existe, lo devolvemos
         if os.path.isabs(ruta) and os.path.exists(ruta):
             p = os.path.normpath(ruta)
@@ -178,8 +244,7 @@ class VentanaPrincipal(QMainWindow):
         candidates.append(os.path.normpath(os.path.join(os.getcwd(), cleaned)))
 
         # Mostrar lo que intentamos
-        print("[resolve_asset_path] Ruta solicitada:", ruta_raw)
-        print("[resolve_asset_path] Candidatas (en este orden):")
+        print("[resolve_asset_path] Candidatas LOCALES (en este orden):")
         for c in candidates:
             try:
                 print("   -", c, " -> exists:", os.path.exists(c))
@@ -191,7 +256,7 @@ class VentanaPrincipal(QMainWindow):
             try:
                 if p and os.path.exists(p):
                     pnorm = os.path.normpath(p)
-                    print(f"[resolve_asset_path] Usando: {pnorm}")
+                    print(f"[resolve_asset_path] ✅ Encontrado en LOCAL: {pnorm}")
                     return pnorm
             except Exception:
                 pass
@@ -207,20 +272,19 @@ class VentanaPrincipal(QMainWindow):
         else:
             print("[resolve_asset_path] No se encontró ninguna coincidencia del nombre de archivo en el repo.")
 
-        print("[resolve_asset_path] No se encontró archivo en ninguna candidata.")
+        print("[resolve_asset_path] ❌ No se encontró archivo en REMOTO ni LOCAL.")
         return None
 
     def find_asset_or_fallback(self, ruta_bd, fallback_relative):
         """
-        Intenta resolver ruta desde BD. Si no existe, intenta fallback_relative relativo al project_root/frontend/public.
-        Devuelve una ruta absoluta existente o None.
+        MODIFICADO: Ahora maneja URLs remotas también
         """
         # 1) intentar BD
         if ruta_bd:
             ruta_res = self.resolve_asset_path(ruta_bd)
             
             if ruta_res:
-                # si es URL, devolvemos la URL (pero avisamos)
+                # si es URL, devolvemos la URL (ahora sí la podemos cargar)
                 if self._is_url(ruta_res):
                     print(f"[find_asset_or_fallback] Ruta BD es URL: {ruta_res}")
                     return ruta_res
@@ -346,12 +410,11 @@ class VentanaPrincipal(QMainWindow):
         self.bloquear_funcionalidades()
 
     # -------------------------
-    # Imagen central (hero)
+    # Imagen central (hero) - MODIFICADO
     # -------------------------
     def cargar_imagen_central(self):
         """
-        Carga la imagen hero desde la configuración guardada en BD.
-        Usa fallback si la ruta de la BD no existe.
+        Carga la imagen hero - AHORA maneja URLs remotas
         """
         try:
             ruta_relativa = None
@@ -376,11 +439,13 @@ class VentanaPrincipal(QMainWindow):
             print(f"[HERO] Intentando cargar imagen central desde: {ruta_resuelta}")
 
             if ruta_resuelta:
+                # ✅ MANEJAR URL REMOTA
                 if self._is_url(ruta_resuelta):
-                    print("[HERO] Atención: hero_imagen es una URL. QPixmap no cargará sin descarga.")
-                    self.mostrar_imagen_alternativa()
+                    print(f"[HERO] Cargando desde URL remota: {ruta_resuelta}")
+                    self.mostrar_imagen_desde_url(ruta_resuelta)
                     return
 
+                # ✅ MANEJAR ARCHIVO LOCAL (código original)
                 if os.path.exists(ruta_resuelta):
                     pixmap = QPixmap(ruta_resuelta)
                     if not pixmap.isNull() and hasattr(self, "label_imagen_central"):
@@ -550,28 +615,55 @@ class VentanaPrincipal(QMainWindow):
 
 
     # --------------------------------------
-    # Mostrar foto Usarioo en label
+    # Mostrar foto Usarioo en label - MODIFICADO
     # --------------------------------------
     def mostrar_foto_usuario_en_label(self, ruta_relativa, label, size=100):
         """
         Carga la foto de usuario circular en el QLabel indicado.
-        ruta_relativa: ruta relativa desde /assets/fotos_usuarios/...
-        label: QLabel donde se mostrará la foto
-        size: tamaño en pixeles
+        AHORA maneja URLs remotas también.
         """
         if ruta_relativa:
-            # Limpiamos "/" o "\" inicial
-            ruta_relativa = ruta_relativa.lstrip("/\\")
-            ruta_completa = os.path.join(os.getcwd(), "turismo-frontend\public", ruta_relativa)
-
-            if os.path.exists(ruta_completa):
-                pixmap = QPixmap(ruta_completa).scaled(size, size, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+            # Resolver ruta (puede ser local o remota)
+            ruta_resuelta = self.find_asset_or_fallback(ruta_relativa, "assets/iconos/usuario_default.png")
+            
+            if ruta_resuelta:
+                # ✅ MANEJAR URL REMOTA
+                if self._is_url(ruta_resuelta):
+                    try:
+                        response = requests.get(ruta_resuelta, timeout=10)
+                        if response.status_code == 200:
+                            pixmap = QPixmap()
+                            pixmap.loadFromData(response.content)
+                            print(f"✅ Foto usuario cargada desde URL: {ruta_resuelta}")
+                        else:
+                            print(f"❌ Error cargando foto desde URL: {response.status_code}")
+                            label.clear()
+                            label.setText("Sin foto")
+                            return
+                    except Exception as e:
+                        print(f"❌ Error cargando foto URL: {e}")
+                        label.clear()
+                        label.setText("Sin foto")
+                        return
+                else:
+                    # ✅ MANEJAR ARCHIVO LOCAL
+                    if os.path.exists(ruta_resuelta):
+                        pixmap = QPixmap(ruta_resuelta)
+                        print(f"✅ Foto usuario cargada local: {ruta_resuelta}")
+                    else:
+                        print(f"❌ No existe foto local: {ruta_resuelta}")
+                        label.clear()
+                        label.setText("Sin foto")
+                        return
+                
+                # Crear imagen circular
+                pixmap_escalada = pixmap.scaled(size, size, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
                 pixmap_circular = QPixmap(size, size)
                 pixmap_circular.fill(Qt.transparent)
 
                 painter = QPainter(pixmap_circular)
                 painter.setRenderHint(QPainter.Antialiasing)
-                brush = QBrush(pixmap)
+                brush = QBrush(pixmap_escalada)
                 painter.setBrush(brush)
                 painter.setPen(Qt.NoPen)
                 painter.drawEllipse(0, 0, size, size)
@@ -582,10 +674,10 @@ class VentanaPrincipal(QMainWindow):
                 label.setScaledContents(True)
             else:
                 label.clear()
-                label.setText("Sin foto usuario")
+                label.setText("Sin foto")
         else:
             label.clear()
-            label.setText("Sin foto usuario")
+            label.setText("Sin foto")
 
 
     # -------------------------
