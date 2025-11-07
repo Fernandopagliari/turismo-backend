@@ -41,7 +41,8 @@ def obtener_url_remota(ruta_relativa: str) -> str:
                 url_completa = f"{base_url}{ruta_limpia}"
                 return url_completa
     except Exception as e:
-        print(f"Error obteniendo URL remota: {e}")
+        # print(f"Error obteniendo URL remota: {e}")
+        pass
     return ""
 
 def verificar_url_remota(url: str) -> bool:
@@ -60,12 +61,12 @@ def resolver_ruta_hibrida(ruta_absoluta_db: str, ruta_relativa_db: str) -> str:
     if ruta_relativa_db:
         url_remota = obtener_url_remota(ruta_relativa_db)
         if url_remota and verificar_url_remota(url_remota):
-            print(f"✅ [SUB_SECCIONES] Encontrado en REMOTO: {url_remota}")
+            # print(f"✅ [SUB_SECCIONES] Encontrado en REMOTO: {url_remota}")
             return url_remota
     
     # 2. SEGUNDO: Buscar en LOCAL con ruta absoluta
     if ruta_absoluta_db and os.path.exists(ruta_absoluta_db):
-        print(f"✅ [SUB_SECCIONES] Encontrado en LOCAL: {ruta_absoluta_db}")
+        # print(f"✅ [SUB_SECCIONES] Encontrado en LOCAL: {ruta_absoluta_db}")
         return ruta_absoluta_db
     
     # 3. TERCERO: Buscar en estructura del proyecto
@@ -78,10 +79,10 @@ def resolver_ruta_hibrida(ruta_absoluta_db: str, ruta_relativa_db: str) -> str:
         
         for ruta in rutas_posibles:
             if os.path.exists(ruta):
-                print(f"✅ [SUB_SECCIONES] Encontrado en PROYECTO: {ruta}")
+                # print(f"✅ [SUB_SECCIONES] Encontrado en PROYECTO: {ruta}")
                 return ruta
     
-    print(f"❌ [SUB_SECCIONES] No encontrado: {ruta_relativa_db}")
+    # print(f"❌ [SUB_SECCIONES] No encontrado: {ruta_relativa_db}")
     return ""
 
 def cargar_imagen_desde_ruta(ruta_imagen: str, size: tuple = None):
@@ -101,7 +102,7 @@ def cargar_imagen_desde_ruta(ruta_imagen: str, size: tuple = None):
                 if not pixmap.isNull():
                     if size:
                         pixmap = pixmap.scaled(size[0], size[1], Qt.KeepAspectRatio, Qt.SmoothTransformation)
-                    print(f"✅ [SUB_SECCIONES] Imagen remota cargada: {ruta_imagen}")
+                    # print(f"✅ [SUB_SECCIONES] Imagen remota cargada: {ruta_imagen}")
                     return pixmap
             return None
         
@@ -111,13 +112,13 @@ def cargar_imagen_desde_ruta(ruta_imagen: str, size: tuple = None):
             if not pixmap.isNull():
                 if size:
                     pixmap = pixmap.scaled(size[0], size[1], Qt.KeepAspectRatio, Qt.SmoothTransformation)
-                print(f"✅ [SUB_SECCIONES] Imagen local cargada: {ruta_imagen}")
+                # print(f"✅ [SUB_SECCIONES] Imagen local cargada: {ruta_imagen}")
                 return pixmap
         
         return None
         
     except Exception as e:
-        print(f"❌ [SUB_SECCIONES] Error cargando imagen: {e}")
+        # print(f"❌ [SUB_SECCIONES] Error cargando imagen: {e}")
         return None
 
 def ruta_absoluta_desde_relativa(relativa):
@@ -278,7 +279,7 @@ class VentanaSubSecciones(QWidget):
                     'nombre': rz["nombre_region_zona"]
                 }
         except Exception as e:
-            print(f"❌ Error cargando regiones/zonas: {e}")
+            # print(f"❌ Error cargando regiones/zonas: {e}")
             QMessageBox.warning(self, "Error", f"No se pudieron cargar las regiones/zonas: {e}")
 
     def on_region_zona_changed(self, index):
@@ -361,7 +362,7 @@ class VentanaSubSecciones(QWidget):
                 self.comboBox_seccion1.addItem(s["nombre_seccion"], s["id_seccion"])
                 
         except Exception as e:
-            print(f"❌ Error cargando secciones: {e}")
+            # print(f"❌ Error cargando secciones: {e}")
             QMessageBox.warning(self, "Error", f"No se pudieron cargar las secciones: {e}")
 
     def on_combo_seccion_changed(self, index):
@@ -523,7 +524,7 @@ class VentanaSubSecciones(QWidget):
                     row += 1
                     
         except Exception as e:
-            print(f"❌ Error cargando subsecciones activas: {e}")
+            # print(f"❌ Error cargando subsecciones activas: {e}")
             QMessageBox.warning(self, "Error", f"No se pudieron cargar las subsecciones: {e}")
 
     def cargar_sub_secciones_inactivas(self):
@@ -579,7 +580,7 @@ class VentanaSubSecciones(QWidget):
                     row += 1
                     
         except Exception as e:
-            print(f"❌ Error cargando subsecciones inactivas: {e}")
+            # print(f"❌ Error cargando subsecciones inactivas: {e}")
             QMessageBox.warning(self, "Error", f"No se pudieron cargar las subsecciones inactivas: {e}")
 
     # -------------------------
@@ -801,7 +802,7 @@ class VentanaSubSecciones(QWidget):
                 label_obj.clear()
                 label_obj.setText("Error\ncargando\nimagen")
                 label_obj.setStyleSheet("background-color: #fed7d7; color: #c53030;")
-                print(f"Error cargando imagen preview: {e}")
+                # print(f"Error cargando imagen preview: {e}")
 
         # Guardar ruta de producción en el lineedit
         lineedit_obj.setText(ruta_relativa_produccion)
@@ -850,10 +851,10 @@ class VentanaSubSecciones(QWidget):
             conexion.commit()
             conexion.close()
             
-            print(f"✅ {campo} actualizado en BD: {ruta_relativa}")
+            # print(f"✅ {campo} actualizado en BD: {ruta_relativa}")
             
         except Exception as e:
-            print(f"❌ Error actualizando BD: {e}")
+            # print(f"❌ Error actualizando BD: {e}")
             QMessageBox.warning(self, "Error BD", f"No se pudo actualizar la ruta en la base de datos:\n{e}")
 
     # -------------------------

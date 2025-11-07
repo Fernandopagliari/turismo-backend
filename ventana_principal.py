@@ -85,11 +85,12 @@ class VentanaPrincipal(QMainWindow):
                     # Construir URL completa: base_url + assets/ + ruta_relativa
                     ruta_limpia = ruta_relativa.lstrip('/')
                     url_completa = f"{base_url}assets/{ruta_limpia}"
-                    print(f"[URL REMOTA] Construida: {url_completa}")
+                    # print(f"[URL REMOTA] Construida: {url_completa}")
                     return url_completa
                     
         except Exception as e:
-            print(f"Error obteniendo URL remota: {e}")
+            # print(f"Error obteniendo URL remota: {e}")
+            pass
         
         return ""
 
@@ -101,7 +102,7 @@ class VentanaPrincipal(QMainWindow):
             response = requests.head(url, timeout=5)
             return response.status_code == 200
         except Exception as e:
-            print(f"URL no accesible {url}: {e}")
+            # print(f"URL no accesible {url}: {e}")
             return False
 
     def mostrar_imagen_desde_url(self, url: str):
@@ -123,16 +124,16 @@ class VentanaPrincipal(QMainWindow):
                     )
                     self.label_imagen_central.setPixmap(scaled_pixmap)
                     self.label_imagen_central.setAlignment(Qt.AlignCenter)
-                    print(f"✅ Imagen remota cargada: {url}")
+                    # print(f"✅ Imagen remota cargada: {url}")
                 else:
-                    print("❌ No se pudo cargar imagen desde URL")
+                    # print("❌ No se pudo cargar imagen desde URL")
                     self.mostrar_imagen_alternativa()
             else:
-                print(f"❌ Error HTTP {response.status_code} al cargar {url}")
+                # print(f"❌ Error HTTP {response.status_code} al cargar {url}")
                 self.mostrar_imagen_alternativa()
                 
         except Exception as e:
-            print(f"❌ Error cargando imagen desde URL: {e}")
+            # print(f"❌ Error cargando imagen desde URL: {e}")
             self.mostrar_imagen_alternativa()
         
     # -------------------------
@@ -175,7 +176,7 @@ class VentanaPrincipal(QMainWindow):
                         break
             return matches
         except Exception as e:
-            print(f"[search] Error buscando {basename} en {project_root}: {e}")
+            # print(f"[search] Error buscando {basename} en {project_root}: {e}")
             return matches
 
     def resolve_asset_path(self, ruta):
@@ -190,23 +191,23 @@ class VentanaPrincipal(QMainWindow):
 
         # ✅ 1. PRIMERO: Ver si es URL directa
         if self._is_url(ruta):
-            print(f"[resolve_asset_path] Ruta es URL directa: {ruta}")
+            # print(f"[resolve_asset_path] Ruta es URL directa: {ruta}")
             return ruta
         
         # ✅ 2. INTENTAR REPOSITORIO REMOTO
-        print(f"[resolve_asset_path] Intentando repositorio REMOTO para: {ruta}")
+        # print(f"[resolve_asset_path] Intentando repositorio REMOTO para: {ruta}")
         url_remota = self.obtener_url_remota(ruta)
         if url_remota and self.verificar_url_remota(url_remota):
-            print(f"[resolve_asset_path] ✅ Encontrado en REMOTO: {url_remota}")
+            # print(f"[resolve_asset_path] ✅ Encontrado en REMOTO: {url_remota}")
             return url_remota
 
         # ✅ 3. SEGUNDO: Buscar en LOCAL (tu código original)
-        print(f"[resolve_asset_path] No encontrado en REMOTO, buscando en LOCAL...")
+        # print(f"[resolve_asset_path] No encontrado en REMOTO, buscando en LOCAL...")
         
         # si es path absoluto en Windows ó Unix y existe, lo devolvemos
         if os.path.isabs(ruta) and os.path.exists(ruta):
             p = os.path.normpath(ruta)
-            print(f"[resolve_asset_path] Ruta absoluta encontrada: {p}")
+            # print(f"[resolve_asset_path] Ruta absoluta encontrada: {p}")
             return p
 
         # paths del proyecto
@@ -244,35 +245,37 @@ class VentanaPrincipal(QMainWindow):
         candidates.append(os.path.normpath(os.path.join(os.getcwd(), cleaned)))
 
         # Mostrar lo que intentamos
-        print("[resolve_asset_path] Candidatas LOCALES (en este orden):")
-        for c in candidates:
-            try:
-                print("   -", c, " -> exists:", os.path.exists(c))
-            except Exception:
-                print("   -", c, " -> exists: (error comprobando)")
+        # print("[resolve_asset_path] Candidatas LOCALES (en este orden):")
+        # for c in candidates:
+            # try:
+                # print("   -", c, " -> exists:", os.path.exists(c))
+            # except Exception:
+                # print("   -", c, " -> exists: (error comprobando)")
 
         # Devolver la primera que exista
         for p in candidates:
             try:
                 if p and os.path.exists(p):
                     pnorm = os.path.normpath(p)
-                    print(f"[resolve_asset_path] ✅ Encontrado en LOCAL: {pnorm}")
+                    # print(f"[resolve_asset_path] ✅ Encontrado en LOCAL: {pnorm}")
                     return pnorm
             except Exception:
                 pass
 
         # Si no encontramos nada, intentamos buscar el nombre del archivo en el project_root para dar pista al dev
         basename = os.path.basename(cleaned)
-        print(f"[resolve_asset_path] No se encontró archivo en candidatas. Buscando '{basename}' dentro de {project_root} (esto puede tardar unos segundos)...")
+        # print(f"[resolve_asset_path] No se encontró archivo en candidatas. Buscando '{basename}' dentro de {project_root} (esto puede tardar unos segundos)...")
         matches = self._search_for_filename_in_project(basename, project_root, max_matches=20)
         if matches:
-            print("[resolve_asset_path] Se encontraron coincidencias en el repo (posibles ubicaciones del archivo):")
+            # print("[resolve_asset_path] Se encontraron coincidencias en el repo (posibles ubicaciones del archivo):")
             for m in matches:
-                print("   -", m)
+                # print("   -", m)
+                pass
         else:
-            print("[resolve_asset_path] No se encontró ninguna coincidencia del nombre de archivo en el repo.")
+            # print("[resolve_asset_path] No se encontró ninguna coincidencia del nombre de archivo en el repo.")
+            pass
 
-        print("[resolve_asset_path] ❌ No se encontró archivo en REMOTO ni LOCAL.")
+        # print("[resolve_asset_path] ❌ No se encontró archivo en REMOTO ni LOCAL.")
         return None
 
     def find_asset_or_fallback(self, ruta_bd, fallback_relative):
@@ -286,36 +289,37 @@ class VentanaPrincipal(QMainWindow):
             if ruta_res:
                 # si es URL, devolvemos la URL (ahora sí la podemos cargar)
                 if self._is_url(ruta_res):
-                    print(f"[find_asset_or_fallback] Ruta BD es URL: {ruta_res}")
+                    # print(f"[find_asset_or_fallback] Ruta BD es URL: {ruta_res}")
                     return ruta_res
                 if os.path.exists(ruta_res):
-                    print(f"[find_asset_or_fallback] Ruta BD válida: {ruta_res}")
+                    # print(f"[find_asset_or_fallback] Ruta BD válida: {ruta_res}")
                     return ruta_res
                 else:
-                    print(f"[find_asset_or_fallback] La ruta resuelta desde BD no existe en disco: {ruta_res}")
+                    # print(f"[find_asset_or_fallback] La ruta resuelta desde BD no existe en disco: {ruta_res}")
+                    pass
             
         # 2) fallback en frontend/public/<fallback_relative>
         backend_dir = os.path.dirname(os.path.abspath(__file__))
         project_root = os.path.abspath(os.path.join(backend_dir, "..", ".."))
         fallback_clean = fallback_relative.lstrip("./").lstrip("/")
         fallback_abs = os.path.join(project_root, "frontend", "public", fallback_clean)
-        print(f"[find_asset_or_fallback] Intentando fallback: {fallback_abs} (exists: {os.path.exists(fallback_abs)})")
+        # print(f"[find_asset_or_fallback] Intentando fallback: {fallback_abs} (exists: {os.path.exists(fallback_abs)})")
         if os.path.exists(fallback_abs):
             return os.path.normpath(fallback_abs)
 
         # 3) intentar fallback relativo al backend
         fallback_backend = os.path.join(backend_dir, fallback_clean)
-        print(f"[find_asset_or_fallback] Intentando fallback backend: {fallback_backend} (exists: {os.path.exists(fallback_backend)})")
+        # print(f"[find_asset_or_fallback] Intentando fallback backend: {fallback_backend} (exists: {os.path.exists(fallback_backend)})")
         if os.path.exists(fallback_backend):
             return os.path.normpath(fallback_backend)
 
         # 4) intentar fallback en cwd
         fallback_cwd = os.path.normpath(os.path.join(os.getcwd(), fallback_clean))
-        print(f"[find_asset_or_fallback] Intentando fallback cwd: {fallback_cwd} (exists: {os.path.exists(fallback_cwd)})")
+        # print(f"[find_asset_or_fallback] Intentando fallback cwd: {fallback_cwd} (exists: {os.path.exists(fallback_cwd)})")
         if os.path.exists(fallback_cwd):
             return fallback_cwd
 
-        print("[find_asset_or_fallback] No se encontró ni BD ni fallback.")
+        # print("[find_asset_or_fallback] No se encontró ni BD ni fallback.")
         return None
 
     # -------------------------
@@ -336,11 +340,11 @@ class VentanaPrincipal(QMainWindow):
             conn.close()
             if fila:
                 self.config = fila
-                print("[CONFIG] Configuración cargada desde BD:", fila)
+                # print("[CONFIG] Configuración cargada desde BD:", fila)
             else:
                 self.config = None
         except Exception as e:
-            print("Error cargando configuración desde BD:", e)
+            # print("Error cargando configuración desde BD:", e)
             self.config = None
 
     # -------------------------
@@ -357,8 +361,8 @@ class VentanaPrincipal(QMainWindow):
         self.menu_icon_path = self.find_asset_or_fallback(icono_menu_bd, "assets/iconos/menu.png")
         self.close_icon_path = self.find_asset_or_fallback(icono_cerrar_bd, "assets/iconos/cerrar.png")
 
-        print(f"[ICONOS] Hamburguesa → {self.menu_icon_path}")
-        print(f"[ICONOS] Cerrar → {self.close_icon_path}")
+        # print(f"[ICONOS] Hamburguesa → {self.menu_icon_path}")
+        # print(f"[ICONOS] Cerrar → {self.close_icon_path}")
 
         try:
             # Si la ruta es una URL (http/https) no intentamos usar QIcon con la URL
@@ -367,11 +371,13 @@ class VentanaPrincipal(QMainWindow):
             else:
                 # intentar si es URL (indicamos en consola) o dejar sin icono
                 if self.menu_icon_path and self._is_url(self.menu_icon_path):
-                    print("[configurar_interfaz] Atención: icono menú es URL. QIcon no carga URLs directamente.")
+                    # print("[configurar_interfaz] Atención: icono menú es URL. QIcon no carga URLs directamente.")
+                    pass
                 self.btnMenu.setIcon(QIcon())
             self.btnMenu.setIconSize(QSize(40, 40))
         except Exception as e:
-            print("Error asignando icono menú:", e)
+            # print("Error asignando icono menú:", e)
+            pass
 
         try:
             self.btnBackendDeploy.setVisible(False)
@@ -400,7 +406,8 @@ class VentanaPrincipal(QMainWindow):
             self.btnBuildDeploy.clicked.connect(self.abrir_gestion_buildDeploy)
             self.btnBackendDeploy.clicked.connect(self.abrir_gestion_backendDeploy)
         except Exception as e:
-            print("Error conectando botones:", e)
+            # print("Error conectando botones:", e)
+            pass
 
         self.usuario_actual = None
         try:
@@ -431,17 +438,17 @@ class VentanaPrincipal(QMainWindow):
                     ruta_relativa = res.get("hero_imagen")
 
             if not ruta_relativa:
-                print("No hay imagen configurada en la base de datos")
+                # print("No hay imagen configurada en la base de datos")
                 self.mostrar_imagen_alternativa()
                 return
 
             ruta_resuelta = self.find_asset_or_fallback(ruta_relativa, "assets/imagenes/hongo_ischigualasto.jpg")
-            print(f"[HERO] Intentando cargar imagen central desde: {ruta_resuelta}")
+            # print(f"[HERO] Intentando cargar imagen central desde: {ruta_resuelta}")
 
             if ruta_resuelta:
                 # ✅ MANEJAR URL REMOTA
                 if self._is_url(ruta_resuelta):
-                    print(f"[HERO] Cargando desde URL remota: {ruta_resuelta}")
+                    # print(f"[HERO] Cargando desde URL remota: {ruta_resuelta}")
                     self.mostrar_imagen_desde_url(ruta_resuelta)
                     return
 
@@ -458,16 +465,16 @@ class VentanaPrincipal(QMainWindow):
                         self.label_imagen_central.setAlignment(Qt.AlignCenter)
                         self.label_imagen_central.setStyleSheet("")
                     else:
-                        print("Error: la imagen no se pudo cargar (pixmap inválido).")
+                        # print("Error: la imagen no se pudo cargar (pixmap inválido).")
                         self.mostrar_imagen_alternativa()
                 else:
-                    print(f"Error: No existe la ruta: {ruta_resuelta}")
+                    # print(f"Error: No existe la ruta: {ruta_resuelta}")
                     self.mostrar_imagen_alternativa()
             else:
-                print("[HERO] No se resolvió ninguna ruta válida para hero.")
+                # print("[HERO] No se resolvió ninguna ruta válida para hero.")
                 self.mostrar_imagen_alternativa()
         except Exception as e:
-            print(f"Error al cargar imagen central: {e}")
+            # print(f"Error al cargar imagen central: {e}")
             self.mostrar_imagen_alternativa()
 
     def mostrar_imagen_alternativa(self):
@@ -634,14 +641,14 @@ class VentanaPrincipal(QMainWindow):
                         if response.status_code == 200:
                             pixmap = QPixmap()
                             pixmap.loadFromData(response.content)
-                            print(f"✅ Foto usuario cargada desde URL: {ruta_resuelta}")
+                            # print(f"✅ Foto usuario cargada desde URL: {ruta_resuelta}")
                         else:
-                            print(f"❌ Error cargando foto desde URL: {response.status_code}")
+                            # print(f"❌ Error cargando foto desde URL: {response.status_code}")
                             label.clear()
                             label.setText("Sin foto")
                             return
                     except Exception as e:
-                        print(f"❌ Error cargando foto URL: {e}")
+                        # print(f"❌ Error cargando foto URL: {e}")
                         label.clear()
                         label.setText("Sin foto")
                         return
@@ -649,9 +656,9 @@ class VentanaPrincipal(QMainWindow):
                     # ✅ MANEJAR ARCHIVO LOCAL
                     if os.path.exists(ruta_resuelta):
                         pixmap = QPixmap(ruta_resuelta)
-                        print(f"✅ Foto usuario cargada local: {ruta_resuelta}")
+                        # print(f"✅ Foto usuario cargada local: {ruta_resuelta}")
                     else:
-                        print(f"❌ No existe foto local: {ruta_resuelta}")
+                        # print(f"❌ No existe foto local: {ruta_resuelta}")
                         label.clear()
                         label.setText("Sin foto")
                         return

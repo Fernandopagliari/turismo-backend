@@ -35,7 +35,8 @@ def obtener_url_remota(ruta_relativa: str) -> str:
                 url_completa = f"{base_url}assets/{ruta_limpia}"
                 return url_completa
     except Exception as e:
-        print(f"Error obteniendo URL remota: {e}")
+        # print(f"Error obteniendo URL remota: {e}")
+        pass
     return ""
 
 def verificar_url_remota(url: str) -> bool:
@@ -54,12 +55,12 @@ def resolver_ruta_hibrida(ruta_absoluta_db: str, ruta_relativa_db: str) -> str:
     if ruta_relativa_db:
         url_remota = obtener_url_remota(ruta_relativa_db)
         if url_remota and verificar_url_remota(url_remota):
-            print(f"✅ [REGIONES] Encontrado en REMOTO: {url_remota}")
+            # print(f"✅ [REGIONES] Encontrado en REMOTO: {url_remota}")
             return url_remota
     
     # 2. SEGUNDO: Buscar en LOCAL con ruta absoluta
     if ruta_absoluta_db and os.path.exists(ruta_absoluta_db):
-        print(f"✅ [REGIONES] Encontrado en LOCAL: {ruta_absoluta_db}")
+        # print(f"✅ [REGIONES] Encontrado en LOCAL: {ruta_absoluta_db}")
         return ruta_absoluta_db
     
     # 3. TERCERO: Buscar en estructura del proyecto
@@ -72,10 +73,10 @@ def resolver_ruta_hibrida(ruta_absoluta_db: str, ruta_relativa_db: str) -> str:
         
         for ruta in rutas_posibles:
             if os.path.exists(ruta):
-                print(f"✅ [REGIONES] Encontrado en PROYECTO: {ruta}")
+                # print(f"✅ [REGIONES] Encontrado en PROYECTO: {ruta}")
                 return ruta
     
-    print(f"❌ [REGIONES] No encontrado: {ruta_relativa_db}")
+    # print(f"❌ [REGIONES] No encontrado: {ruta_relativa_db}")
     return ""
 
 def cargar_imagen_desde_ruta(ruta_imagen: str, size: int = 75):
@@ -93,7 +94,7 @@ def cargar_imagen_desde_ruta(ruta_imagen: str, size: int = 75):
                 pixmap = QPixmap()
                 pixmap.loadFromData(response.content)
                 if not pixmap.isNull():
-                    print(f"✅ [REGIONES] Imagen remota cargada: {ruta_imagen}")
+                    # print(f"✅ [REGIONES] Imagen remota cargada: {ruta_imagen}")
                     return pixmap
             return None
         
@@ -101,13 +102,13 @@ def cargar_imagen_desde_ruta(ruta_imagen: str, size: int = 75):
         elif os.path.exists(ruta_imagen):
             pixmap = QPixmap(ruta_imagen)
             if not pixmap.isNull():
-                print(f"✅ [REGIONES] Imagen local cargada: {ruta_imagen}")
+                # print(f"✅ [REGIONES] Imagen local cargada: {ruta_imagen}")
                 return pixmap
         
         return None
         
     except Exception as e:
-        print(f"❌ [REGIONES] Error cargando imagen: {e}")
+        # print(f"❌ [REGIONES] Error cargando imagen: {e}")
         return None
 
 def ruta_absoluta_desde_relativa(relativa):
@@ -530,9 +531,10 @@ class VentanaRegionesZonas(QWidget):
                 """, (ruta_relativa, self.region_zona_seleccionada_id))
                 conexion.commit()
                 conexion.close()
-                print(f"✅ Imagen actualizada en BD: {ruta_relativa}")
+                # print(f"✅ Imagen actualizada en BD: {ruta_relativa}")
             except Exception as e:
                 QMessageBox.warning(self, "Error", f"No se pudo actualizar la imagen en BD:\n{e}")
         else:
             # Si no hay región seleccionada, solo mostrar mensaje informativo
-            print(f"ℹ️  Imagen preparada para nueva región/zona: {ruta_relativa}")
+            # print(f"ℹ️  Imagen preparada para nueva región/zona: {ruta_relativa}")
+            pass

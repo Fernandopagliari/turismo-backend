@@ -35,7 +35,8 @@ def obtener_url_remota(ruta_relativa: str) -> str:
                 url_completa = f"{base_url}{ruta_limpia}"
                 return url_completa
     except Exception as e:
-        print(f"Error obteniendo URL remota: {e}")
+        # print(f"Error obteniendo URL remota: {e}")
+        pass
     return ""
 
 def verificar_url_remota(url: str) -> bool:
@@ -54,14 +55,15 @@ def resolver_ruta_hibrida(ruta_absoluta_db: str, ruta_relativa_db: str) -> str:
     if ruta_relativa_db:
         url_remota = obtener_url_remota(ruta_relativa_db)
         if url_remota and verificar_url_remota(url_remota):
-            print(f"✅ [USUARIOS] Encontrado en REMOTO: {url_remota}")
+            # print(f"✅ [USUARIOS] Encontrado en REMOTO: {url_remota}")
             return url_remota
         else:
-            print(f"⚠️  [USUARIOS] Remoto no disponible, buscando local: {ruta_relativa_db}")
+            # print(f"⚠️  [USUARIOS] Remoto no disponible, buscando local: {ruta_relativa_db}")
+            pass
     
     # 2. SEGUNDO: Buscar en LOCAL con ruta absoluta
     if ruta_absoluta_db and os.path.exists(ruta_absoluta_db):
-        print(f"✅ [USUARIOS] Encontrado en LOCAL: {ruta_absoluta_db}")
+        # print(f"✅ [USUARIOS] Encontrado en LOCAL: {ruta_absoluta_db}")
         return ruta_absoluta_db
     
     # 3. TERCERO: Buscar en estructura del proyecto
@@ -75,10 +77,10 @@ def resolver_ruta_hibrida(ruta_absoluta_db: str, ruta_relativa_db: str) -> str:
         
         for ruta in rutas_posibles:
             if ruta and os.path.exists(ruta):
-                print(f"✅ [USUARIOS] Encontrado en PROYECTO: {ruta}")
+                # print(f"✅ [USUARIOS] Encontrado en PROYECTO: {ruta}")
                 return ruta
     
-    print(f"❌ [USUARIOS] No encontrado: {ruta_relativa_db}")
+    # print(f"❌ [USUARIOS] No encontrado: {ruta_relativa_db}")
     return ""
 
 def cargar_imagen_desde_ruta(ruta_imagen: str, size: tuple = None):
@@ -98,7 +100,7 @@ def cargar_imagen_desde_ruta(ruta_imagen: str, size: tuple = None):
                 if not pixmap.isNull():
                     if size:
                         pixmap = pixmap.scaled(size[0], size[1], Qt.KeepAspectRatio, Qt.SmoothTransformation)
-                    print(f"✅ [USUARIOS] Imagen remota cargada: {ruta_imagen}")
+                    # print(f"✅ [USUARIOS] Imagen remota cargada: {ruta_imagen}")
                     return pixmap
             return None
         
@@ -108,13 +110,13 @@ def cargar_imagen_desde_ruta(ruta_imagen: str, size: tuple = None):
             if not pixmap.isNull():
                 if size:
                     pixmap = pixmap.scaled(size[0], size[1], Qt.KeepAspectRatio, Qt.SmoothTransformation)
-                print(f"✅ [USUARIOS] Imagen local cargada: {ruta_imagen}")
+                # print(f"✅ [USUARIOS] Imagen local cargada: {ruta_imagen}")
                 return pixmap
         
         return None
         
     except Exception as e:
-        print(f"❌ [USUARIOS] Error cargando imagen: {e}")
+        # print(f"❌ [USUARIOS] Error cargando imagen: {e}")
         return None
 
 def ruta_absoluta_desde_relativa(relativa: str) -> str:
@@ -284,7 +286,7 @@ class VentanaUsuarios(QWidget):
                 self.mostrar_foto_placeholder("Foto no encontrada")
                 
         except Exception as e:
-            print(f"❌ Error cargando foto usuario {ruta_relativa}: {e}")
+            # print(f"❌ Error cargando foto usuario {ruta_relativa}: {e}")
             self.mostrar_foto_placeholder("Error")
 
     def mostrar_foto_placeholder(self, texto):
@@ -381,7 +383,7 @@ class VentanaUsuarios(QWidget):
                     self.tabla_usuarios_activos.setItem(row_number, column_number, item)
                     
         except Exception as e:
-            print(f"❌ Error cargando usuarios: {e}")
+            # print(f"❌ Error cargando usuarios: {e}")
             QMessageBox.warning(self, "Error", f"No se pudieron cargar los usuarios: {e}")
 
     def cargar_usuarios_inactivos(self):
@@ -408,7 +410,7 @@ class VentanaUsuarios(QWidget):
                     self.tabla_usuarios_inactivos.setItem(row_number, column_number, item)
                     
         except Exception as e:
-            print(f"❌ Error cargando usuarios inactivos: {e}")
+            # print(f"❌ Error cargando usuarios inactivos: {e}")
             QMessageBox.warning(self, "Error", f"No se pudieron cargar los usuarios inactivos: {e}")
 
     def agregar_usuario(self):
@@ -580,9 +582,9 @@ class VentanaUsuarios(QWidget):
             """, (ruta_relativa, self.usuario_seleccionado_id))
             conexion.commit()
             conexion.close()
-            print(f"✅ Foto actualizada en BD: {ruta_relativa}")
+            # print(f"✅ Foto actualizada en BD: {ruta_relativa}")
         except Exception as e:
-            print(f"❌ Error actualizando foto en BD: {e}")
+            # print(f"❌ Error actualizando foto en BD: {e}")
             QMessageBox.warning(self, "Error BD", f"No se pudo actualizar la foto en la base de datos:\n{e}")
 
     def existe_foto_en_uso(self, ruta_foto, id_actual=None):
@@ -601,7 +603,7 @@ class VentanaUsuarios(QWidget):
             conexion.close()
             return resultado > 0
         except Exception as e:
-            print(f"❌ Error verificando foto en uso: {e}")
+            # print(f"❌ Error verificando foto en uso: {e}")
             return False
 
     def limpiar_formulario(self):

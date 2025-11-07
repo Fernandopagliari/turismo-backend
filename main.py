@@ -35,7 +35,7 @@ if __name__ == "__main__":
             QMessageBox.information(None, "Aviso de licencia", mensaje)
 
     # 3) INICIALIZAR BASE DE DATOS DEL HOSTING (automáticamente obtiene configuración)
-    print("Inicializando base de datos del hosting...")
+    #print("Inicializando base de datos del hosting...")
     if not inicializar_base_datos_hosting():
         QMessageBox.critical(None, "Error de Hosting", 
                            "No se pudo inicializar la base de datos del hosting.\n"
@@ -45,11 +45,12 @@ if __name__ == "__main__":
                            "- El servidor hosting esté disponible")
         sys.exit(1)
     else:
-        print("[SUCCESS] Base de datos del hosting inicializada correctamente")
+        #print("[SUCCESS] Base de datos del hosting inicializada correctamente")
+        QMessageBox.information(None, "Conexión hosting", "Base de datos del hosting inicializada correctamente.")
 
     # 4) Abrir principal
     ventana_principal = VentanaPrincipal()
     ventana_principal.show()
     
-    print("[SUCCESS] Aplicación iniciada correctamente")
+    #print("[SUCCESS] Aplicación iniciada correctamente")
     sys.exit(app.exec())

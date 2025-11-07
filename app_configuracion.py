@@ -16,7 +16,7 @@ def imagen_a_base64(ruta_imagen):
             base64_encoded = base64.b64encode(image_data).decode('utf-8')
             return f"data:image/jpeg;base64,{base64_encoded}"
     except Exception as e:
-        print(f"Error procesando imagen: {e}")
+        # print(f"Error procesando imagen: {e}")
         return None
 
 def convertir_ruta_produccion(ruta_absoluta):
@@ -68,7 +68,8 @@ def obtener_url_remota(ruta_relativa: str) -> str:
                 url_completa = f"{base_url}assets/{ruta_limpia}"
                 return url_completa
     except Exception as e:
-        print(f"Error obteniendo URL remota: {e}")
+        # print(f"Error obteniendo URL remota: {e}")
+        pass
     return ""
 
 def verificar_url_remota(url: str) -> bool:
@@ -87,12 +88,12 @@ def resolver_ruta_hibrida(ruta_absoluta_db: str, ruta_relativa_db: str) -> str:
     if ruta_relativa_db:
         url_remota = obtener_url_remota(ruta_relativa_db)
         if url_remota and verificar_url_remota(url_remota):
-            print(f"✅ [CONFIG] Encontrado en REMOTO: {url_remota}")
+            # print(f"✅ [CONFIG] Encontrado en REMOTO: {url_remota}")
             return url_remota
     
     # 2. SEGUNDO: Buscar en LOCAL con ruta absoluta
     if ruta_absoluta_db and os.path.exists(ruta_absoluta_db):
-        print(f"✅ [CONFIG] Encontrado en LOCAL: {ruta_absoluta_db}")
+        # print(f"✅ [CONFIG] Encontrado en LOCAL: {ruta_absoluta_db}")
         return ruta_absoluta_db
     
     # 3. TERCERO: Buscar en estructura del proyecto
@@ -105,10 +106,10 @@ def resolver_ruta_hibrida(ruta_absoluta_db: str, ruta_relativa_db: str) -> str:
         
         for ruta in rutas_posibles:
             if os.path.exists(ruta):
-                print(f"✅ [CONFIG] Encontrado en PROYECTO: {ruta}")
+                # print(f"✅ [CONFIG] Encontrado en PROYECTO: {ruta}")
                 return ruta
     
-    print(f"❌ [CONFIG] No encontrado: {ruta_relativa_db}")
+    # print(f"❌ [CONFIG] No encontrado: {ruta_relativa_db}")
     return ""
 
 def cargar_imagen_desde_ruta(ruta_imagen: str, label: QLabel, size: int):
@@ -128,7 +129,7 @@ def cargar_imagen_desde_ruta(ruta_imagen: str, label: QLabel, size: int):
                 pixmap = QPixmap()
                 pixmap.loadFromData(response.content)
                 if not pixmap.isNull():
-                    print(f"✅ [CONFIG] Imagen remota cargada: {ruta_imagen}")
+                    # print(f"✅ [CONFIG] Imagen remota cargada: {ruta_imagen}")
                     return pixmap
             return None
         
@@ -136,13 +137,13 @@ def cargar_imagen_desde_ruta(ruta_imagen: str, label: QLabel, size: int):
         elif os.path.exists(ruta_imagen):
             pixmap = QPixmap(ruta_imagen)
             if not pixmap.isNull():
-                print(f"✅ [CONFIG] Imagen local cargada: {ruta_imagen}")
+                # print(f"✅ [CONFIG] Imagen local cargada: {ruta_imagen}")
                 return pixmap
         
         return None
         
     except Exception as e:
-        print(f"❌ [CONFIG] Error cargando imagen: {e}")
+        # print(f"❌ [CONFIG] Error cargando imagen: {e}")
         return None
 
 class VentanaConfiguracion(QWidget):
