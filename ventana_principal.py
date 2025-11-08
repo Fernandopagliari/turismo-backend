@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
-# ventana_principal.py - VERSIÓN CON BÚSQUEDA REMOTO → LOCAL
+# ventana_principal.py - VERSIÓN CON BÚSQUEDA REMOTO → LOCAL Y CACHE
 import os
 import sys
 import requests
+import time
+import hashlib
 from PyQt5.QtWidgets import QMainWindow, QApplication, QMessageBox
 from PyQt5 import uic
 from PyQt5.QtGui import QIcon, QPixmap, QPainter, QBrush
@@ -20,6 +22,85 @@ from app_regiones_zonas import VentanaRegionesZonas
 from build_deploy import DialogoBuildDeploy
 from backend_deploy import DialogoBackendDeploy
 
+# -------------------------
+# CACHE DE IMÁGENES PARA MEJORAR VELOCIDAD
+# -------------------------
+_image_cache = {}
+_CACHE_MAX_SIZE = 100  # Máximo de imágenes en cache
+_CACHE_TIMEOUT = 300   # 5 minutos en segundos
+
+def limpiar_cache_antiguo():
+    """Limpia entradas de cache antiguas"""
+    global _image_cache
+    current_time = time.time()
+    keys_to_remove = []
+    
+    for key, (timestamp, pixmap) in _image_cache.items():
+        if current_time - timestamp > _CACHE_TIMEOUT:
+            keys_to_remove.append(key)
+    
+    for key in keys_to_remove:
+        del _image_cache[key]
+
+def obtener_clave_cache(ruta_imagen, size=None):
+    """Genera clave única para el cache"""
+    clave = f"{ruta_imagen}_{size}"
+    return hashlib.md5(clave.encode()).hexdigest()
+
+def cargar_imagen_desde_ruta_con_cache(ruta_imagen: str, size: tuple = None):
+    """
+    Carga imagen desde URL remota o archivo local - CON CACHE
+    (Función auxiliar para usar el sistema de cache)
+    """
+    if not ruta_imagen:
+        return None
+
+    # Limpiar cache antiguo periódicamente
+    if len(_image_cache) > _CACHE_MAX_SIZE:
+        limpiar_cache_antiguo()
+
+    # Verificar cache primero
+    cache_key = obtener_clave_cache(ruta_imagen, size)
+    if cache_key in _image_cache:
+        timestamp, pixmap = _image_cache[cache_key]
+        if time.time() - timestamp < _CACHE_TIMEOUT:
+            return pixmap
+        else:
+            del _image_cache[cache_key]
+
+    try:
+        # ✅ MANEJAR URL REMOTA (con timeout optimizado)
+        if _is_url(ruta_imagen):
+            response = requests.get(ruta_imagen, timeout=5)  # Timeout reducido
+            if response.status_code == 200:
+                pixmap = QPixmap()
+                pixmap.loadFromData(response.content)
+                if not pixmap.isNull():
+                    if size:
+                        pixmap = pixmap.scaled(size[0], size[1], Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                    # Guardar en cache
+                    _image_cache[cache_key] = (time.time(), pixmap)
+                    return pixmap
+            return None
+        
+        # ✅ MANEJAR ARCHIVO LOCAL
+        elif os.path.exists(ruta_imagen):
+            pixmap = QPixmap(ruta_imagen)
+            if not pixmap.isNull():
+                if size:
+                    pixmap = pixmap.scaled(size[0], size[1], Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                # Guardar en cache
+                _image_cache[cache_key] = (time.time(), pixmap)
+                return pixmap
+        
+        return None
+        
+    except Exception as e:
+        return None
+
+def _is_url(path):
+    """Verifica si una ruta es una URL"""
+    return isinstance(path, str) and (path.startswith("http://") or path.startswith("https://"))
 
 class VentanaPrincipal(QMainWindow):
     def __init__(self):
@@ -96,10 +177,10 @@ class VentanaPrincipal(QMainWindow):
 
     def verificar_url_remota(self, url: str) -> bool:
         """
-        Verifica si una URL remota es accesible
+        Verifica si una URL remota es accesible - OPTIMIZADA CON TIMEOUT REDUCIDO
         """
         try:
-            response = requests.head(url, timeout=5)
+            response = requests.head(url, timeout=3)  # Timeout más corto
             return response.status_code == 200
         except Exception as e:
             # print(f"URL no accesible {url}: {e}")
@@ -107,29 +188,19 @@ class VentanaPrincipal(QMainWindow):
 
     def mostrar_imagen_desde_url(self, url: str):
         """
-        Carga y muestra imagen desde URL remota
+        Carga y muestra imagen desde URL remota - CON CACHE
         """
         try:
-            response = requests.get(url, timeout=10)
-            if response.status_code == 200:
-                # Crear QPixmap desde los datos de la respuesta
-                pixmap = QPixmap()
-                pixmap.loadFromData(response.content)
-                
-                if not pixmap.isNull():
-                    scaled_pixmap = pixmap.scaled(
-                        self.label_imagen_central.size(),
-                        Qt.KeepAspectRatio,
-                        Qt.SmoothTransformation
-                    )
-                    self.label_imagen_central.setPixmap(scaled_pixmap)
-                    self.label_imagen_central.setAlignment(Qt.AlignCenter)
-                    # print(f"✅ Imagen remota cargada: {url}")
-                else:
-                    # print("❌ No se pudo cargar imagen desde URL")
-                    self.mostrar_imagen_alternativa()
+            # ✅ OPTIMIZADO: Usar sistema de cache
+            pixmap = cargar_imagen_desde_ruta_con_cache(url, 
+                (self.label_imagen_central.width(), self.label_imagen_central.height()))
+            
+            if pixmap and not pixmap.isNull():
+                self.label_imagen_central.setPixmap(pixmap)
+                self.label_imagen_central.setAlignment(Qt.AlignCenter)
+                # print(f"✅ Imagen remota cargada: {url}")
             else:
-                # print(f"❌ Error HTTP {response.status_code} al cargar {url}")
+                # print("❌ No se pudo cargar imagen desde URL")
                 self.mostrar_imagen_alternativa()
                 
         except Exception as e:
@@ -140,6 +211,7 @@ class VentanaPrincipal(QMainWindow):
     # Helpers: resolver rutas - MODIFICADO
     # -------------------------
     def _is_url(self, path):
+        """Verifica si una ruta es una URL - MÉTODO DE INSTANCIA"""
         return isinstance(path, str) and (path.startswith("http://") or path.startswith("https://"))
 
     def _normalize_db_path(self, ruta):
@@ -365,14 +437,16 @@ class VentanaPrincipal(QMainWindow):
         # print(f"[ICONOS] Cerrar → {self.close_icon_path}")
 
         try:
-            # Si la ruta es una URL (http/https) no intentamos usar QIcon con la URL
-            if self.menu_icon_path and not self._is_url(self.menu_icon_path) and os.path.exists(self.menu_icon_path):
-                self.btnMenu.setIcon(QIcon(self.menu_icon_path))
+            # ✅ OPTIMIZADO: Cargar iconos usando sistema con CACHE
+            if self.menu_icon_path:
+                if self._is_url(self.menu_icon_path):
+                    # Para URLs, usar el sistema de cache
+                    pixmap = cargar_imagen_desde_ruta_con_cache(self.menu_icon_path, (40, 40))
+                    if pixmap and not pixmap.isNull():
+                        self.btnMenu.setIcon(QIcon(pixmap))
+                elif os.path.exists(self.menu_icon_path):
+                    self.btnMenu.setIcon(QIcon(self.menu_icon_path))
             else:
-                # intentar si es URL (indicamos en consola) o dejar sin icono
-                if self.menu_icon_path and self._is_url(self.menu_icon_path):
-                    # print("[configurar_interfaz] Atención: icono menú es URL. QIcon no carga URLs directamente.")
-                    pass
                 self.btnMenu.setIcon(QIcon())
             self.btnMenu.setIconSize(QSize(40, 40))
         except Exception as e:
@@ -417,11 +491,11 @@ class VentanaPrincipal(QMainWindow):
         self.bloquear_funcionalidades()
 
     # -------------------------
-    # Imagen central (hero) - MODIFICADO
+    # Imagen central (hero) - MODIFICADO CON CACHE
     # -------------------------
     def cargar_imagen_central(self):
         """
-        Carga la imagen hero - AHORA maneja URLs remotas
+        Carga la imagen hero - AHORA maneja URLs remotas CON CACHE
         """
         try:
             ruta_relativa = None
@@ -446,22 +520,20 @@ class VentanaPrincipal(QMainWindow):
             # print(f"[HERO] Intentando cargar imagen central desde: {ruta_resuelta}")
 
             if ruta_resuelta:
-                # ✅ MANEJAR URL REMOTA
+                # ✅ MANEJAR URL REMOTA CON CACHE
                 if self._is_url(ruta_resuelta):
                     # print(f"[HERO] Cargando desde URL remota: {ruta_resuelta}")
                     self.mostrar_imagen_desde_url(ruta_resuelta)
                     return
 
-                # ✅ MANEJAR ARCHIVO LOCAL (código original)
+                # ✅ MANEJAR ARCHIVO LOCAL CON CACHE
                 if os.path.exists(ruta_resuelta):
-                    pixmap = QPixmap(ruta_resuelta)
-                    if not pixmap.isNull() and hasattr(self, "label_imagen_central"):
-                        scaled_pixmap = pixmap.scaled(
-                            self.label_imagen_central.size(),
-                            Qt.KeepAspectRatio,
-                            Qt.SmoothTransformation
-                        )
-                        self.label_imagen_central.setPixmap(scaled_pixmap)
+                    # ✅ OPTIMIZADO: Usar sistema de cache
+                    pixmap = cargar_imagen_desde_ruta_con_cache(ruta_resuelta, 
+                        (self.label_imagen_central.width(), self.label_imagen_central.height()))
+                    
+                    if pixmap and not pixmap.isNull():
+                        self.label_imagen_central.setPixmap(pixmap)
                         self.label_imagen_central.setAlignment(Qt.AlignCenter)
                         self.label_imagen_central.setStyleSheet("")
                     else:
@@ -507,22 +579,36 @@ class VentanaPrincipal(QMainWindow):
             pass
 
     # -------------------------
-    # Drawer (menu lateral)
+    # Drawer (menu lateral) - OPTIMIZADO CON CACHE
     # -------------------------
     def mostrar_menu_lateral(self):
         self.animar_drawer(mostrar=True)
-        if self.close_icon_path and os.path.exists(self.close_icon_path):
-            self.btnMenu.setIcon(QIcon(self.close_icon_path))
+        # ✅ OPTIMIZADO: Cargar icono de cerrar usando cache
+        if self.close_icon_path:
+            if self._is_url(self.close_icon_path):
+                pixmap = cargar_imagen_desde_ruta_con_cache(self.close_icon_path, (40, 40))
+                if pixmap and not pixmap.isNull():
+                    self.btnMenu.setIcon(QIcon(pixmap))
+            elif os.path.exists(self.close_icon_path):
+                self.btnMenu.setIcon(QIcon(self.close_icon_path))
         self.btnMenu.setIconSize(QSize(40, 40))
 
     def alternar_menu_lateral(self):
         esta_oculto = self.frame_menu_lateral.x() < 0
         self.animar_drawer(esta_oculto)
-        icono = self.close_icon_path if esta_oculto else self.menu_icon_path
-        if icono and os.path.exists(icono):
-            self.btnMenu.setIcon(QIcon(icono))
+        
+        # ✅ OPTIMIZADO: Cargar iconos usando cache
+        icono_path = self.close_icon_path if esta_oculto else self.menu_icon_path
+        if icono_path:
+            if self._is_url(icono_path):
+                pixmap = cargar_imagen_desde_ruta_con_cache(icono_path, (40, 40))
+                if pixmap and not pixmap.isNull():
+                    self.btnMenu.setIcon(QIcon(pixmap))
+            elif os.path.exists(icono_path):
+                self.btnMenu.setIcon(QIcon(icono_path))
         else:
             self.btnMenu.setIcon(QIcon())
+            
         self.btnMenu.setIconSize(QSize(40, 40))
 
     def animar_drawer(self, mostrar=True):
@@ -591,9 +677,8 @@ class VentanaPrincipal(QMainWindow):
                     pass
                 QMessageBox.information(self, "Bienvenido", f"Bienvenido {self.usuario_actual}")
 
-                # Mostrar foto de usuario (resolver ruta)
+                # Mostrar foto de usuario (resolver ruta) - CON CACHE
                 self.mostrar_foto_usuario_en_label(ruta_foto, self.label_foto_usuario, size=100)
-
 
                 # Bloquear inputs
                 try:
@@ -620,72 +705,47 @@ class VentanaPrincipal(QMainWindow):
             except Exception:
                 pass
 
-
     # --------------------------------------
-    # Mostrar foto Usarioo en label - MODIFICADO
+    # Mostrar foto Usario en label - MODIFICADO CON CACHE
     # --------------------------------------
     def mostrar_foto_usuario_en_label(self, ruta_relativa, label, size=100):
         """
         Carga la foto de usuario circular en el QLabel indicado.
-        AHORA maneja URLs remotas también.
+        AHORA maneja URLs remotas también CON CACHE.
         """
         if ruta_relativa:
             # Resolver ruta (puede ser local o remota)
             ruta_resuelta = self.find_asset_or_fallback(ruta_relativa, "assets/iconos/usuario_default.png")
             
             if ruta_resuelta:
-                # ✅ MANEJAR URL REMOTA
-                if self._is_url(ruta_resuelta):
-                    try:
-                        response = requests.get(ruta_resuelta, timeout=10)
-                        if response.status_code == 200:
-                            pixmap = QPixmap()
-                            pixmap.loadFromData(response.content)
-                            # print(f"✅ Foto usuario cargada desde URL: {ruta_resuelta}")
-                        else:
-                            # print(f"❌ Error cargando foto desde URL: {response.status_code}")
-                            label.clear()
-                            label.setText("Sin foto")
-                            return
-                    except Exception as e:
-                        # print(f"❌ Error cargando foto URL: {e}")
-                        label.clear()
-                        label.setText("Sin foto")
-                        return
-                else:
-                    # ✅ MANEJAR ARCHIVO LOCAL
-                    if os.path.exists(ruta_resuelta):
-                        pixmap = QPixmap(ruta_resuelta)
-                        # print(f"✅ Foto usuario cargada local: {ruta_resuelta}")
-                    else:
-                        # print(f"❌ No existe foto local: {ruta_resuelta}")
-                        label.clear()
-                        label.setText("Sin foto")
-                        return
+                # ✅ OPTIMIZADO: Usar sistema de cache
+                pixmap = cargar_imagen_desde_ruta_con_cache(ruta_resuelta, (size, size))
                 
-                # Crear imagen circular
-                pixmap_escalada = pixmap.scaled(size, size, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
-                pixmap_circular = QPixmap(size, size)
-                pixmap_circular.fill(Qt.transparent)
+                if pixmap and not pixmap.isNull():
+                    # Crear imagen circular
+                    pixmap_circular = QPixmap(size, size)
+                    pixmap_circular.fill(Qt.transparent)
 
-                painter = QPainter(pixmap_circular)
-                painter.setRenderHint(QPainter.Antialiasing)
-                brush = QBrush(pixmap_escalada)
-                painter.setBrush(brush)
-                painter.setPen(Qt.NoPen)
-                painter.drawEllipse(0, 0, size, size)
-                painter.end()
+                    painter = QPainter(pixmap_circular)
+                    painter.setRenderHint(QPainter.Antialiasing)
+                    brush = QBrush(pixmap)
+                    painter.setBrush(brush)
+                    painter.setPen(Qt.NoPen)
+                    painter.drawEllipse(0, 0, size, size)
+                    painter.end()
 
-                label.setPixmap(pixmap_circular)
-                label.setText("")
-                label.setScaledContents(True)
+                    label.setPixmap(pixmap_circular)
+                    label.setText("")
+                    label.setScaledContents(True)
+                else:
+                    label.clear()
+                    label.setText("Sin foto")
             else:
                 label.clear()
                 label.setText("Sin foto")
         else:
             label.clear()
             label.setText("Sin foto")
-
 
     # -------------------------
     # Sesión / permisos
@@ -743,8 +803,13 @@ class VentanaPrincipal(QMainWindow):
         try:
             if self.frame_menu_lateral.x() == 0:
                 self.animar_drawer(mostrar=False)
-                if self.menu_icon_path and os.path.exists(self.menu_icon_path):
-                    self.btnMenu.setIcon(QIcon(self.menu_icon_path))
+                if self.menu_icon_path:
+                    if self._is_url(self.menu_icon_path):
+                        pixmap = cargar_imagen_desde_ruta_con_cache(self.menu_icon_path, (40, 40))
+                        if pixmap and not pixmap.isNull():
+                            self.btnMenu.setIcon(QIcon(pixmap))
+                    elif os.path.exists(self.menu_icon_path):
+                        self.btnMenu.setIcon(QIcon(self.menu_icon_path))
                     self.btnMenu.setIconSize(QSize(40, 40))
         except Exception:
             pass

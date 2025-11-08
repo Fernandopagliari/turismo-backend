@@ -1,11 +1,82 @@
 # -*- coding: utf-8 -*-
 # database_hosting.py - EXCLUSIVO para base de datos del HOSTING
 
-# ⚠️ ELIMINADO: Parche removido - Solo database_local.py controla el charset
 import mysql.connector
 from mysql.connector import Error
 from PyQt5.QtWidgets import QMessageBox
 from database_local import obtener_configuracion_hosting
+import time
+
+# -------------------------
+# CACHE DE CONEXIONES HOSTING
+# -------------------------
+_CONEXION_HOSTING_CACHE = None
+_ULTIMA_CONEXION_HOSTING = 0
+_CACHE_TIMEOUT_HOSTING = 60  # 60 segundos para hosting (más largo)
+
+def obtener_conexion_hosting_cached(config, parent=None):
+    """
+    Obtener conexión a hosting con cache - OPTIMIZADA
+    """
+    global _CONEXION_HOSTING_CACHE, _ULTIMA_CONEXION_HOSTING
+    
+    current_time = time.time()
+    
+    # Verificar si tenemos una conexión en cache y sigue válida
+    if (_CONEXION_HOSTING_CACHE and 
+        _CONEXION_HOSTING_CACHE.is_connected() and 
+        (current_time - _ULTIMA_CONEXION_HOSTING) < _CACHE_TIMEOUT_HOSTING):
+        try:
+            # Verificar que la conexión sigue activa
+            cursor = _CONEXION_HOSTING_CACHE.cursor()
+            cursor.execute("SELECT 1")
+            cursor.close()
+            return _CONEXION_HOSTING_CACHE
+        except:
+            # Conexión en cache no funciona, limpiar
+            _CONEXION_HOSTING_CACHE = None
+    
+    # Crear nueva conexión
+    try:
+        conexion = mysql.connector.connect(
+            host=config['host'],
+            user=config['user'],
+            password=config['password'],
+            database=config['database'],
+            port=config['port'],
+            connect_timeout=15,  # Timeout reducido
+            connection_timeout=15
+        )
+        
+        if conexion.is_connected():
+            _CONEXION_HOSTING_CACHE = conexion
+            _ULTIMA_CONEXION_HOSTING = current_time
+            return conexion
+            
+    except Error as e:
+        if parent is None:
+            from PyQt5.QtWidgets import QApplication
+            parent = QApplication.activeWindow()
+        
+        QMessageBox.warning(parent, "Conexión Fallida",
+                           f"No se pudo conectar al servidor hosting:\n{e}\n\n"
+                           f"Verifique que:\n"
+                           f"- La configuración en 'datos_hosting' sea correcta\n"
+                           f"- Su conexión a internet esté activa\n"
+                           f"- El servidor hosting esté disponible")
+    
+    return None
+
+def conectar_hosting(parent=None):
+    """
+    Conectar a la base de datos del hosting usando configuración de la tabla local - OPTIMIZADA
+    """
+    # Obtener configuración desde la DB local
+    config = obtener_configuracion_hosting(parent)
+    if not config:
+        return None
+    
+    return obtener_conexion_hosting_cached(config, parent)
 
 # =========================
 # FUNCIONES NUEVAS - SIN MODIFICAR LAS EXISTENTES
@@ -30,10 +101,8 @@ def crear_tabla_datos_hosting(conexion):
         """)
         
         conexion.commit()
-        # print("[OK] Tabla 'datos_hosting' creada/verificada en HOSTING")
         
     except Exception as e:
-        # print(f"Error al crear tabla 'datos_hosting' en hosting: {e}")
         pass
     finally:
         cursor.close()
@@ -45,7 +114,6 @@ def copiar_configuracion_a_hosting(conexion, parent=None):
         config_local = obtener_configuracion_hosting(parent)
         
         if not config_local:
-            # print("[ERROR] No se pudo obtener configuración local para copiar")
             return False
         
         cursor = conexion.cursor()
@@ -70,101 +138,47 @@ def copiar_configuracion_a_hosting(conexion, parent=None):
         conexion.commit()
         cursor.close()
         
-        # print("[OK] ✅ Configuración COPIADA de BD local a hosting")
-        # print(f"[DEBUG] Configuración copiada: {config_local['user']}@{config_local['host']} - URL: {config_local.get('base_url', '')}")
-        
         return True
         
     except Exception as e:
-        # print(f"[ERROR] Error copiando configuración a hosting: {e}")
         return False
-
-# =========================
-# FUNCIONES ORIGINALES (SIN MODIFICACIONES)
-# =========================
-
-def conectar_hosting(parent=None):
-    """
-    Conectar a la base de datos del hosting usando configuración de la tabla local
-    """
-    try:
-        # Obtener configuración desde la DB local
-        config = obtener_configuracion_hosting(parent)
-        if not config:
-            # print("[ERROR] No se pudo obtener configuración del hosting desde DB local")
-            return None
-        
-        # print(f"[DEBUG] Conectando a hosting: {config['host']}:{config['port']}")
-        
-        conexion = mysql.connector.connect(
-            host=config['host'],
-            user=config['user'],
-            password=config['password'],
-            database=config['database'],
-            port=config['port'],
-            connect_timeout=30
-        )
-        
-        if conexion.is_connected():
-            # print("[SUCCESS] Conexión a HOSTING exitosa")
-            return conexion
-            
-    except Error as e:
-        # print(f"[ERROR] No se pudo conectar al hosting: {e}")
-        
-        # Mostrar error en PyQt5
-        if parent is None:
-            from PyQt5.QtWidgets import QApplication
-            parent = QApplication.activeWindow()
-        
-        QMessageBox.warning(parent, "Conexión Fallida",
-                           f"No se pudo conectar al servidor hosting:\n{e}\n\n"
-                           f"Verifique que:\n"
-                           f"- La configuración en 'datos_hosting' sea correcta\n"
-                           f"- Su conexión a internet esté activa\n"
-                           f"- El servidor hosting esté disponible")
-        return None
 
 def inicializar_base_datos_hosting(parent=None):
     """
-    Inicializar todas las tablas de la aplicación en el hosting
+    Inicializar todas las tablas de la aplicación en el hosting - OPTIMIZADA
     """
     conexion = conectar_hosting(parent)
     if not conexion:
-        # print("[ERROR] No se pudo conectar al hosting para inicialización")
         return False
 
     try:
-        # print("Inicializando base de datos del hosting...")
-        
-        # Lista de funciones para crear tablas (AGREGAR LAS NUEVAS)
+        # Lista de funciones para crear tablas en ORDEN OPTIMIZADO
         funciones = [
             crear_tabla_configuraciones,
             crear_tabla_regiones_zona, 
             crear_tabla_secciones,
-            crear_tabla_sub_secciones,
-            crear_tabla_usuarios,
-            crear_tabla_datos_hosting,  # ✅ NUEVA - crear tabla
+            crear_tabla_usuarios,  # Mover antes para relaciones FK
+            crear_tabla_sub_secciones,  # Después de usuarios por posibles FK
+            crear_tabla_datos_hosting,
             verificar_y_agregar_campos_base64,
             insert_initial_users,
-            lambda conn: copiar_configuracion_a_hosting(conn, parent)  # ✅ NUEVA - copiar datos
+            lambda conn: copiar_configuracion_a_hosting(conn, parent)
         ]
         
         for funcion in funciones:
             try:
                 funcion(conexion)
-                # print(f"[OK] {funcion.__name__} completada")
             except Exception as e:
-                # print(f"[ERROR] en {funcion.__name__}: {e}")
-                pass
+                # Continuar con las siguientes tablas incluso si una falla
+                continue
         
         return True
         
     except Exception as e:
-        # print(f"[ERROR] Error durante inicialización del hosting: {e}")
         return False
     finally:
-        cerrar_conexion(conexion)
+        # NO cerrar la conexión aquí para mantener el cache
+        pass
 
 # -----------------Verificacion campos base64-------------------------
 def verificar_y_agregar_campos_base64(conexion):
@@ -197,17 +211,13 @@ def verificar_y_agregar_campos_base64(conexion):
             for campo in campos:
                 try:
                     cursor.execute(f"ALTER TABLE {tabla} ADD COLUMN {campo}")
-                    # print(f"[OK] Campo {campo} agregado a {tabla}")
                 except Exception as e:
-                    # print(f"[INFO] Campo {campo} ya existe en {tabla} o error: {e}")
                     pass
         
         conexion.commit()
         cursor.close()
-        # print("[SUCCESS] Verificación de campos Base64 completada en HOSTING")
         
     except Exception as e:
-        # print(f"[ERROR] En verificación de campos Base64: {e}")
         pass
 
 # ---------------- TABLAS (MANTENER IGUAL) ----------------
@@ -232,9 +242,7 @@ def crear_tabla_usuarios(conexion):
                 activo INT NOT NULL DEFAULT 0
             )ENGINE=InnoDB;
         """)
-        # print("[OK] Tabla 'usuarios' creada/verificada en HOSTING")
     except Exception as e:
-        # print(f"Error al crear la tabla 'usuarios': {e}")
         pass
     finally:
         cursor.close()
@@ -269,9 +277,7 @@ def crear_tabla_configuraciones(conexion):
             )ENGINE=InnoDB;
         """)
         conexion.commit()
-        # print("[OK] Tabla 'configuracion_app' creada/verificada en HOSTING")
     except Exception as e:
-        # print(f"Error al crear la tabla 'configuracion_app': {e}")
         pass
     finally:
         cursor.close()
@@ -290,9 +296,7 @@ def crear_tabla_regiones_zona(conexion):
             ) ENGINE=InnoDB;
         """)
         conexion.commit()
-        # print("[OK] Tabla 'regiones_zonas' creada/verificada en HOSTING")
     except Exception as e:
-        # print(f"Error al crear la tabla 'regiones_zonas': {e}")
         pass
     finally:
         cursor.close()
@@ -311,9 +315,7 @@ def crear_tabla_secciones(conexion):
             ) ENGINE=InnoDB;
         """)
         conexion.commit()
-        # print("[OK] Tabla 'secciones' creada/verificada en HOSTING")
     except Exception as e:
-        # print(f"Error al crear la tabla 'secciones': {e}")
         pass
     finally:
         cursor.close()
@@ -360,9 +362,7 @@ def crear_tabla_sub_secciones(conexion):
             ) ENGINE=InnoDB;
         """)
         conexion.commit()
-        # print("[OK] Tabla 'sub_secciones' creada/verificada en HOSTING")
     except Exception as e:
-        # print(f"Error al crear la tabla 'sub_secciones': {e}")
         pass
     finally:
         cursor.close()
@@ -382,13 +382,15 @@ def insert_initial_users(conexion):
             ("Usuario Prueba", "visor", "usuario@turismo.com", "usuario123", "visor", 1),
         ])
         conexion.commit()
-        # print("[OK] Usuarios iniciales insertados en HOSTING")
     cursor.close()
 
 def cerrar_conexion(conexion):
     """
-    Cerrar conexión de forma segura
+    Cerrar conexión de forma segura - OPTIMIZADA
     """
-    if conexion and conexion.is_connected():
+    global _CONEXION_HOSTING_CACHE
+    
+    # Solo cerrar si no es la conexión en cache
+    if (conexion and conexion.is_connected() and 
+        conexion != _CONEXION_HOSTING_CACHE):
         conexion.close()
-        # print("[OK] Conexión HOSTING cerrada")

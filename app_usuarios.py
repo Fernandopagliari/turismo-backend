@@ -8,9 +8,35 @@ import os
 import shutil
 import hashlib
 import requests
+import time
 
 # -------------------------
-# MÉTODOS DE BÚSQUEDA HÍBRIDA (IGUAL QUE app_secciones.py)
+# CACHE DE IMÁGENES PARA MEJORAR VELOCIDAD
+# -------------------------
+_image_cache = {}
+_CACHE_MAX_SIZE = 100  # Máximo de imágenes en cache
+_CACHE_TIMEOUT = 300   # 5 minutos en segundos
+
+def limpiar_cache_antiguo():
+    """Limpia entradas de cache antiguas"""
+    global _image_cache
+    current_time = time.time()
+    keys_to_remove = []
+    
+    for key, (timestamp, pixmap) in _image_cache.items():
+        if current_time - timestamp > _CACHE_TIMEOUT:
+            keys_to_remove.append(key)
+    
+    for key in keys_to_remove:
+        del _image_cache[key]
+
+def obtener_clave_cache(ruta_imagen, size=None):
+    """Genera clave única para el cache"""
+    clave = f"{ruta_imagen}_{size}"
+    return hashlib.md5(clave.encode()).hexdigest()
+
+# -------------------------
+# MÉTODOS DE BÚSQUEDA HÍBRIDA OPTIMIZADOS
 # -------------------------
 def _is_url(path):
     """Verifica si una ruta es una URL"""
@@ -35,35 +61,33 @@ def obtener_url_remota(ruta_relativa: str) -> str:
                 url_completa = f"{base_url}{ruta_limpia}"
                 return url_completa
     except Exception as e:
-        # print(f"Error obteniendo URL remota: {e}")
         pass
     return ""
 
 def verificar_url_remota(url: str) -> bool:
-    """Verifica si una URL remota es accesible"""
+    """Verifica si una URL remota es accesible - OPTIMIZADA"""
     try:
-        response = requests.head(url, timeout=5)  # Timeout corto para no bloquear
+        response = requests.head(url, timeout=3)  # Timeout más corto
         return response.status_code == 200
     except Exception:
         return False
 
 def resolver_ruta_hibrida(ruta_absoluta_db: str, ruta_relativa_db: str) -> str:
     """
-    Busca imágenes en REMOTO → LOCAL (igual que app_secciones.py)
+    Busca imágenes en REMOTO → LOCAL - OPTIMIZADA
     """
+    # Limpiar cache antiguo periódicamente
+    if len(_image_cache) > _CACHE_MAX_SIZE:
+        limpiar_cache_antiguo()
+    
     # 1. PRIMERO: Buscar en REMOTO usando ruta relativa
     if ruta_relativa_db:
         url_remota = obtener_url_remota(ruta_relativa_db)
         if url_remota and verificar_url_remota(url_remota):
-            # print(f"✅ [USUARIOS] Encontrado en REMOTO: {url_remota}")
             return url_remota
-        else:
-            # print(f"⚠️  [USUARIOS] Remoto no disponible, buscando local: {ruta_relativa_db}")
-            pass
     
     # 2. SEGUNDO: Buscar en LOCAL con ruta absoluta
     if ruta_absoluta_db and os.path.exists(ruta_absoluta_db):
-        # print(f"✅ [USUARIOS] Encontrado en LOCAL: {ruta_absoluta_db}")
         return ruta_absoluta_db
     
     # 3. TERCERO: Buscar en estructura del proyecto
@@ -72,51 +96,59 @@ def resolver_ruta_hibrida(ruta_absoluta_db: str, ruta_relativa_db: str) -> str:
             os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 
                         "turismo-frontend", "public", ruta_relativa_db),
             os.path.join(os.getcwd(), "turismo-frontend", "public", ruta_relativa_db),
-            ruta_absoluta_desde_relativa(ruta_relativa_db),  # Tu función existente
+            ruta_absoluta_desde_relativa(ruta_relativa_db),
         ]
         
         for ruta in rutas_posibles:
             if ruta and os.path.exists(ruta):
-                # print(f"✅ [USUARIOS] Encontrado en PROYECTO: {ruta}")
                 return ruta
     
-    # print(f"❌ [USUARIOS] No encontrado: {ruta_relativa_db}")
     return ""
 
 def cargar_imagen_desde_ruta(ruta_imagen: str, size: tuple = None):
     """
-    Carga imagen desde URL remota o archivo local
+    Carga imagen desde URL remota o archivo local - CON CACHE
     """
     if not ruta_imagen:
         return None
 
+    # Verificar cache primero
+    cache_key = obtener_clave_cache(ruta_imagen, size)
+    if cache_key in _image_cache:
+        timestamp, pixmap = _image_cache[cache_key]
+        if time.time() - timestamp < _CACHE_TIMEOUT:
+            return pixmap
+        else:
+            del _image_cache[cache_key]
+
     try:
-        # ✅ MANEJAR URL REMOTA (con timeout para no bloquear)
+        # ✅ MANEJAR URL REMOTA (con timeout optimizado)
         if _is_url(ruta_imagen):
-            response = requests.get(ruta_imagen, timeout=8)  # Timeout de 8 segundos
+            response = requests.get(ruta_imagen, timeout=5)  # Timeout reducido
             if response.status_code == 200:
                 pixmap = QPixmap()
                 pixmap.loadFromData(response.content)
                 if not pixmap.isNull():
                     if size:
                         pixmap = pixmap.scaled(size[0], size[1], Qt.KeepAspectRatio, Qt.SmoothTransformation)
-                    # print(f"✅ [USUARIOS] Imagen remota cargada: {ruta_imagen}")
+                    # Guardar en cache
+                    _image_cache[cache_key] = (time.time(), pixmap)
                     return pixmap
             return None
         
-        # ✅ MANEJAR ARCHIVO LOCAL (más rápido)
+        # ✅ MANEJAR ARCHIVO LOCAL
         elif os.path.exists(ruta_imagen):
             pixmap = QPixmap(ruta_imagen)
             if not pixmap.isNull():
                 if size:
                     pixmap = pixmap.scaled(size[0], size[1], Qt.KeepAspectRatio, Qt.SmoothTransformation)
-                # print(f"✅ [USUARIOS] Imagen local cargada: {ruta_imagen}")
+                # Guardar en cache
+                _image_cache[cache_key] = (time.time(), pixmap)
                 return pixmap
         
         return None
         
     except Exception as e:
-        # print(f"❌ [USUARIOS] Error cargando imagen: {e}")
         return None
 
 def ruta_absoluta_desde_relativa(relativa: str) -> str:
@@ -233,7 +265,7 @@ class VentanaUsuarios(QWidget):
         self.btnModificarUsuario.setEnabled(True)
         self.btnEliminarUsuario.setEnabled(True)
 
-        # ✅ MEJORADO: Mostrar la foto usando sistema híbrido
+        # ✅ OPTIMIZADO: Mostrar la foto usando sistema híbrido con cache
         ruta_foto = obtener_texto(fila, 10)
         self.cargar_foto_usuario_hibrida(ruta_foto)
             
@@ -254,7 +286,7 @@ class VentanaUsuarios(QWidget):
             self.usuario_inactivo_id = item.text()
             self.btnReactivarUsuario.setEnabled(True)
 
-            # ✅ MEJORADO: Mostrar foto del usuario inactivo usando sistema híbrido
+            # ✅ OPTIMIZADO: Mostrar foto del usuario inactivo usando sistema híbrido con cache
             def obtener_texto_inactivo(f, c):
                 item = self.tabla_usuarios_inactivos.item(f, c)
                 return item.text() if item else ""
@@ -263,13 +295,13 @@ class VentanaUsuarios(QWidget):
             self.cargar_foto_usuario_hibrida(ruta_foto)
 
     def cargar_foto_usuario_hibrida(self, ruta_relativa):
-        """Carga la foto del usuario usando sistema híbrido REMOTO → LOCAL"""
+        """Carga la foto del usuario usando sistema híbrido REMOTO → LOCAL - OPTIMIZADA"""
         if not ruta_relativa:
             self.mostrar_foto_placeholder("Sin foto")
             return
 
         try:
-            # ✅ NUEVO: Usar sistema híbrido
+            # ✅ OPTIMIZADO: Usar sistema híbrido con cache
             ruta_encontrada = resolver_ruta_hibrida("", ruta_relativa)
             
             if ruta_encontrada:
@@ -286,7 +318,6 @@ class VentanaUsuarios(QWidget):
                 self.mostrar_foto_placeholder("Foto no encontrada")
                 
         except Exception as e:
-            # print(f"❌ Error cargando foto usuario {ruta_relativa}: {e}")
             self.mostrar_foto_placeholder("Error")
 
     def mostrar_foto_placeholder(self, texto):
@@ -383,7 +414,6 @@ class VentanaUsuarios(QWidget):
                     self.tabla_usuarios_activos.setItem(row_number, column_number, item)
                     
         except Exception as e:
-            # print(f"❌ Error cargando usuarios: {e}")
             QMessageBox.warning(self, "Error", f"No se pudieron cargar los usuarios: {e}")
 
     def cargar_usuarios_inactivos(self):
@@ -410,7 +440,6 @@ class VentanaUsuarios(QWidget):
                     self.tabla_usuarios_inactivos.setItem(row_number, column_number, item)
                     
         except Exception as e:
-            # print(f"❌ Error cargando usuarios inactivos: {e}")
             QMessageBox.warning(self, "Error", f"No se pudieron cargar los usuarios inactivos: {e}")
 
     def agregar_usuario(self):
@@ -582,9 +611,7 @@ class VentanaUsuarios(QWidget):
             """, (ruta_relativa, self.usuario_seleccionado_id))
             conexion.commit()
             conexion.close()
-            # print(f"✅ Foto actualizada en BD: {ruta_relativa}")
         except Exception as e:
-            # print(f"❌ Error actualizando foto en BD: {e}")
             QMessageBox.warning(self, "Error BD", f"No se pudo actualizar la foto en la base de datos:\n{e}")
 
     def existe_foto_en_uso(self, ruta_foto, id_actual=None):
@@ -603,7 +630,6 @@ class VentanaUsuarios(QWidget):
             conexion.close()
             return resultado > 0
         except Exception as e:
-            # print(f"❌ Error verificando foto en uso: {e}")
             return False
 
     def limpiar_formulario(self):

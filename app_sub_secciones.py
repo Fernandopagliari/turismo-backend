@@ -14,9 +14,35 @@ import os
 import shutil
 import hashlib
 import requests
+import time
 
 # -------------------------
-# MÉTODOS DE BÚSQUEDA HÍBRIDA (COPIADOS DE app_secciones.py)
+# CACHE DE IMÁGENES PARA MEJORAR VELOCIDAD (ADAPTADO DE app_usuarios.py)
+# -------------------------
+_image_cache = {}
+_CACHE_MAX_SIZE = 100  # Máximo de imágenes en cache
+_CACHE_TIMEOUT = 300   # 5 minutos en segundos
+
+def limpiar_cache_antiguo():
+    """Limpia entradas de cache antiguas"""
+    global _image_cache
+    current_time = time.time()
+    keys_to_remove = []
+    
+    for key, (timestamp, pixmap) in _image_cache.items():
+        if current_time - timestamp > _CACHE_TIMEOUT:
+            keys_to_remove.append(key)
+    
+    for key in keys_to_remove:
+        del _image_cache[key]
+
+def obtener_clave_cache(ruta_imagen, size=None):
+    """Genera clave única para el cache"""
+    clave = f"{ruta_imagen}_{size}"
+    return hashlib.md5(clave.encode()).hexdigest()
+
+# -------------------------
+# MÉTODOS DE BÚSQUEDA HÍBRIDA OPTIMIZADOS CON CACHE
 # -------------------------
 def _is_url(path):
     """Verifica si una ruta es una URL"""
@@ -41,32 +67,33 @@ def obtener_url_remota(ruta_relativa: str) -> str:
                 url_completa = f"{base_url}{ruta_limpia}"
                 return url_completa
     except Exception as e:
-        # print(f"Error obteniendo URL remota: {e}")
         pass
     return ""
 
 def verificar_url_remota(url: str) -> bool:
-    """Verifica si una URL remota es accesible"""
+    """Verifica si una URL remota es accesible - OPTIMIZADA"""
     try:
-        response = requests.head(url, timeout=5)
+        response = requests.head(url, timeout=3)  # Timeout más corto
         return response.status_code == 200
     except Exception:
         return False
 
 def resolver_ruta_hibrida(ruta_absoluta_db: str, ruta_relativa_db: str) -> str:
     """
-    Busca imágenes en REMOTO → LOCAL (igual que app_secciones.py)
+    Busca imágenes en REMOTO → LOCAL - OPTIMIZADA CON CACHE
     """
+    # Limpiar cache antiguo periódicamente
+    if len(_image_cache) > _CACHE_MAX_SIZE:
+        limpiar_cache_antiguo()
+    
     # 1. PRIMERO: Buscar en REMOTO usando ruta relativa
     if ruta_relativa_db:
         url_remota = obtener_url_remota(ruta_relativa_db)
         if url_remota and verificar_url_remota(url_remota):
-            # print(f"✅ [SUB_SECCIONES] Encontrado en REMOTO: {url_remota}")
             return url_remota
     
     # 2. SEGUNDO: Buscar en LOCAL con ruta absoluta
     if ruta_absoluta_db and os.path.exists(ruta_absoluta_db):
-        # print(f"✅ [SUB_SECCIONES] Encontrado en LOCAL: {ruta_absoluta_db}")
         return ruta_absoluta_db
     
     # 3. TERCERO: Buscar en estructura del proyecto
@@ -75,34 +102,43 @@ def resolver_ruta_hibrida(ruta_absoluta_db: str, ruta_relativa_db: str) -> str:
             os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 
                         "turismo-frontend", "public", ruta_relativa_db),
             os.path.join(os.getcwd(), "turismo-frontend", "public", ruta_relativa_db),
+            ruta_absoluta_desde_relativa(ruta_relativa_db),
         ]
         
         for ruta in rutas_posibles:
-            if os.path.exists(ruta):
-                # print(f"✅ [SUB_SECCIONES] Encontrado en PROYECTO: {ruta}")
+            if ruta and os.path.exists(ruta):
                 return ruta
     
-    # print(f"❌ [SUB_SECCIONES] No encontrado: {ruta_relativa_db}")
     return ""
 
 def cargar_imagen_desde_ruta(ruta_imagen: str, size: tuple = None):
     """
-    Carga imagen desde URL remota o archivo local
+    Carga imagen desde URL remota o archivo local - CON CACHE
     """
     if not ruta_imagen:
         return None
 
+    # Verificar cache primero
+    cache_key = obtener_clave_cache(ruta_imagen, size)
+    if cache_key in _image_cache:
+        timestamp, pixmap = _image_cache[cache_key]
+        if time.time() - timestamp < _CACHE_TIMEOUT:
+            return pixmap
+        else:
+            del _image_cache[cache_key]
+
     try:
-        # ✅ MANEJAR URL REMOTA
+        # ✅ MANEJAR URL REMOTA (con timeout optimizado)
         if _is_url(ruta_imagen):
-            response = requests.get(ruta_imagen, timeout=10)
+            response = requests.get(ruta_imagen, timeout=5)  # Timeout reducido
             if response.status_code == 200:
                 pixmap = QPixmap()
                 pixmap.loadFromData(response.content)
                 if not pixmap.isNull():
                     if size:
                         pixmap = pixmap.scaled(size[0], size[1], Qt.KeepAspectRatio, Qt.SmoothTransformation)
-                    # print(f"✅ [SUB_SECCIONES] Imagen remota cargada: {ruta_imagen}")
+                    # Guardar en cache
+                    _image_cache[cache_key] = (time.time(), pixmap)
                     return pixmap
             return None
         
@@ -112,25 +148,29 @@ def cargar_imagen_desde_ruta(ruta_imagen: str, size: tuple = None):
             if not pixmap.isNull():
                 if size:
                     pixmap = pixmap.scaled(size[0], size[1], Qt.KeepAspectRatio, Qt.SmoothTransformation)
-                # print(f"✅ [SUB_SECCIONES] Imagen local cargada: {ruta_imagen}")
+                # Guardar en cache
+                _image_cache[cache_key] = (time.time(), pixmap)
                 return pixmap
         
         return None
         
     except Exception as e:
-        # print(f"❌ [SUB_SECCIONES] Error cargando imagen: {e}")
         return None
 
-def ruta_absoluta_desde_relativa(relativa):
+def ruta_absoluta_desde_relativa(relativa: str) -> str:
     """
     Convierte '/assets/...png' a la ruta absoluta correcta.
     """
     if not relativa:
         return ""
+
     # Subimos dos niveles desde src/backend a la raíz del proyecto
-    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))  
-    base_assets = os.path.join(base_dir, "turismo-frontend", "public")
-    return os.path.join(base_assets, relativa.lstrip("/"))
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+    base_assets = os.path.join(base_dir, "public")
+
+    # Quitamos el primer "/" o "\" si lo tiene
+    ruta_limpia = relativa.lstrip("/\\")
+    return os.path.normpath(os.path.join(base_assets, ruta_limpia))
 
 def convertir_ruta_produccion(ruta_absoluta):
     """Convierte rutas absolutas a rutas relativas - VERSIÓN FINAL"""
@@ -154,7 +194,7 @@ def convertir_ruta_produccion(ruta_absoluta):
     return resultado
 
 # -------------------------
-# CLASE PRINCIPAL CON SISTEMA HÍBRIDO
+# CLASE PRINCIPAL CON SISTEMA HÍBRIDO Y CACHE
 # -------------------------
 class VentanaSubSecciones(QWidget):
     def __init__(self, parent=None):
@@ -251,7 +291,7 @@ class VentanaSubSecciones(QWidget):
         self.move(ventana.topLeft())
 
     # -------------------------
-    # MANEJO DE REGIONES/ZONAS CON SISTEMA HÍBRIDO
+    # MANEJO DE REGIONES/ZONAS CON SISTEMA HÍBRIDO Y CACHE
     # -------------------------
     def cargar_regiones_zonas(self):
         """Carga las regiones/zonas habilitadas en el comboBox"""
@@ -279,7 +319,6 @@ class VentanaSubSecciones(QWidget):
                     'nombre': rz["nombre_region_zona"]
                 }
         except Exception as e:
-            # print(f"❌ Error cargando regiones/zonas: {e}")
             QMessageBox.warning(self, "Error", f"No se pudieron cargar las regiones/zonas: {e}")
 
     def on_region_zona_changed(self, index):
@@ -297,7 +336,7 @@ class VentanaSubSecciones(QWidget):
             
         self.region_zona_seleccionada = id_region_zona
         
-        # ✅ NUEVO: Cargar imagen usando sistema híbrido
+        # ✅ OPTIMIZADO: Cargar imagen usando sistema híbrido con CACHE
         if id_region_zona in self.regiones_zonas_data:
             imagen_ruta_rel = self.regiones_zonas_data[id_region_zona]['imagen']
             
@@ -333,7 +372,7 @@ class VentanaSubSecciones(QWidget):
         label.setAlignment(Qt.AlignCenter)
 
     # -------------------------
-    # MANEJO DE SECCIONES CON SISTEMA HÍBRIDO
+    # MANEJO DE SECCIONES CON SISTEMA HÍBRIDO Y CACHE
     # -------------------------
     def cargar_secciones_en_combo(self):
         """Carga las secciones en los combos y prepara datos de iconos"""
@@ -362,7 +401,6 @@ class VentanaSubSecciones(QWidget):
                 self.comboBox_seccion1.addItem(s["nombre_seccion"], s["id_seccion"])
                 
         except Exception as e:
-            # print(f"❌ Error cargando secciones: {e}")
             QMessageBox.warning(self, "Error", f"No se pudieron cargar las secciones: {e}")
 
     def on_combo_seccion_changed(self, index):
@@ -377,7 +415,7 @@ class VentanaSubSecciones(QWidget):
             icono_ruta = self.secciones_data[id_seccion]['icono']
             
             if icono_ruta:
-                # ✅ NUEVO: Usar sistema híbrido para cargar icono
+                # ✅ OPTIMIZADO: Usar sistema híbrido con CACHE para cargar icono
                 ruta_encontrada = resolver_ruta_hibrida("", icono_ruta)
                 
                 if ruta_encontrada:
@@ -402,10 +440,10 @@ class VentanaSubSecciones(QWidget):
             self.cargar_sub_secciones_inactivas()
 
     # -------------------------
-    # CARDS CON SISTEMA HÍBRIDO
+    # CARDS CON SISTEMA HÍBRIDO Y CACHE
     # -------------------------
     def crear_card(self, elemento, inactivo=False):
-        """Crea una tarjeta visual para una subsección - CON SISTEMA HÍBRIDO"""
+        """Crea una tarjeta visual para una subsección - CON SISTEMA HÍBRIDO Y CACHE"""
         card = QFrame()
         card.setFrameShape(QFrame.Box)
         card.setLineWidth(1)
@@ -445,12 +483,12 @@ class VentanaSubSecciones(QWidget):
         return card
 
     def cargar_imagen_hibrida(self, ruta_relativa, label_widget, size, fallback_text):
-        """Carga imagen usando sistema híbrido REMOTO → LOCAL"""
+        """Carga imagen usando sistema híbrido REMOTO → LOCAL - OPTIMIZADA CON CACHE"""
         if not ruta_relativa:
             self.mostrar_placeholder_imagen(label_widget, fallback_text)
             return
 
-        # ✅ NUEVO: Usar sistema híbrido
+        # ✅ OPTIMIZADO: Usar sistema híbrido con CACHE
         ruta_encontrada = resolver_ruta_hibrida("", ruta_relativa)
         
         if ruta_encontrada:
@@ -465,10 +503,10 @@ class VentanaSubSecciones(QWidget):
             self.mostrar_placeholder_imagen(label_widget, fallback_text)
 
     # -------------------------
-    # CARGA DE SUBSECCIONES CON SISTEMA HÍBRIDO
+    # CARGA DE SUBSECCIONES CON SISTEMA HÍBRIDO Y CACHE
     # -------------------------
     def cargar_sub_secciones(self):
-        """Carga las subsecciones activas - CON SISTEMA HÍBRIDO"""
+        """Carga las subsecciones activas - CON SISTEMA HÍBRIDO Y CACHE"""
         # Limpiar layout
         for i in reversed(range(self.layout_activos.count())):
             item = self.layout_activos.itemAt(i)
@@ -524,11 +562,10 @@ class VentanaSubSecciones(QWidget):
                     row += 1
                     
         except Exception as e:
-            # print(f"❌ Error cargando subsecciones activas: {e}")
             QMessageBox.warning(self, "Error", f"No se pudieron cargar las subsecciones: {e}")
 
     def cargar_sub_secciones_inactivas(self):
-        """Carga las subsecciones inactivas - CON SISTEMA HÍBRIDO"""
+        """Carga las subsecciones inactivas - CON SISTEMA HÍBRIDO Y CACHE"""
         # Limpiar layout
         for i in reversed(range(self.layout_inactivos.count())):
             item = self.layout_inactivos.itemAt(i)
@@ -580,7 +617,6 @@ class VentanaSubSecciones(QWidget):
                     row += 1
                     
         except Exception as e:
-            # print(f"❌ Error cargando subsecciones inactivas: {e}")
             QMessageBox.warning(self, "Error", f"No se pudieron cargar las subsecciones inactivas: {e}")
 
     # -------------------------
@@ -661,7 +697,7 @@ class VentanaSubSecciones(QWidget):
             QMessageBox.critical(self, "Error", f"No se pudo reactivar: {e}")
 
     # -------------------------
-    # FORMULARIO CON SISTEMA HÍBRIDO
+    # FORMULARIO CON SISTEMA HÍBRIDO Y CACHE
     # -------------------------
     def cargar_sub_seccion_en_formulario(self, fila):
         """Carga los datos de una subsección en el formulario"""
@@ -698,7 +734,7 @@ class VentanaSubSecciones(QWidget):
         except Exception:
             self.checkBox_destacado.setChecked(False)
 
-        # ✅ NUEVO: Cargar imágenes usando sistema híbrido
+        # ✅ OPTIMIZADO: Cargar imágenes usando sistema híbrido con CACHE
         self.cargar_imagen_formulario_hibrida(self.label_imagen, fila.get("imagen_rel"), (200,150))
         self.cargar_imagen_formulario_hibrida(self.label_icono, fila.get("icono_rel"), (48,48))
         self.cargar_imagen_formulario_hibrida(self.label_foto_1, fila.get("foto1_rel"), (200,150))
@@ -743,12 +779,12 @@ class VentanaSubSecciones(QWidget):
         self.edicion_subseccion = True
 
     def cargar_imagen_formulario_hibrida(self, label_widget, ruta_rel, size):
-        """Carga una imagen en el formulario usando sistema híbrido"""
+        """Carga una imagen en el formulario usando sistema híbrido con CACHE"""
         tooltip = f"Ruta relativa: {ruta_rel or 'No disponible'}"
         label_widget.setToolTip(tooltip)
 
         if ruta_rel:
-            # ✅ NUEVO: Usar sistema híbrido
+            # ✅ OPTIMIZADO: Usar sistema híbrido con CACHE
             ruta_encontrada = resolver_ruta_hibrida("", ruta_rel)
             if ruta_encontrada:
                 pixmap = cargar_imagen_desde_ruta(ruta_encontrada, size)
@@ -763,7 +799,7 @@ class VentanaSubSecciones(QWidget):
             self.mostrar_placeholder_imagen(label_widget, "Sin imagen")
 
     # -------------------------
-    # SELECCIÓN DE ARCHIVOS
+    # SELECCIÓN DE ARCHIVOS (se mantiene igual)
     # -------------------------
     def seleccionar_archivo_corregido(self, label_obj, lineedit_obj, ancho, alto, tipo_archivo):
         """Abre diálogo para seleccionar archivo y lo procesa para producción"""
@@ -802,7 +838,6 @@ class VentanaSubSecciones(QWidget):
                 label_obj.clear()
                 label_obj.setText("Error\ncargando\nimagen")
                 label_obj.setStyleSheet("background-color: #fed7d7; color: #c53030;")
-                # print(f"Error cargando imagen preview: {e}")
 
         # Guardar ruta de producción en el lineedit
         lineedit_obj.setText(ruta_relativa_produccion)
@@ -851,10 +886,7 @@ class VentanaSubSecciones(QWidget):
             conexion.commit()
             conexion.close()
             
-            # print(f"✅ {campo} actualizado en BD: {ruta_relativa}")
-            
         except Exception as e:
-            # print(f"❌ Error actualizando BD: {e}")
             QMessageBox.warning(self, "Error BD", f"No se pudo actualizar la ruta en la base de datos:\n{e}")
 
     # -------------------------
