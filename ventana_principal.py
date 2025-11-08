@@ -420,7 +420,7 @@ class VentanaPrincipal(QMainWindow):
             self.config = None
 
     # -------------------------
-    # Interfaz / iconos navbar
+    # Interfaz / iconos navbar - MODIFICADO PARA GARANTIZAR QUE SE MUESTREN
     # -------------------------
     def configurar_interfaz(self):
         icono_menu_bd = None
@@ -436,23 +436,9 @@ class VentanaPrincipal(QMainWindow):
         # print(f"[ICONOS] Hamburguesa → {self.menu_icon_path}")
         # print(f"[ICONOS] Cerrar → {self.close_icon_path}")
 
-        try:
-            # ✅ OPTIMIZADO: Cargar iconos usando sistema con CACHE
-            if self.menu_icon_path:
-                if self._is_url(self.menu_icon_path):
-                    # Para URLs, usar el sistema de cache
-                    pixmap = cargar_imagen_desde_ruta_con_cache(self.menu_icon_path, (40, 40))
-                    if pixmap and not pixmap.isNull():
-                        self.btnMenu.setIcon(QIcon(pixmap))
-                elif os.path.exists(self.menu_icon_path):
-                    self.btnMenu.setIcon(QIcon(self.menu_icon_path))
-            else:
-                self.btnMenu.setIcon(QIcon())
-            self.btnMenu.setIconSize(QSize(40, 40))
-        except Exception as e:
-            # print("Error asignando icono menú:", e)
-            pass
-
+        # ✅ MODIFICADO: Cargar iconos usando el mismo método que la imagen de usuario
+        self.cargar_icono_menu()
+        
         try:
             self.btnBackendDeploy.setVisible(False)
             self.btnBuildDeploy.setVisible(False)
@@ -491,7 +477,35 @@ class VentanaPrincipal(QMainWindow):
         self.bloquear_funcionalidades()
 
     # -------------------------
-    # Imagen central (hero) - MODIFICADO CON CACHE
+    # NUEVO MÉTODO: Cargar icono del menú de forma robusta
+    # -------------------------
+    def cargar_icono_menu(self):
+        """Carga el icono del menú de forma robusta, similar a como se carga la imagen de usuario"""
+        try:
+            if self.menu_icon_path:
+                # ✅ OPTIMIZADO: Usar sistema de cache
+                pixmap = cargar_imagen_desde_ruta_con_cache(self.menu_icon_path, (40, 40))
+                if pixmap and not pixmap.isNull():
+                    self.btnMenu.setIcon(QIcon(pixmap))
+                    self.btnMenu.setIconSize(QSize(40, 40))
+                    return
+                
+            # Si llegamos aquí, usar icono por defecto
+            backend_dir = os.path.dirname(os.path.abspath(__file__))
+            project_root = os.path.abspath(os.path.join(backend_dir, "..", ".."))
+            default_icon = os.path.join(project_root, "frontend", "public", "assets", "iconos", "menu.png")
+            
+            if os.path.exists(default_icon):
+                pixmap = QPixmap(default_icon)
+                if not pixmap.isNull():
+                    self.btnMenu.setIcon(QIcon(pixmap))
+                    self.btnMenu.setIconSize(QSize(40, 40))
+        except Exception as e:
+            # print("Error cargando icono menú:", e)
+            pass
+
+    # -------------------------
+    # Imagen central (hero) - MODIFICADO CON CACHE Y MÁS ROBUSTO
     # -------------------------
     def cargar_imagen_central(self):
         """
@@ -516,6 +530,7 @@ class VentanaPrincipal(QMainWindow):
                 self.mostrar_imagen_alternativa()
                 return
 
+            # ✅ MODIFICADO: Usar el mismo método robusto que para los iconos
             ruta_resuelta = self.find_asset_or_fallback(ruta_relativa, "assets/imagenes/hongo_ischigualasto.jpg")
             # print(f"[HERO] Intentando cargar imagen central desde: {ruta_resuelta}")
 
@@ -536,6 +551,7 @@ class VentanaPrincipal(QMainWindow):
                         self.label_imagen_central.setPixmap(pixmap)
                         self.label_imagen_central.setAlignment(Qt.AlignCenter)
                         self.label_imagen_central.setStyleSheet("")
+                        # print(f"✅ Imagen central cargada: {ruta_resuelta}")
                     else:
                         # print("Error: la imagen no se pudo cargar (pixmap inválido).")
                         self.mostrar_imagen_alternativa()
@@ -550,7 +566,35 @@ class VentanaPrincipal(QMainWindow):
             self.mostrar_imagen_alternativa()
 
     def mostrar_imagen_alternativa(self):
-        if hasattr(self, "label_imagen_central"):
+        """Muestra una imagen alternativa o texto si no se puede cargar la imagen principal"""
+        try:
+            # Intentar cargar imagen de respaldo
+            backend_dir = os.path.dirname(os.path.abspath(__file__))
+            project_root = os.path.abspath(os.path.join(backend_dir, "..", ".."))
+            fallback_image = os.path.join(project_root, "frontend", "public", "assets", "imagenes", "hongo_ischigualasto.jpg")
+            
+            if os.path.exists(fallback_image):
+                pixmap = QPixmap(fallback_image)
+                if not pixmap.isNull():
+                    scaled = pixmap.scaled(
+                        self.label_imagen_central.size(),
+                        Qt.KeepAspectRatio,
+                        Qt.SmoothTransformation
+                    )
+                    self.label_imagen_central.setPixmap(scaled)
+                    self.label_imagen_central.setAlignment(Qt.AlignCenter)
+                    return
+            
+            # Si no hay imagen de respaldo, mostrar texto
+            self.label_imagen_central.setText("Imagen no disponible")
+            self.label_imagen_central.setStyleSheet("""
+                QLabel {
+                    font-size: 16px;
+                    color: #666;
+                    qproperty-alignment: AlignCenter;
+                }
+            """)
+        except Exception:
             self.label_imagen_central.setText("Imagen no disponible")
             self.label_imagen_central.setStyleSheet("""
                 QLabel {
@@ -584,32 +628,42 @@ class VentanaPrincipal(QMainWindow):
     def mostrar_menu_lateral(self):
         self.animar_drawer(mostrar=True)
         # ✅ OPTIMIZADO: Cargar icono de cerrar usando cache
-        if self.close_icon_path:
-            if self._is_url(self.close_icon_path):
-                pixmap = cargar_imagen_desde_ruta_con_cache(self.close_icon_path, (40, 40))
-                if pixmap and not pixmap.isNull():
-                    self.btnMenu.setIcon(QIcon(pixmap))
-            elif os.path.exists(self.close_icon_path):
-                self.btnMenu.setIcon(QIcon(self.close_icon_path))
-        self.btnMenu.setIconSize(QSize(40, 40))
+        self.cargar_icono_cerrar()
 
     def alternar_menu_lateral(self):
         esta_oculto = self.frame_menu_lateral.x() < 0
         self.animar_drawer(esta_oculto)
         
         # ✅ OPTIMIZADO: Cargar iconos usando cache
-        icono_path = self.close_icon_path if esta_oculto else self.menu_icon_path
-        if icono_path:
-            if self._is_url(icono_path):
-                pixmap = cargar_imagen_desde_ruta_con_cache(icono_path, (40, 40))
+        if esta_oculto:
+            self.cargar_icono_cerrar()
+        else:
+            self.cargar_icono_menu()
+
+    def cargar_icono_cerrar(self):
+        """Carga el icono de cerrar de forma robusta"""
+        try:
+            if self.close_icon_path:
+                # ✅ OPTIMIZADO: Usar sistema de cache
+                pixmap = cargar_imagen_desde_ruta_con_cache(self.close_icon_path, (40, 40))
                 if pixmap and not pixmap.isNull():
                     self.btnMenu.setIcon(QIcon(pixmap))
-            elif os.path.exists(icono_path):
-                self.btnMenu.setIcon(QIcon(icono_path))
-        else:
-            self.btnMenu.setIcon(QIcon())
+                    self.btnMenu.setIconSize(QSize(40, 40))
+                    return
+                
+            # Si llegamos aquí, usar icono por defecto
+            backend_dir = os.path.dirname(os.path.abspath(__file__))
+            project_root = os.path.abspath(os.path.join(backend_dir, "..", ".."))
+            default_icon = os.path.join(project_root, "frontend", "public", "assets", "iconos", "cerrar.png")
             
-        self.btnMenu.setIconSize(QSize(40, 40))
+            if os.path.exists(default_icon):
+                pixmap = QPixmap(default_icon)
+                if not pixmap.isNull():
+                    self.btnMenu.setIcon(QIcon(pixmap))
+                    self.btnMenu.setIconSize(QSize(40, 40))
+        except Exception as e:
+            # print("Error cargando icono cerrar:", e)
+            pass
 
     def animar_drawer(self, mostrar=True):
         ancho = self.frame_menu_lateral.width()
@@ -803,14 +857,7 @@ class VentanaPrincipal(QMainWindow):
         try:
             if self.frame_menu_lateral.x() == 0:
                 self.animar_drawer(mostrar=False)
-                if self.menu_icon_path:
-                    if self._is_url(self.menu_icon_path):
-                        pixmap = cargar_imagen_desde_ruta_con_cache(self.menu_icon_path, (40, 40))
-                        if pixmap and not pixmap.isNull():
-                            self.btnMenu.setIcon(QIcon(pixmap))
-                    elif os.path.exists(self.menu_icon_path):
-                        self.btnMenu.setIcon(QIcon(self.menu_icon_path))
-                    self.btnMenu.setIconSize(QSize(40, 40))
+                self.cargar_icono_menu()
         except Exception:
             pass
 
