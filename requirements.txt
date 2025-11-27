@@ -4,3 +4,5 @@ mysql-connector-python==8.1.0
 gunicorn==21.2.0
 # === DEPENDENCIAS PRODUCCIÓN ===
 requests==2.31.0
+
+PyQt5==5.15.9
