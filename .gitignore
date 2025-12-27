@@ -1,0 +1,10 @@
+# Python
+__pycache__/
+*.pyc
+
+# Frontend build
+dist/
+
+# Logs / temporales
+*.log
+.env
