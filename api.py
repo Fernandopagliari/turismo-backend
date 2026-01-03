@@ -5,7 +5,12 @@ import mysql.connector
 from mysql.connector import Error
 import os
 
-app = Flask(__name__, static_folder=None)  # Deshabilitar static folder por defecto
+app = Flask(
+    __name__,
+    static_folder="dist",
+    static_url_path=""
+)
+
 CORS(app)
 
 # =========================
