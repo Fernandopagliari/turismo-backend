@@ -1,218 +1,168 @@
-# api.py - BACKEND FLASK + FRONTEND REACT (VITE) INTEGRADO
+# api.py - PRODUCCIÓN FINAL RENDER + REACT (VITE) + FLASK
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 import mysql.connector
 from mysql.connector import Error
 import os
 
-# =========================
-# CONFIGURACIÓN BASE
-# =========================
+# =====================================================
+# PATHS
+# =====================================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DIST_PATH = os.path.join(BASE_DIR, "dist")
-ASSETS_PATH = os.path.join(BASE_DIR, "assets")
+DIST_DIR = os.path.join(BASE_DIR, "dist")
+INDEX_FILE = os.path.join(DIST_DIR, "index.html")
 
+# =====================================================
+# FLASK APP
+# =====================================================
 app = Flask(
     __name__,
-    static_folder=DIST_PATH,
+    static_folder="dist",
     static_url_path=""
 )
 
 CORS(app)
 
-INICIALIZADO = False
+# =====================================================
+# LOG DE ARRANQUE (CLAVE PARA RENDER)
+# =====================================================
+@app.before_first_request
+def startup_info():
+    print("===================================")
+    print("🚀 FLASK INICIADO")
+    print(f"📂 DIST_DIR: {DIST_DIR}")
+    print(f"📄 index.html existe: {os.path.exists(INDEX_FILE)}")
+    if os.path.exists(DIST_DIR):
+        print("📁 Contenido dist/:", os.listdir(DIST_DIR))
+    print("===================================")
 
-# =========================
-# FRONTEND REACT
-# =========================
-def verificar_frontend_react():
-    index_path = os.path.join(DIST_PATH, "index.html")
-    existe = os.path.exists(index_path)
-    print(f"🔍 Frontend React: {'✅ DISPONIBLE' if existe else '❌ NO ENCONTRADO'}")
-    return existe
 
-# =========================
-# BASE URL DINÁMICA
-# =========================
-def obtener_base_url():
-    try:
-        base_url = os.environ.get("BASE_URL")
+# =====================================================
+# BASE URL DINÁMICA (IMÁGENES)
+# =====================================================
+def base_url():
+    return request.url_root.rstrip("/")
 
-        if not base_url and hasattr(request, "url_root"):
-            base_url = request.url_root.rstrip("/")
 
-        if not base_url:
-            base_url = "https://turismo-regional.up.railway.app"
-
-        if base_url.startswith("http://") and "railway" in base_url:
-            base_url = base_url.replace("http://", "https://")
-
-        return base_url
-    except:
-        return "https://turismo-regional.up.railway.app"
-
-# =========================
-# INICIALIZACIÓN
-# =========================
-def inicializar_servidor():
-    global INICIALIZADO
-    if INICIALIZADO:
-        return
-
-    print("🚀 INICIANDO API TURISMO")
-    print(f"🌐 BD Host: {os.environ.get('MYSQLHOST')}")
-    print(f"🗄️  BD Name: {os.environ.get('MYSQLDATABASE')}")
-
-    verificar_frontend_react()
-    INICIALIZADO = True
-
-# =========================
-# BASE DE DATOS
-# =========================
-def conectar_base_datos():
-    try:
-        config = {
-            "host": os.environ.get("MYSQLHOST"),
-            "user": os.environ.get("MYSQLUSER"),
-            "password": os.environ.get("MYSQLPASSWORD"),
-            "database": os.environ.get("MYSQLDATABASE"),
-            "port": int(os.environ.get("MYSQLPORT", 3306)),
-            "connect_timeout": 10
-        }
-
-        if not config["host"] or not config["user"]:
-            raise Exception("Variables de entorno MySQL incompletas")
-
-        conexion = mysql.connector.connect(**config)
-        return conexion
-
-    except Error as e:
-        raise Exception(f"Error BD: {str(e)}")
-
-# =========================
-# UTILIDADES
-# =========================
 def url_completa(ruta):
     if not ruta:
         return None
-
-    base_url = obtener_base_url()
     ruta = ruta.replace("\\", "/").lstrip("/")
-
     if not ruta.startswith("assets/"):
         ruta = f"assets/{ruta}"
+    return f"{base_url()}/{ruta}"
 
-    return f"{base_url}/{ruta}"
 
-def limpiar_columnas_absolutas(row):
+def normalizar_filas(row):
     if not row:
         return {}
-
-    limpio = {}
+    salida = {}
     for k, v in row.items():
-        if v and any(x in k.lower() for x in ["ruta", "imagen", "icono", "foto", "logo"]):
-            limpio[k] = url_completa(v)
+        if v and any(x in k.lower() for x in ["imagen", "foto", "icono", "logo", "ruta"]):
+            salida[k] = url_completa(v)
         else:
-            limpio[k] = v
-    return limpio
+            salida[k] = v
+    return salida
 
-# =========================
-# MIDDLEWARE
-# =========================
-@app.before_request
-def before_request():
-    if not INICIALIZADO:
-        inicializar_servidor()
 
-# =========================
-# FRONTEND REACT
-# =========================
+# =====================================================
+# CONEXIÓN BD (RENDER)
+# =====================================================
+def conectar_db():
+    try:
+        return mysql.connector.connect(
+            host=os.environ.get("MYSQLHOST"),
+            user=os.environ.get("MYSQLUSER"),
+            password=os.environ.get("MYSQLPASSWORD"),
+            database=os.environ.get("MYSQLDATABASE"),
+            port=int(os.environ.get("MYSQLPORT", 3306)),
+            connect_timeout=10
+        )
+    except Error as e:
+        raise Exception(str(e))
+
+
+# =====================================================
+# FRONTEND (REACT)
+# =====================================================
 @app.route("/")
 def index():
-    if os.path.exists(os.path.join(DIST_PATH, "index.html")):
-        return send_from_directory(DIST_PATH, "index.html")
+    return send_from_directory(DIST_DIR, "index.html")
 
-    return jsonify({
-        "status": "API OK",
-        "mensaje": "Frontend no encontrado"
-    })
 
 @app.route("/<path:path>")
-def react_router(path):
-    archivo = os.path.join(DIST_PATH, path)
+def static_proxy(path):
+    archivo = os.path.join(DIST_DIR, path)
+
+    # Archivos reales (assets, css, js, imágenes)
     if os.path.exists(archivo):
-        return send_from_directory(DIST_PATH, path)
+        return send_from_directory(DIST_DIR, path)
 
-    return send_from_directory(DIST_PATH, "index.html")
+    # Fallback React Router
+    return send_from_directory(DIST_DIR, "index.html")
 
-# =========================
-# API ENDPOINTS
-# =========================
-@app.route("/api/info-servidor")
-def info_servidor():
+
+# =====================================================
+# API
+# =====================================================
+@app.route("/api/health")
+def health():
     return jsonify({
-        "status": "activo",
-        "base_url": obtener_base_url(),
-        "frontend": verificar_frontend_react()
+        "status": "ok",
+        "index": os.path.exists(INDEX_FILE)
     })
 
-@app.route("/api/configuracion")
-def configuracion():
-    conn = conectar_base_datos()
-    cur = conn.cursor(dictionary=True)
-    cur.execute("SELECT * FROM configuracion_app LIMIT 1")
-    data = cur.fetchone()
-    conn.close()
-    return jsonify(limpiar_columnas_absolutas(data) if data else {})
 
 @app.route("/api/regiones")
 def regiones():
-    conn = conectar_base_datos()
-    cur = conn.cursor(dictionary=True)
-    cur.execute("SELECT * FROM regiones_zonas WHERE habilitar = 1 ORDER BY orden")
-    rows = cur.fetchall()
-    conn.close()
-    return jsonify([limpiar_columnas_absolutas(r) for r in rows])
+    try:
+        db = conectar_db()
+        cur = db.cursor(dictionary=True)
+        cur.execute("SELECT * FROM regiones_zonas WHERE habilitar = 1 ORDER BY orden")
+        data = [normalizar_filas(r) for r in cur.fetchall()]
+        db.close()
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 @app.route("/api/secciones")
 def secciones():
-    conn = conectar_base_datos()
-    cur = conn.cursor(dictionary=True)
-    cur.execute("SELECT * FROM secciones WHERE habilitar = 1 ORDER BY orden")
-    secciones = cur.fetchall()
+    try:
+        db = conectar_db()
+        cur = db.cursor(dictionary=True)
 
-    for s in secciones:
-        cur.execute("""
-            SELECT * FROM sub_secciones
-            WHERE id_seccion = %s AND habilitar = 1
-            ORDER BY orden
-        """, (s["id_seccion"],))
-        s["subsecciones"] = [
-            limpiar_columnas_absolutas(x) for x in cur.fetchall()
-        ]
+        cur.execute("SELECT * FROM secciones WHERE habilitar = 1 ORDER BY orden")
+        secciones = cur.fetchall()
 
-    conn.close()
-    return jsonify([limpiar_columnas_absolutas(s) for s in secciones])
+        for s in secciones:
+            cur.execute(
+                "SELECT * FROM sub_secciones WHERE id_seccion = %s AND habilitar = 1 ORDER BY orden",
+                (s["id_seccion"],)
+            )
+            s["subsecciones"] = [
+                normalizar_filas(x) for x in cur.fetchall()
+            ]
 
-# =========================
-# ASSETS
-# =========================
-@app.route("/assets/<path:filename>")
-def assets(filename):
-    return send_from_directory(ASSETS_PATH, filename)
+        db.close()
+        return jsonify([normalizar_filas(s) for s in secciones])
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-# =========================
+
+# =====================================================
 # ERRORES
-# =========================
+# =====================================================
 @app.errorhandler(404)
 def not_found(e):
-    if request.path.startswith("/api/"):
-        return jsonify({"error": "Endpoint no encontrado"}), 404
-    return send_from_directory(DIST_PATH, "index.html")
+    if request.path.startswith("/api"):
+        return jsonify({"error": "API no encontrada"}), 404
+    return send_from_directory(DIST_DIR, "index.html")
 
-# =========================
+
+# =====================================================
 # MAIN
-# =========================
+# =====================================================
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=False)
+    app.run(host="0.0.0.0", port=port)
