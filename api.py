@@ -26,15 +26,13 @@ CORS(app)
 # =====================================================
 # LOG DE ARRANQUE (CLAVE PARA RENDER)
 # =====================================================
-@app.before_first_request
-def startup_info():
-    print("===================================")
-    print("🚀 FLASK INICIADO")
-    print(f"📂 DIST_DIR: {DIST_DIR}")
-    print(f"📄 index.html existe: {os.path.exists(INDEX_FILE)}")
-    if os.path.exists(DIST_DIR):
-        print("📁 Contenido dist/:", os.listdir(DIST_DIR))
-    print("===================================")
+print("===================================")
+print("🚀 FLASK INICIADO")
+print(f"📂 DIST_DIR: {DIST_DIR}")
+print(f"📄 index.html existe: {os.path.exists(INDEX_FILE)}")
+if os.path.exists(DIST_DIR):
+   print("📁 Contenido dist/:", os.listdir(DIST_DIR))
+print("===================================")
 
 
 # =====================================================
