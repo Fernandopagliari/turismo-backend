@@ -152,7 +152,7 @@ min-height: 100px;
          <property name="geometry">
           <rect>
            <x>90</x>
-           <y>220</y>
+           <y>250</y>
            <width>40</width>
            <height>23</height>
           </rect>
@@ -167,9 +167,9 @@ min-height: 100px;
          </property>
          <property name="geometry">
           <rect>
-           <x>130</x>
+           <x>10</x>
            <y>220</y>
-           <width>350</width>
+           <width>460</width>
            <height>23</height>
           </rect>
          </property>
@@ -178,7 +178,7 @@ min-height: 100px;
          <property name="geometry">
           <rect>
            <x>10</x>
-           <y>225</y>
+           <y>255</y>
            <width>80</width>
            <height>13</height>
           </rect>

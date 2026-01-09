@@ -3,7 +3,7 @@ __pycache__/
 *.pyc
 
 # Frontend build
-dist/
+#dist/
 
 # Logs / temporales
 *.log

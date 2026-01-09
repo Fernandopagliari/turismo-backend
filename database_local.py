@@ -2,7 +2,7 @@
 # database_local.py - EXCLUSIVO para base de datos LOCAL
 import mysql.connector
 from mysql.connector import Error
-from PyQt5.QtWidgets import QMessageBox, QApplication, QDialog, QVBoxLayout, QLabel, QLineEdit, QPushButton, QHBoxLayout
+from PyQt5.QtWidgets import QMessageBox, QApplication, QDialog, QVBoxLayout, QLabel, QLineEdit, QPushButton, QHBoxLayout, QFrame
 from PyQt5.QtCore import Qt
 import sys
 import json
@@ -156,6 +156,82 @@ def obtener_puerto_automatico():
 CREDENCIALES_LOCALES_TEMPORALES = None
 CONFIG_FILE = "mysql_config.json"
 
+def crear_tabla_licencia(conexion):
+    """Crear tabla de licencia en DB local"""
+    cursor = conexion.cursor()
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS licencia (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                serial VARCHAR(100) NOT NULL,
+                clave VARCHAR(255) NOT NULL,
+                fecha_activacion DATE NOT NULL,
+                fecha_expiracion TEXT NOT NULL,
+                hardware_id VARCHAR(255)
+            ) ENGINE=InnoDB;
+        """)
+    except Exception as e:
+        pass
+    finally:
+        cursor.close()
+
+def crear_tabla_datos_host_local(conexion):
+    """Crear tabla para configuración de conexión LOCAL"""
+    cursor = conexion.cursor()
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS datos_host_local (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                host VARCHAR(255) NOT NULL,
+                usuario VARCHAR(255) NOT NULL,
+                password VARCHAR(255) NOT NULL,
+                base_datos VARCHAR(255) NOT NULL,
+                puerto INT NOT NULL DEFAULT 3306,
+                base_url VARCHAR(255) NULL,
+                activo BOOLEAN NOT NULL DEFAULT TRUE,
+                fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                -- Nuevas columnas para GitHub
+                github_user VARCHAR(100) DEFAULT '',
+                github_frontend_repo VARCHAR(100) DEFAULT 'turismo-frontend',
+                github_backend_repo VARCHAR(100) DEFAULT 'turismo-backend',
+                github_auto_sync BOOLEAN DEFAULT TRUE,
+                github_token VARCHAR(255) DEFAULT '',
+                github_configure_new BOOLEAN DEFAULT TRUE
+            ) ENGINE=InnoDB;
+        """)
+        
+        conexion.commit()
+        
+    except Exception as e:
+        pass
+    finally:
+        cursor.close()
+
+def crear_tabla_datos_hosting(conexion):
+    """Crear tabla para configuración de conexión al SERVIDOR REMOTO"""
+    cursor = conexion.cursor()
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS datos_hosting (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                host VARCHAR(255) NOT NULL,
+                usuario VARCHAR(255) NOT NULL,
+                password VARCHAR(255) NOT NULL,
+                base_datos VARCHAR(255) NOT NULL,
+                puerto INT NOT NULL DEFAULT 3306,
+                base_url VARCHAR(255) NULL,
+                activo BOOLEAN NOT NULL DEFAULT TRUE,
+                fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB;
+        """)
+        
+        conexion.commit()
+        
+    except Exception as e:
+        pass
+    finally:
+        cursor.close()
+
 class DialogoCredencialesMySQL(QDialog):
     """Diálogo para ingresar credenciales de MySQL local - CONEXIÓN LOCAL"""
     def __init__(self, parent=None, titulo_personalizado=None, es_reconfiguracion=False):
@@ -169,7 +245,8 @@ class DialogoCredencialesMySQL(QDialog):
             else:
                 self.setWindowTitle("🔧 Configuración MySQL Local - Primera Instalación")
             
-        self.setFixedSize(450, 420)
+        # Aumentar tamaño para campos adicionales
+        self.setFixedSize(450, 520)
         self.setWindowModality(Qt.ApplicationModal)
         
         layout = QVBoxLayout()
@@ -229,13 +306,37 @@ class DialogoCredencialesMySQL(QDialog):
         self.puerto_input.setStyleSheet("padding: 4px; font-size: 11px; border: 1px solid #bdc3c7; border-radius: 2px;")
         layout.addWidget(self.puerto_input)
         
-        # ✅ NUEVO CAMPO: Base URL
+        # ✅ CAMPO: Base URL
         layout.addWidget(QLabel("🌐 Base URL (API):"))
         self.base_url_input = QLineEdit()
         self.base_url_input.setText("http://localhost:5000")
         self.base_url_input.setPlaceholderText("http://localhost:5000 o https://tudominio.com")
         self.base_url_input.setStyleSheet("padding: 4px; font-size: 11px; border: 1px solid #bdc3c7; border-radius: 2px;")
         layout.addWidget(self.base_url_input)
+        
+        # ✅ SEPARADOR para GitHub
+        separator = QFrame()
+        separator.setFrameShape(QFrame.HLine)
+        separator.setStyleSheet("background-color: #bdc3c7; margin: 10px 0;")
+        layout.addWidget(separator)
+        
+        # ✅ CAMPO: Usuario GitHub
+        layout.addWidget(QLabel("🐙 Usuario GitHub (opcional):"))
+        self.github_user_input = QLineEdit()
+        self.github_user_input.setPlaceholderText("tu_usuario_github")
+        self.github_user_input.setStyleSheet("padding: 4px; font-size: 11px; border: 1px solid #bdc3c7; border-radius: 2px;")
+        layout.addWidget(self.github_user_input)
+        
+        # Información adicional para GitHub
+        info_github = QLabel(
+            "💡 Para sincronización automática de imágenes:\n"
+            "• Ingrese su usuario de GitHub (opcional)\n"
+            "• Se usará el repositorio 'turismo-frontend'\n"
+            "• Dejar vacío si no usa GitHub"
+        )
+        info_github.setWordWrap(True)
+        info_github.setStyleSheet("color: #7f8c8d; font-size: 10px; margin: 5px 0; padding: 6px; background-color: #f8f9fa; border-radius: 3px;")
+        layout.addWidget(info_github)
         
         # Espaciador
         layout.addSpacing(10)
@@ -302,7 +403,7 @@ class DialogoCredencialesMySQL(QDialog):
         # Información adicional
         info = QLabel(
             "💡 Las credenciales se guardarán en la tabla 'datos_host_local'\n"
-            "para uso futuro. Base URL es para la API del frontend."
+            "para uso futuro. GitHub es opcional para sincronización."
         )
         info.setWordWrap(True)
         info.setStyleSheet("color: #95a5a6; font-size: 10px; margin-top: 8px; padding: 6px; background-color: #f8f9fa; border-radius: 3px;")
@@ -367,7 +468,10 @@ class DialogoCredencialesMySQL(QDialog):
                 'user': self.usuario_input.text().strip(),
                 'password': self.password_input.text(),
                 'port': int(self.puerto_input.text().strip()),
-                'base_url': self.base_url_input.text().strip()
+                'base_url': self.base_url_input.text().strip(),
+                # Nuevos campos GitHub
+                'github_user': self.github_user_input.text().strip()
+                # Los otros campos GitHub usarán valores por defecto de la tabla
             }
             self.accept()
 
@@ -423,75 +527,6 @@ def cargar_configuracion_externa():
     except Exception as e:
         return None
 
-def crear_tabla_licencia(conexion):
-    """Crear tabla de licencia en DB local"""
-    cursor = conexion.cursor()
-    try:
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS licencia (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                serial VARCHAR(100) NOT NULL,
-                clave VARCHAR(255) NOT NULL,
-                fecha_activacion DATE NOT NULL,
-                fecha_expiracion TEXT NOT NULL,
-                hardware_id VARCHAR(255)
-            ) ENGINE=InnoDB;
-        """)
-    except Exception as e:
-        pass
-    finally:
-        cursor.close()
-
-def crear_tabla_datos_host_local(conexion):
-    """Crear tabla para configuración de conexión LOCAL"""
-    cursor = conexion.cursor()
-    try:
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS datos_host_local (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                host VARCHAR(255) NOT NULL,
-                usuario VARCHAR(255) NOT NULL,
-                password VARCHAR(255) NOT NULL,
-                base_datos VARCHAR(255) NOT NULL,
-                puerto INT NOT NULL DEFAULT 3306,
-                base_url VARCHAR(255) NULL,
-                activo BOOLEAN NOT NULL DEFAULT TRUE,
-                fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            ) ENGINE=InnoDB;
-        """)
-        
-        conexion.commit()
-        
-    except Exception as e:
-        pass
-    finally:
-        cursor.close()
-
-def crear_tabla_datos_hosting(conexion):
-    """Crear tabla para configuración de conexión al SERVIDOR REMOTO"""
-    cursor = conexion.cursor()
-    try:
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS datos_hosting (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                host VARCHAR(255) NOT NULL,
-                usuario VARCHAR(255) NOT NULL,
-                password VARCHAR(255) NOT NULL,
-                base_datos VARCHAR(255) NOT NULL,
-                puerto INT NOT NULL DEFAULT 3306,
-                base_url VARCHAR(255) NULL,
-                activo BOOLEAN NOT NULL DEFAULT TRUE,
-                fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            ) ENGINE=InnoDB;
-        """)
-        
-        conexion.commit()
-        
-    except Exception as e:
-        pass
-    finally:
-        cursor.close()
-
 def conectar_y_guardar_configuracion(credenciales, parent=None):
     """
     Conectar con credenciales y guardarlas en tabla Y archivo externo
@@ -529,16 +564,19 @@ def conectar_y_guardar_configuracion(credenciales, parent=None):
         crear_tabla_datos_host_local(conexion_db)
         crear_tabla_datos_hosting(conexion_db)
         
-        # ✅ GUARDAR en tabla datos_host_local
+        # ✅ GUARDAR en tabla datos_host_local CON campos GitHub
         cursor_db = conexion_db.cursor()
         
         # Limpiar configuraciones anteriores
         cursor_db.execute("UPDATE datos_host_local SET activo = 0")
         
-        # Insertar nueva configuración
+        # Insertar nueva configuración CON campos GitHub
         cursor_db.execute("""
-            INSERT INTO datos_host_local (host, usuario, password, base_datos, puerto, base_url, activo)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO datos_host_local 
+            (host, usuario, password, base_datos, puerto, base_url, activo,
+             github_user, github_frontend_repo, github_backend_repo, 
+             github_auto_sync, github_token, github_configure_new)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (
             credenciales['host'],
             credenciales['user'],
@@ -546,7 +584,13 @@ def conectar_y_guardar_configuracion(credenciales, parent=None):
             "databaseapp",
             credenciales['port'],
             credenciales.get('base_url', 'http://localhost:5000'),
-            True
+            True,
+            credenciales.get('github_user', ''),
+            'turismo-frontend',  # Valor por defecto desde SQL
+            'turismo-backend',   # Valor por defecto desde SQL
+            True,                # Valor por defecto desde SQL
+            '',                  # Token vacío por defecto
+            False                # No configurar en nuevas instalaciones por defecto
         ))
         
         conexion_db.commit()
@@ -599,19 +643,32 @@ def obtener_configuracion_automatica():
             if conexion and conexion.is_connected():
                 cursor = conexion.cursor()
                 
-                # Leer configuración de tabla
-                cursor.execute("SELECT host, usuario, password, base_datos, puerto, base_url FROM datos_host_local WHERE activo = 1 LIMIT 1")
+                # Leer configuración de tabla CON campos GitHub
+                cursor.execute("""
+                    SELECT host, usuario, password, base_datos, puerto, base_url,
+                           github_user, github_frontend_repo, github_backend_repo,
+                           github_auto_sync, github_token, github_configure_new
+                    FROM datos_host_local 
+                    WHERE activo = 1 
+                    LIMIT 1
+                """)
                 resultado = cursor.fetchone()
                 
                 if resultado:
-                    host, user, password, database, port, base_url = resultado
+                    host, user, password, database, port, base_url, github_user, github_frontend_repo, github_backend_repo, github_auto_sync, github_token, github_configure_new = resultado
                     config_tabla = {
                         'host': host,
                         'user': user,
                         'password': password,
                         'database': database,
                         'port': port,
-                        'base_url': base_url or "http://localhost:5000"
+                        'base_url': base_url or "http://localhost:5000",
+                        'github_user': github_user or '',
+                        'github_frontend_repo': github_frontend_repo or 'turismo-frontend',
+                        'github_backend_repo': github_backend_repo or 'turismo-backend',
+                        'github_auto_sync': bool(github_auto_sync) if github_auto_sync is not None else True,
+                        'github_token': github_token or '',
+                        'github_configure_new': bool(github_configure_new) if github_configure_new is not None else False
                     }
                     
                     # Probar si funciona
@@ -901,3 +958,49 @@ def conectar_base_datos(parent=None):
     Función alias para mantener compatibilidad con código existente
     """
     return conectar_local(parent)
+
+def obtener_configuracion_github(parent=None):
+    """Obtener configuración de GitHub desde datos_host_local"""
+    conexion = conectar_local(parent)
+    if not conexion:
+        return None
+    
+    try:
+        cursor = conexion.cursor(dictionary=True)
+        cursor.execute("""
+            SELECT github_user, github_frontend_repo, github_backend_repo, 
+                   github_auto_sync, github_token, github_configure_new
+            FROM datos_host_local 
+            WHERE activo = 1 
+            LIMIT 1
+        """)
+        
+        config = cursor.fetchone()
+        cursor.close()
+        conexion.close()
+        
+        if config:
+            return {
+                'usuario': config['github_user'] or '',
+                'frontend_repo': config['github_frontend_repo'] or 'turismo-frontend',
+                'backend_repo': config['github_backend_repo'] or 'turismo-backend',
+                'auto_sync': bool(config['github_auto_sync']) if config['github_auto_sync'] is not None else True,
+                'token': config['github_token'] or '',
+                'configure_new': bool(config['github_configure_new']) if config['github_configure_new'] is not None else False
+            }
+        else:
+            return None
+            
+    except Exception as e:
+        print(f"Error obteniendo configuración GitHub: {e}")
+        return None
+
+if __name__ == "__main__":
+    # Prueba de conexión
+    app = QApplication([])
+    conexion = conectar_local()
+    if conexion:
+        print("✅ Conexión exitosa")
+        conexion.close()
+    else:
+        print("❌ No se pudo conectar")

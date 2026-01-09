@@ -9,6 +9,7 @@ import shutil
 import hashlib
 import requests
 import time
+from utils.image_utils import procesar_imagen
 
 # -------------------------
 # CACHE DE IMÁGENES PARA MEJORAR VELOCIDAD
@@ -551,53 +552,83 @@ class VentanaUsuarios(QWidget):
                 QMessageBox.critical(self, "Error", f"No se pudo desactivar el usuario: {str(e)}")
             
     def seleccionar_foto_usuario(self):
-        ruta_origen, _ = QFileDialog.getOpenFileName(
-            self, "Seleccionar foto de usuario", "", "Imágenes (*.png *.jpg *.jpeg *.bmp *.gif)"
+        """Selecciona una foto, la convierte a WebP y la guarda correctamente"""
+
+        archivo, _ = QFileDialog.getOpenFileName(
+            self,
+            "Seleccionar foto de usuario (recomendado WebP)",
+            "",
+            "Imágenes WebP (*.webp);;"
+            "Imágenes compatibles (*.webp *.jpg *.jpeg *.png *.bmp)"
         )
 
-        if not ruta_origen:
+        if not archivo:
             self.lineEdit_ruta_foto.clear()
             self.mostrar_foto_placeholder("Sin foto")
             return
 
+        # ==============================
+        # 🔥 CONVERSIÓN AUTOMÁTICA A WEBP
+        # ==============================
         try:
-            # ✅ MEJORADO: Carpeta destino usando sistema unificado
-            carpeta_destino = ruta_absoluta_desde_relativa("/assets/imagenes/fotos_usuarios")
-            os.makedirs(carpeta_destino, exist_ok=True)
-
-            nombre_archivo = os.path.basename(ruta_origen)
-            ruta_destino = os.path.join(carpeta_destino, nombre_archivo)
-
-            # Manejar archivos duplicados
-            contador = 1
-            nombre_base, extension = os.path.splitext(nombre_archivo)
-            while os.path.exists(ruta_destino):
-                nuevo_nombre = f"{nombre_base}_{contador}{extension}"
-                ruta_destino = os.path.join(carpeta_destino, nuevo_nombre)
-                contador += 1
-
-            # Copiar archivo
-            shutil.copy2(ruta_origen, ruta_destino)
-
-            # ✅ MEJORADO: Convertir a ruta relativa usando función unificada
-            ruta_relativa = convertir_ruta_produccion(ruta_destino)
-            self.lineEdit_ruta_foto.setText(ruta_relativa)
-
-            # Mostrar preview
-            pixmap = QPixmap(ruta_destino)
-            if not pixmap.isNull():
-                pixmap_redondeada = self.redondear_imagen_pixmap(pixmap, circular=True, size=100)
-                self.label_foto_usuario.setPixmap(pixmap_redondeada)
-                self.label_foto_usuario.setText("")
-                self.label_foto_usuario.setToolTip(f"Foto: {ruta_relativa}")
-
-            # Actualizar en BD si hay usuario seleccionado
-            if hasattr(self, 'usuario_seleccionado_id') and self.usuario_seleccionado_id:
-                self.actualizar_foto_en_bd(ruta_relativa)
-
+            archivo = convertir_a_webp(archivo)
         except Exception as e:
-            QMessageBox.warning(self, "Error", f"No se pudo procesar la foto:\n{e}")
-            self.mostrar_foto_placeholder("Error")
+            QMessageBox.critical(self, "Error", f"No se pudo convertir la imagen a WebP:\n{e}")
+            return
+
+        # ==============================
+        # 📁 CARPETA DESTINO (producción)
+        # ==============================
+        carpeta_destino = ruta_absoluta_desde_relativa("/assets/imagenes/fotos_usuarios")
+        os.makedirs(carpeta_destino, exist_ok=True)
+
+        nombre_archivo = os.path.basename(archivo)
+        ruta_destino = os.path.join(carpeta_destino, nombre_archivo)
+
+        # Evitar sobrescrituras
+        contador = 1
+        nombre_base, extension = os.path.splitext(nombre_archivo)
+        while os.path.exists(ruta_destino):
+            ruta_destino = os.path.join(
+                carpeta_destino,
+                f"{nombre_base}_{contador}{extension}"
+            )
+            contador += 1
+
+        try:
+            shutil.move(archivo, ruta_destino)
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"No se pudo guardar la imagen:\n{e}")
+            return
+
+        # ==============================
+        # 🔗 RUTA RELATIVA PRODUCCIÓN
+        # ==============================
+        ruta_relativa = convertir_ruta_produccion(ruta_destino)
+        self.lineEdit_ruta_foto.setText(ruta_relativa)
+
+        # ==============================
+        # 🖼 PREVIEW
+        # ==============================
+        pixmap = QPixmap(ruta_destino)
+        if not pixmap.isNull():
+            pixmap_redondeada = self.redondear_imagen_pixmap(
+                pixmap,
+                circular=True,
+                size=100
+            )
+            self.label_foto_usuario.setPixmap(pixmap_redondeada)
+            self.label_foto_usuario.setText("")
+            self.label_foto_usuario.setToolTip(f"Foto: {ruta_relativa}")
+        else:
+            self.mostrar_foto_placeholder("Error cargando")
+
+        # ==============================
+        # 💾 ACTUALIZAR BD AUTOMÁTICO
+        # ==============================
+        if hasattr(self, 'usuario_seleccionado_id') and self.usuario_seleccionado_id:
+            self.actualizar_foto_en_bd(ruta_relativa)
+
 
     def actualizar_foto_en_bd(self, ruta_relativa):
         """Actualiza automáticamente la foto en la base de datos"""

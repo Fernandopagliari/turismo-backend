@@ -7,149 +7,6 @@ from PyQt5.QtCore import Qt, QRectF
 import os
 import shutil
 import hashlib
-import requests
-import time
-
-# -------------------------
-# CACHE DE IMÁGENES PARA MEJORAR VELOCIDAD
-# -------------------------
-_image_cache = {}
-_CACHE_MAX_SIZE = 100
-_CACHE_TIMEOUT = 300
-
-def limpiar_cache_antiguo():
-    """Limpia entradas de cache antiguas"""
-    global _image_cache
-    current_time = time.time()
-    keys_to_remove = []
-    
-    for key, (timestamp, pixmap) in _image_cache.items():
-        if current_time - timestamp > _CACHE_TIMEOUT:
-            keys_to_remove.append(key)
-    
-    for key in keys_to_remove:
-        del _image_cache[key]
-
-def obtener_clave_cache(ruta_imagen, size=None):
-    """Genera clave única para el cache"""
-    clave = f"{ruta_imagen}_{size}"
-    return hashlib.md5(clave.encode()).hexdigest()
-
-# -------------------------
-# MÉTODOS DE BÚSQUEDA HÍBRIDA OPTIMIZADOS CON CACHE
-# -------------------------
-def _is_url(path):
-    """Verifica si una ruta es una URL"""
-    return isinstance(path, str) and (path.startswith("http://") or path.startswith("https://"))
-
-def obtener_url_remota(ruta_relativa: str) -> str:
-    """Construye URL remota basada en la configuración de hosting - CORREGIDA"""
-    try:
-        conn = conectar_base_datos()
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT base_url FROM datos_hosting WHERE activo = 1 LIMIT 1")
-        resultado = cursor.fetchone()
-        cursor.close()
-        conn.close()
-        
-        if resultado and resultado.get('base_url'):
-            base_url = resultado['base_url'].strip()
-            if base_url:
-                if not base_url.endswith('/'):
-                    base_url += '/'
-                ruta_limpia = ruta_relativa.lstrip('/')
-                # ✅ CORREGIDO: No agregar "assets/" extra
-                url_completa = f"{base_url}{ruta_limpia}"
-                return url_completa
-    except Exception as e:
-        pass
-    return ""
-
-def verificar_url_remota(url: str) -> bool:
-    """Verifica si una URL remota es accesible - OPTIMIZADA"""
-    try:
-        response = requests.head(url, timeout=3)  # Timeout más corto
-        return response.status_code == 200
-    except Exception:
-        return False
-
-def resolver_ruta_hibrida(ruta_absoluta_db: str, ruta_relativa_db: str) -> str:
-    """
-    Busca imágenes en REMOTO → LOCAL - OPTIMIZADA CON CACHE
-    """
-    # Limpiar cache antiguo periódicamente
-    if len(_image_cache) > _CACHE_MAX_SIZE:
-        limpiar_cache_antiguo()
-    
-    # 1. PRIMERO: Buscar en REMOTO usando ruta relativa
-    if ruta_relativa_db:
-        url_remota = obtener_url_remota(ruta_relativa_db)
-        if url_remota and verificar_url_remota(url_remota):
-            return url_remota
-    
-    # 2. SEGUNDO: Buscar en LOCAL con ruta absoluta
-    if ruta_absoluta_db and os.path.exists(ruta_absoluta_db):
-        return ruta_absoluta_db
-    
-    # 3. TERCERO: Buscar en estructura del proyecto
-    if ruta_relativa_db:
-        rutas_posibles = [
-            os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 
-                        "turismo-frontend", "public", ruta_relativa_db),
-            os.path.join(os.getcwd(), "turismo-frontend", "public", ruta_relativa_db),
-        ]
-        
-        for ruta in rutas_posibles:
-            if os.path.exists(ruta):
-                return ruta
-    
-    return ""
-
-def cargar_imagen_desde_ruta(ruta_imagen: str, size: tuple = None):
-    """
-    Carga imagen desde URL remota o archivo local - CON CACHE
-    """
-    if not ruta_imagen:
-        return None
-
-    # Verificar cache primero
-    cache_key = obtener_clave_cache(ruta_imagen, size)
-    if cache_key in _image_cache:
-        timestamp, pixmap = _image_cache[cache_key]
-        if time.time() - timestamp < _CACHE_TIMEOUT:
-            return pixmap
-        else:
-            del _image_cache[cache_key]
-
-    try:
-        # ✅ MANEJAR URL REMOTA (con timeout optimizado)
-        if _is_url(ruta_imagen):
-            response = requests.get(ruta_imagen, timeout=5)
-            if response.status_code == 200:
-                pixmap = QPixmap()
-                pixmap.loadFromData(response.content)
-                if not pixmap.isNull():
-                    if size:
-                        pixmap = pixmap.scaled(size[0], size[1], Qt.KeepAspectRatio, Qt.SmoothTransformation)
-                    # Guardar en cache
-                    _image_cache[cache_key] = (time.time(), pixmap)
-                    return pixmap
-            return None
-        
-        # ✅ MANEJAR ARCHIVO LOCAL
-        elif os.path.exists(ruta_imagen):
-            pixmap = QPixmap(ruta_imagen)
-            if not pixmap.isNull():
-                if size:
-                    pixmap = pixmap.scaled(size[0], size[1], Qt.KeepAspectRatio, Qt.SmoothTransformation)
-                # Guardar en cache
-                _image_cache[cache_key] = (time.time(), pixmap)
-                return pixmap
-        
-        return None
-        
-    except Exception as e:
-        return None
 
 def ruta_absoluta_desde_relativa(relativa):
     """
@@ -164,6 +21,8 @@ def ruta_absoluta_desde_relativa(relativa):
 
 def convertir_ruta_produccion(ruta_absoluta):
     """Convierte rutas absolutas a rutas relativas - VERSIÓN FINAL"""
+    from PyQt5.QtWidgets import QMessageBox
+    
     if not ruta_absoluta or not os.path.exists(ruta_absoluta):
         return ""
     
@@ -233,72 +92,62 @@ class VentanaSecciones(QWidget):
     # ------------------ CRUD -------------------
 
     def cargar_secciones_activas(self):
-        try:
-            conexion = conectar_base_datos()
-            cursor = conexion.cursor()
-            cursor.execute("SELECT id_seccion, nombre_seccion, icono_seccion, orden FROM secciones WHERE habilitar = 1 ORDER BY orden ASC")
-            resultados = cursor.fetchall()
-            conexion.close()
+        conexion = conectar_base_datos()
+        cursor = conexion.cursor()
+        cursor.execute("SELECT id_seccion, nombre_seccion, icono_seccion, orden FROM secciones WHERE habilitar = 1 ORDER BY orden ASC")
+        resultados = cursor.fetchall()
+        conexion.close()
 
-            columnas = ["ID", "Nombre", "Icono", "Orden"]
-            self.Tabla_secciones_activas.setColumnCount(len(columnas))
-            self.Tabla_secciones_activas.setHorizontalHeaderLabels(columnas)
-            self.Tabla_secciones_activas.setRowCount(0)
+        columnas = ["ID", "Nombre", "Icono", "Orden"]
+        self.Tabla_secciones_activas.setColumnCount(len(columnas))
+        self.Tabla_secciones_activas.setHorizontalHeaderLabels(columnas)
+        self.Tabla_secciones_activas.setRowCount(0)
 
-            for row_number, row_data in enumerate(resultados):
-                self.Tabla_secciones_activas.insertRow(row_number)
-                for column_number, data in enumerate(row_data):
-                    item = QTableWidgetItem(str(data))
-                    self.Tabla_secciones_activas.setItem(row_number, column_number, item)
-
-        except Exception as e:
-            QMessageBox.warning(self, "Error", f"No se pudieron cargar las secciones activas: {e}")
+        for row_number, row_data in enumerate(resultados):
+            self.Tabla_secciones_activas.insertRow(row_number)
+            for column_number, data in enumerate(row_data):
+                item = QTableWidgetItem(str(data))
+                self.Tabla_secciones_activas.setItem(row_number, column_number, item)
 
     def cargar_secciones_inactivas(self):
-        try:
-            conexion = conectar_base_datos()
-            cursor = conexion.cursor()
-            cursor.execute("SELECT id_seccion, nombre_seccion, icono_seccion, orden FROM secciones WHERE habilitar = 0 ORDER BY orden ASC")
-            resultados = cursor.fetchall()
-            conexion.close()
+        conexion = conectar_base_datos()
+        cursor = conexion.cursor()
+        cursor.execute("SELECT id_seccion, nombre_seccion, icono_seccion, orden FROM secciones WHERE habilitar = 0 ORDER BY orden ASC")
+        resultados = cursor.fetchall()
+        conexion.close()
 
-            columnas = ["ID", "Nombre", "Icono", "Orden"]
-            self.Tabla_secciones_inactivas.setColumnCount(len(columnas))
-            self.Tabla_secciones_inactivas.setHorizontalHeaderLabels(columnas)
-            self.Tabla_secciones_inactivas.setRowCount(0)
+        columnas = ["ID", "Nombre", "Icono", "Orden"]
+        self.Tabla_secciones_inactivas.setColumnCount(len(columnas))
+        self.Tabla_secciones_inactivas.setHorizontalHeaderLabels(columnas)
+        self.Tabla_secciones_inactivas.setRowCount(0)
 
-            for row_number, row_data in enumerate(resultados):
-                self.Tabla_secciones_inactivas.insertRow(row_number)
-                for column_number, data in enumerate(row_data):
-                    item = QTableWidgetItem(str(data))
-                    self.Tabla_secciones_inactivas.setItem(row_number, column_number, item)
-                    
-        except Exception as e:
-            QMessageBox.warning(self, "Error", f"No se pudieron cargar las secciones inactivas: {e}")
+        for row_number, row_data in enumerate(resultados):
+            self.Tabla_secciones_inactivas.insertRow(row_number)
+            for column_number, data in enumerate(row_data):
+                item = QTableWidgetItem(str(data))
+                self.Tabla_secciones_inactivas.setItem(row_number, column_number, item)
 
     def seleccionar_seccion_activa(self, fila, columna):
-        def obtener_texto(f, c):
-            item = self.Tabla_secciones_activas.item(f, c)
-            return item.text() if item else ""
+        item = lambda f, c: self.Tabla_secciones_activas.item(f, c)
+        self.seccion_seleccionada_id = item(fila, 0).text() if item(fila, 0) else ""
+        self.lineEdit_nombre_seccion_app.setText(item(fila, 1).text() if item(fila, 1) else "")
+        self.lineEdit_icono_seccion.setText(item(fila, 2).text() if item(fila, 2) else "")
+        self.spinBox_orden_seccion.setValue(int(item(fila, 3).text()) if item(fila, 3) else 0)
 
-        self.seccion_seleccionada_id = obtener_texto(fila, 0)
-        self.lineEdit_nombre_seccion_app.setText(obtener_texto(fila, 1))
-        
-        # ✅ OPTIMIZADO: Usar búsqueda híbrida para el icono
-        ruta_relativa = obtener_texto(fila, 2)
-        ruta_encontrada = resolver_ruta_hibrida("", ruta_relativa)
-        
-        self.lineEdit_icono_seccion.setText(ruta_encontrada)
-        
-        try:
-            orden = int(obtener_texto(fila, 3)) if obtener_texto(fila, 3) else 0
-            self.spinBox_orden_seccion.setValue(orden)
-        except ValueError:
-            self.spinBox_orden_seccion.setValue(0)
-
-        # ✅ OPTIMIZADO: Mostrar icono con cache
-        if ruta_encontrada:
-            self.mostrar_icono_seccion(ruta_encontrada)
+        # Mostrar icono
+        ruta_relativa = item(fila, 2).text() if item(fila, 2) else ""
+        if ruta_relativa:
+            # Convertir a ruta absoluta, asegurando que la barra inicial no sea un problema
+            ruta_relativa = ruta_relativa.lstrip("/\\")  # elimina barras al inicio
+            ruta_absoluta = os.path.join(os.getcwd(), "public", ruta_relativa.replace("/", os.sep))
+            
+            if os.path.exists(ruta_absoluta):
+                pixmap_icono = self.cargar_imagen_en_label(ruta_absoluta, self.label_icono_seccion, size=75, circular=True)
+                self.label_icono_seccion.setPixmap(pixmap_icono)
+                self.label_icono_seccion.setText("")
+            else:
+                self.label_icono_seccion.clear()
+                self.label_icono_seccion.setText("Sin icono")
         else:
             self.label_icono_seccion.clear()
             self.label_icono_seccion.setText("Sin icono")
@@ -308,43 +157,6 @@ class VentanaSecciones(QWidget):
         self.btnEliminarSeccion.setEnabled(True)
         self.btnDesactivarSeccion.setEnabled(True)
         self.btnReactivarSeccion.setEnabled(False)
-
-    def mostrar_icono_seccion(self, ruta_imagen: str):
-        """
-        OPTIMIZADA: Muestra icono de sección desde URL remota o archivo local CON CACHE
-        """
-        pixmap = cargar_imagen_desde_ruta(ruta_imagen, (75, 75))
-        if pixmap and not pixmap.isNull():
-            pixmap_redondeada = self.redondear_imagen_pixmap(pixmap, 75)
-            self.label_icono_seccion.setPixmap(pixmap_redondeada)
-            self.label_icono_seccion.setText("")
-            self.label_icono_seccion.setAlignment(Qt.AlignCenter)
-        else:
-            self.label_icono_seccion.clear()
-            self.label_icono_seccion.setText("Sin icono")
-
-    def redondear_imagen_pixmap(self, pixmap: QPixmap, size: int) -> QPixmap:
-        """
-        Redondea un QPixmap ya cargado (para imágenes remotas y locales)
-        """
-        if pixmap.isNull():
-            return QPixmap()
-
-        # Escalar la imagen
-        pixmap = pixmap.scaled(size, size, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
-
-        # Crear máscara circular
-        mask = QPixmap(size, size)
-        mask.fill(Qt.transparent)
-        painter = QPainter(mask)
-        painter.setRenderHint(QPainter.Antialiasing)
-        path = QPainterPath()
-        path.addEllipse(QRectF(0, 0, size, size))
-        painter.setClipPath(path)
-        painter.drawPixmap(0, 0, pixmap)
-        painter.end()
-        
-        return mask
 
     def seleccionar_seccion_inactiva(self, fila, columna):
         item = self.Tabla_secciones_inactivas.item(fila, 0)
@@ -363,7 +175,7 @@ class VentanaSecciones(QWidget):
         
         # ✅ CORREGIDO: Convertir ruta absoluta a ruta de producción
         ruta_absoluta_actual = icono
-        ruta_relativa_corregida = convertir_ruta_produccion(ruta_absoluta_actual) if ruta_absoluta_actual and not _is_url(ruta_absoluta_actual) else ""
+        ruta_relativa_corregida = convertir_ruta_produccion(ruta_absoluta_actual) if ruta_absoluta_actual else None
         
         try:
             conexion = conectar_base_datos()
@@ -371,7 +183,7 @@ class VentanaSecciones(QWidget):
             cursor.execute("""
                 INSERT INTO secciones (nombre_seccion, icono_seccion, orden, habilitar)
                 VALUES (%s, %s, %s, 1)
-            """, (nombre, ruta_relativa_corregida, orden))
+            """, (nombre, ruta_relativa_corregida, orden))  # ✅ Usar ruta corregida
             conexion.commit()
             conexion.close()
             QMessageBox.information(self, "Sección", "Sección agregada correctamente.")
@@ -387,7 +199,7 @@ class VentanaSecciones(QWidget):
         
         # ✅ CORREGIDO: Convertir ruta absoluta a ruta de producción
         ruta_absoluta_actual = self.lineEdit_icono_seccion.text().strip()
-        ruta_relativa_corregida = convertir_ruta_produccion(ruta_absoluta_actual) if ruta_absoluta_actual and not _is_url(ruta_absoluta_actual) else ""
+        ruta_relativa_corregida = convertir_ruta_produccion(ruta_absoluta_actual) if ruta_absoluta_actual else None
         
         try:
             conexion = conectar_base_datos()
@@ -398,7 +210,7 @@ class VentanaSecciones(QWidget):
                 WHERE id_seccion=%s
             """, (
                 self.lineEdit_nombre_seccion_app.text(),
-                ruta_relativa_corregida,
+                ruta_relativa_corregida,  # ✅ Usar ruta corregida
                 self.spinBox_orden_seccion.value(),
                 self.seccion_seleccionada_id
             ))
@@ -498,7 +310,7 @@ class VentanaSecciones(QWidget):
         self.seccion_inactiva_id = None
         self.btnAgregarSeccion.setEnabled(True)
         self.btnModificarSeccion.setEnabled(False)
-        self.btnEliminarSeccion.setEnabled(False)  # ✅ CORREGIDO: Debe ser False
+        self.btnEliminarSeccion.setEnabled(True)
         self.btnDesactivarSeccion.setEnabled(False)
         self.btnReactivarSeccion.setEnabled(False)
 
@@ -507,7 +319,7 @@ class VentanaSecciones(QWidget):
     def seleccionar_icono(self):
         # Selección del archivo
         ruta_origen, _ = QFileDialog.getOpenFileName(
-            self, "Seleccionar icono de sección", "", "Imágenes (*.png *.jpg *.jpeg *.bmp *.gif)"
+            self, "Seleccionar icono de sección", "", "Imágenes (*.webp *.png *.jpg *.jpeg *.bmp *.gif)"
         )
 
         if not ruta_origen:
@@ -527,7 +339,7 @@ class VentanaSecciones(QWidget):
         try:
             # ✅ Verificamos si el archivo ya está en la carpeta destino
             if os.path.abspath(ruta_origen) == os.path.abspath(ruta_destino):
-                ruta_final = ruta_destino
+                ruta_final = ruta_destino  # ya está en la carpeta correcta, no copiamos nada
             else:
                 # Si existe y es distinto → renombrar
                 def hash_archivo(path):
@@ -562,8 +374,10 @@ class VentanaSecciones(QWidget):
         # Mostrar ruta absoluta en el lineEdit (para visualización local)
         self.lineEdit_icono_seccion.setText(ruta_final)
 
-        # ✅ OPTIMIZADO: Mostrar icono con cache
-        self.mostrar_icono_seccion(ruta_final)
+        # Mostrar icono
+        pixmap_icono = self.cargar_imagen_en_label(ruta_final, self.label_icono_seccion, size=75, circular=True)
+        self.label_icono_seccion.setPixmap(pixmap_icono)
+        self.label_icono_seccion.setText("")
 
         # ✅ CORREGIDO: Si hay una sección seleccionada, actualizar en BD con ruta de producción
         if hasattr(self, 'seccion_seleccionada_id') and self.seccion_seleccionada_id:
@@ -577,7 +391,39 @@ class VentanaSecciones(QWidget):
                 """, (ruta_relativa, self.seccion_seleccionada_id))
                 conexion.commit()
                 conexion.close()
-                # Recargar para reflejar cambios
-                self.cargar_secciones_activas()
+                print(f"✅ Icono actualizado en BD: {ruta_relativa}")
             except Exception as e:
                 QMessageBox.warning(self, "Error", f"No se pudo actualizar el icono en BD:\n{e}")
+        else:
+            # Si no hay sección seleccionada, solo mostrar mensaje informativo
+            print(f"ℹ️  Icono preparado para nueva sección: {ruta_relativa}")
+    # ------------------ Función reusable para imágenes -------------------
+    def cargar_imagen_en_label(self, ruta_imagen, label=None, size=75, circular=True, center=True):
+        """
+        Carga una imagen en un QLabel, opcionalmente la recorta circular y ajusta tamaño.
+        Devuelve el QPixmap resultante.
+        """
+        pixmap = QPixmap(ruta_imagen)
+        if pixmap.isNull():
+            return QPixmap()
+
+        pixmap = pixmap.scaled(size, size, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+
+        if circular:
+            mask = QPixmap(size, size)
+            mask.fill(Qt.transparent)
+            painter = QPainter(mask)
+            painter.setRenderHint(QPainter.Antialiasing)
+            path = QPainterPath()
+            path.addEllipse(QRectF(0, 0, size, size))
+            painter.setClipPath(path)
+            painter.drawPixmap(0, 0, pixmap)
+            painter.end()
+            pixmap = mask
+
+        if center and label:
+            label.setAlignment(Qt.AlignCenter)
+
+        if label:
+            label.setPixmap(pixmap)
+        return pixmap

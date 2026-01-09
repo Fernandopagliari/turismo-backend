@@ -9,13 +9,15 @@ from PyQt5.QtGui import QIcon, QPixmap, QPainter, QBrush, QPen, QColor, QPainter
 from PyQt5.QtCore import Qt
 import time
 import hashlib
+from utils.image_utils import procesar_imagen
+
 
 # -------------------------
-# CACHE DE IMÁGENES PARA MEJORAR VELOCIDAD
+# CACHE DE IMÁGENES MEJORADO
 # -------------------------
 _image_cache = {}
-_CACHE_MAX_SIZE = 100  # Máximo de imágenes en cache
-_CACHE_TIMEOUT = 300   # 5 minutos en segundos
+_CACHE_MAX_SIZE = 100
+_CACHE_TIMEOUT = 10  # ✅ REDUCIDO a 10 segundos para mejor performance
 
 def limpiar_cache_antiguo():
     """Limpia entradas de cache antiguas"""
@@ -43,11 +45,20 @@ def imagen_a_base64(ruta_imagen):
             base64_encoded = base64.b64encode(image_data).decode('utf-8')
             return f"data:image/jpeg;base64,{base64_encoded}"
     except Exception as e:
+        print(f"❌ Error convirtiendo imagen a base64: {e}")
         return None
 
 def convertir_ruta_produccion(ruta_absoluta):
-    """Convierte rutas absolutas a rutas relativas - VERSIÓN FINAL"""
-    if not ruta_absoluta or not os.path.exists(ruta_absoluta):
+    """Convierte rutas absolutas a rutas relativas - VERSIÓN MEJORADA"""
+    if not ruta_absoluta:
+        return ""
+    
+    # ✅ Si ya es una URL, retornar vacío (no necesita conversión)
+    if _is_url(ruta_absoluta):
+        return ""
+    
+    if not os.path.exists(ruta_absoluta):
+        print(f"⚠️ Ruta no existe: {ruta_absoluta}")
         return ""
     
     ruta_normalizada = os.path.normpath(ruta_absoluta)
@@ -58,23 +69,24 @@ def convertir_ruta_produccion(ruta_absoluta):
     
     if idx != -1:
         ruta_relativa = ruta_normalizada[idx + len(target):]
-        # ✅ NORMALIZAR a barras simples para web
         resultado = f"assets/imagenes/{ruta_relativa}".replace("\\", "/")
+        print(f"✅ Ruta convertida: {ruta_absoluta} -> {resultado}")
         return resultado
     
     nombre_archivo = os.path.basename(ruta_absoluta)
     resultado = f"assets/imagenes/{nombre_archivo}"
+    print(f"📁 Usando nombre archivo: {resultado}")
     return resultado
 
 # -------------------------
-# MÉTODOS HÍBRIDOS MEJORADOS CON CACHE
+# SISTEMA DE URLs REMOTAS MEJORADO
 # -------------------------
 def _is_url(path):
     """Verifica si una ruta es una URL"""
     return isinstance(path, str) and (path.startswith("http://") or path.startswith("https://"))
 
-def obtener_url_remota(ruta_relativa: str) -> str:
-    """Construye URL remota basada en la configuración de hosting - VERSIÓN CORREGIDA"""
+def obtener_url_base_hosting():
+    """Obtiene la URL base desde la base de datos - NUEVA FUNCIÓN"""
     try:
         conn = conectar_base_datos()
         cursor = conn.cursor(dictionary=True)
@@ -88,59 +100,102 @@ def obtener_url_remota(ruta_relativa: str) -> str:
             if base_url:
                 if not base_url.endswith('/'):
                     base_url += '/'
-                ruta_limpia = ruta_relativa.lstrip('/')
-                # ✅ CORREGIDO: No agregar "assets/" extra
-                url_completa = f"{base_url}{ruta_limpia}"
-                return url_completa
+                print(f"🌐 URL base obtenida: {base_url}")
+                return base_url
     except Exception as e:
-        pass
+        print(f"❌ Error obteniendo URL base: {e}")
     return ""
 
+def obtener_url_remota(ruta_relativa: str) -> str:
+    """Construye URL remota basada en la configuración de hosting - MEJORADA"""
+    if not ruta_relativa:
+        return ""
+    
+    # ✅ Si ya es una URL completa, retornarla directamente
+    if _is_url(ruta_relativa):
+        return ruta_relativa
+    
+    base_url = obtener_url_base_hosting()
+    if not base_url:
+        print("❌ No se pudo obtener URL base")
+        return ""
+    
+    # Limpiar y construir URL
+    ruta_limpia = ruta_relativa.lstrip('/')
+    url_completa = f"{base_url}{ruta_limpia}"
+    print(f"🔗 URL remota construida: {url_completa}")
+    return url_completa
+
 def verificar_url_remota(url: str) -> bool:
-    """Verifica si una URL remota es accesible"""
+    """Verifica si una URL remota es accesible - MEJORADA"""
+    if not url:
+        return False
+    
     try:
-        response = requests.head(url, timeout=3)  # Timeout más corto
-        return response.status_code == 200
-    except Exception:
+        print(f"🔍 Verificando URL: {url}")
+        response = requests.head(url, timeout=5, allow_redirects=True)
+        accesible = response.status_code == 200
+        print(f"✅ URL accesible: {accesible} (Status: {response.status_code})")
+        return accesible
+    except Exception as e:
+        print(f"❌ URL no accesible: {e}")
         return False
 
 def resolver_ruta_hibrida(ruta_absoluta_db: str, ruta_relativa_db: str) -> str:
     """
-    Busca imágenes en REMOTO → LOCAL con mejor performance
+    ✅ MEJORADO: Busca imágenes en REMOTO → LOCAL con logs detallados
     """
     # Limpiar cache antiguo periódicamente
     if len(_image_cache) > _CACHE_MAX_SIZE:
         limpiar_cache_antiguo()
     
+    print(f"🔄 Resolviendo ruta híbrida:")
+    print(f"   - Ruta absoluta: {ruta_absoluta_db}")
+    print(f"   - Ruta relativa: {ruta_relativa_db}")
+
     # 1. PRIMERO: Buscar en REMOTO usando ruta relativa
-    if ruta_relativa_db:
-        url_remota = obtener_url_remota(ruta_relativa_db)
+    if ruta_relativa_db and ruta_relativa_db.strip():
+        url_remota = obtener_url_remota(ruta_relativa_db.strip())
         if url_remota and verificar_url_remota(url_remota):
+            print(f"🎯 Usando URL remota: {url_remota}")
             return url_remota
-    
+        else:
+            print("⚠️  URL remota no disponible")
+
     # 2. SEGUNDO: Buscar en LOCAL con ruta absoluta
     if ruta_absoluta_db and os.path.exists(ruta_absoluta_db):
+        print(f"📁 Usando ruta local absoluta: {ruta_absoluta_db}")
         return ruta_absoluta_db
     
-    # 3. TERCERO: Buscar en estructura del proyecto
-    if ruta_relativa_db:
+    # 3. TERCERO: Buscar en estructura del proyecto con ruta relativa
+    if ruta_relativa_db and ruta_relativa_db.strip():
+        # Limpiar ruta relativa
+        ruta_rel_limpia = ruta_relativa_db.strip().lstrip('/')
+        
         rutas_posibles = [
             os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 
-                        "turismo-frontend", "public", ruta_relativa_db),
-            os.path.join(os.getcwd(), "turismo-frontend", "public", ruta_relativa_db),
+                        "turismo-frontend", "public", ruta_rel_limpia),
+            os.path.join(os.getcwd(), "turismo-frontend", "public", ruta_rel_limpia),
+            os.path.join(os.path.dirname(__file__), "..", "..", "turismo-frontend", "public", ruta_rel_limpia),
         ]
         
         for ruta in rutas_posibles:
-            if os.path.exists(ruta):
-                return ruta
-    
+            ruta_abs = os.path.abspath(ruta)
+            if os.path.exists(ruta_abs):
+                print(f"📂 Encontrado en estructura proyecto: {ruta_abs}")
+                return ruta_abs
+            else:
+                print(f"🔍 No encontrado: {ruta_abs}")
+
+    print("❌ No se pudo resolver ninguna ruta para la imagen")
     return ""
 
 def cargar_imagen_desde_ruta(ruta_imagen: str, size: tuple = None):
     """
-    Carga imagen desde URL remota o archivo local - CON CACHE MEJORADO
+    ✅ MEJORADO: Carga imagen desde URL remota o archivo local con cache
     """
     if not ruta_imagen:
+        print("❌ Ruta de imagen vacía")
         return None
 
     # Verificar cache primero
@@ -148,14 +203,18 @@ def cargar_imagen_desde_ruta(ruta_imagen: str, size: tuple = None):
     if cache_key in _image_cache:
         timestamp, pixmap = _image_cache[cache_key]
         if time.time() - timestamp < _CACHE_TIMEOUT:
+            print(f"⚡ Imagen cargada desde cache: {ruta_imagen}")
             return pixmap
         else:
             del _image_cache[cache_key]
 
     try:
-        # ✅ MANEJAR URL REMOTA (con timeout optimizado)
+        print(f"🔄 Cargando imagen: {ruta_imagen}")
+        
+        # ✅ MANEJAR URL REMOTA
         if _is_url(ruta_imagen):
-            response = requests.get(ruta_imagen, timeout=5)  # Timeout reducido
+            print(f"🌐 Descargando imagen remota: {ruta_imagen}")
+            response = requests.get(ruta_imagen, timeout=10)  # ✅ Timeout aumentado
             if response.status_code == 200:
                 pixmap = QPixmap()
                 pixmap.loadFromData(response.content)
@@ -164,22 +223,33 @@ def cargar_imagen_desde_ruta(ruta_imagen: str, size: tuple = None):
                         pixmap = pixmap.scaled(size[0], size[1], Qt.KeepAspectRatio, Qt.SmoothTransformation)
                     # Guardar en cache
                     _image_cache[cache_key] = (time.time(), pixmap)
+                    print(f"✅ Imagen remota cargada exitosamente")
                     return pixmap
+                else:
+                    print("❌ Error: Pixmap nulo desde datos de respuesta")
+            else:
+                print(f"❌ Error HTTP: {response.status_code}")
             return None
         
         # ✅ MANEJAR ARCHIVO LOCAL
         elif os.path.exists(ruta_imagen):
+            print(f"📁 Cargando imagen local: {ruta_imagen}")
             pixmap = QPixmap(ruta_imagen)
             if not pixmap.isNull():
                 if size:
                     pixmap = pixmap.scaled(size[0], size[1], Qt.KeepAspectRatio, Qt.SmoothTransformation)
                 # Guardar en cache
                 _image_cache[cache_key] = (time.time(), pixmap)
+                print(f"✅ Imagen local cargada exitosamente")
                 return pixmap
+            else:
+                print("❌ Error: No se pudo cargar pixmap desde archivo")
         
+        print(f"❌ No se pudo cargar imagen: {ruta_imagen}")
         return None
         
     except Exception as e:
+        print(f"💥 Excepción cargando imagen: {e}")
         return None
 
 class VentanaConfiguracion(QWidget):
@@ -205,6 +275,10 @@ class VentanaConfiguracion(QWidget):
 
         self.setWindowTitle("Configuración de la App")
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowMinMaxButtonsHint)
+
+        # Inicializar variables
+        self.config_seleccionada_id = None
+        self.config_inactiva_id = None
 
         # Cargar configuraciones
         self.cargar_configuracion_activa()
@@ -236,7 +310,7 @@ class VentanaConfiguracion(QWidget):
             self.parent().mostrar_menu_lateral()
         super().closeEvent(event)
 
-    # ------------------ CRUD -------------------
+    # ------------------ CRUD MEJORADO -------------------
 
     def cargar_configuracion_activa(self):
         try:
@@ -266,11 +340,14 @@ class VentanaConfiguracion(QWidget):
             for row_number, row_data in enumerate(resultados):
                 self.Tabla_configuracion_activa.insertRow(row_number)
                 for column_number, data in enumerate(row_data):
-                    item = QTableWidgetItem(str(data))
+                    item = QTableWidgetItem(str(data) if data is not None else "")
                     self.Tabla_configuracion_activa.setItem(row_number, column_number, item)
+
+            print(f"✅ Configuraciones activas cargadas: {len(resultados)} registros")
 
         except Exception as e:
             QMessageBox.warning(self, "Error", f"No se pudieron cargar las configuraciones activas: {e}")
+            print(f"❌ Error cargando configuraciones activas: {e}")
 
     def cargar_configuracion_inactiva(self):
         try:
@@ -300,13 +377,18 @@ class VentanaConfiguracion(QWidget):
             for row_number, row_data in enumerate(resultados):
                 self.Tabla_configuraciones_inactiva.insertRow(row_number)
                 for column_number, data in enumerate(row_data):
-                    item = QTableWidgetItem(str(data))
+                    item = QTableWidgetItem(str(data) if data is not None else "")
                     self.Tabla_configuraciones_inactiva.setItem(row_number, column_number, item)
+                    
+            print(f"✅ Configuraciones inactivas cargadas: {len(resultados)} registros")
                     
         except Exception as e:
             QMessageBox.warning(self, "Error", f"No se pudieron cargar las configuraciones inactivas: {e}")
+            print(f"❌ Error cargando configuraciones inactivas: {e}")
                 
     def seleccionar_config_activa(self, fila, columna):
+        print(f"🎯 Seleccionando configuración activa - Fila: {fila}, Columna: {columna}")
+        
         def obtener_texto(f, c):
             item = self.Tabla_configuracion_activa.item(f, c)
             return item.text() if item else ""
@@ -314,7 +396,7 @@ class VentanaConfiguracion(QWidget):
         self.config_seleccionada_id = obtener_texto(fila, 0)
         self.lineEdit_titulo_app.setText(obtener_texto(fila, 1))
         
-        # ✅ CORREGIDO: Usar búsqueda híbrida con ambos campos
+        # ✅ MEJORADO: Usar búsqueda híbrida mejorada
         ruta_absoluta_logo = obtener_texto(fila, 2)
         ruta_relativa_logo = obtener_texto(fila, 3)
         ruta_final_logo = resolver_ruta_hibrida(ruta_absoluta_logo, ruta_relativa_logo)
@@ -344,7 +426,8 @@ class VentanaConfiguracion(QWidget):
         self.lineEdit_direccion_youtube.setText(obtener_texto(fila, 15))
         self.lineEdit_direccion_correo.setText(obtener_texto(fila, 16))
 
-        # ✅ CORREGIDO: Mostrar imágenes con la función mejorada
+        # ✅ MEJORADO: Mostrar imágenes con logs detallados
+        print("🖼️  Cargando imágenes para configuración activa...")
         self.mostrar_imagen_config(ruta_final_logo, self.label_logo_app, 50)
         self.mostrar_imagen_config(ruta_final_icono_abrir, self.label_icono_abrir, 50)
         self.mostrar_imagen_config(ruta_final_icono_cerrar, self.label_icono_cerrar, 50)
@@ -356,7 +439,11 @@ class VentanaConfiguracion(QWidget):
         self.btnDesactivarConfig.setEnabled(True)
         self.btnReactivarConfiguracion.setEnabled(False)
 
+        print(f"✅ Configuración activa {self.config_seleccionada_id} cargada exitosamente")
+
     def seleccionar_config_inactiva(self, fila, columna):
+        print(f"🎯 Seleccionando configuración inactiva - Fila: {fila}, Columna: {columna}")
+        
         def obtener_texto(f, c):
             item = self.Tabla_configuraciones_inactiva.item(f, c)
             return item.text() if item else ""
@@ -364,7 +451,7 @@ class VentanaConfiguracion(QWidget):
         self.config_inactiva_id = obtener_texto(fila, 0)
         self.lineEdit_titulo_app.setText(obtener_texto(fila, 1))
         
-        # ✅ CORREGIDO: Usar búsqueda híbrida también para inactivas
+        # ✅ MEJORADO: Usar búsqueda híbrida también para inactivas
         ruta_absoluta_logo = obtener_texto(fila, 2)
         ruta_relativa_logo = obtener_texto(fila, 3)
         ruta_final_logo = resolver_ruta_hibrida(ruta_absoluta_logo, ruta_relativa_logo)
@@ -394,7 +481,8 @@ class VentanaConfiguracion(QWidget):
         self.lineEdit_direccion_youtube.setText(obtener_texto(fila, 15))
         self.lineEdit_direccion_correo.setText(obtener_texto(fila, 16))
 
-        # ✅ CORREGIDO: Mostrar imágenes con la función mejorada
+        # ✅ MEJORADO: Mostrar imágenes con logs detallados
+        print("🖼️  Cargando imágenes para configuración inactiva...")
         self.mostrar_imagen_config(ruta_final_logo, self.label_logo_app, 50)
         self.mostrar_imagen_config(ruta_final_icono_abrir, self.label_icono_abrir, 50)
         self.mostrar_imagen_config(ruta_final_icono_cerrar, self.label_icono_cerrar, 50)
@@ -406,26 +494,33 @@ class VentanaConfiguracion(QWidget):
         self.btnDesactivarConfig.setEnabled(False)
         self.btnReactivarConfiguracion.setEnabled(True)
 
+        print(f"✅ Configuración inactiva {self.config_inactiva_id} cargada exitosamente")
+
     def mostrar_imagen_config(self, ruta_imagen: str, label: QLabel, size: int):
         """
-        CORREGIDA: Muestra imágenes desde URL remota o archivo local
+        ✅ MEJORADO: Muestra imágenes desde URL remota o archivo local con logs
         """
+        print(f"🖼️  Mostrando imagen en label: {ruta_imagen}")
+        
         if not ruta_imagen:
             label.clear()
             label.setText("Sin imagen")
+            print("⚠️  Ruta de imagen vacía")
             return
 
-        # ✅ USAR la función corregida cargar_imagen_desde_ruta
+        # ✅ USAR la función mejorada cargar_imagen_desde_ruta
         pixmap = cargar_imagen_desde_ruta(ruta_imagen, (size, size))
         if pixmap and not pixmap.isNull():
             pixmap_redondeada = self.redondear_imagen_pixmap(pixmap, size)
             label.setPixmap(pixmap_redondeada)
             label.setText("")
             label.setToolTip(f"Imagen: {ruta_imagen}")
+            print(f"✅ Imagen mostrada exitosamente: {ruta_imagen}")
         else:
             label.clear()
             label.setText("Sin imagen")
             label.setToolTip("")
+            print(f"❌ No se pudo cargar imagen: {ruta_imagen}")
 
     def redondear_imagen_pixmap(self, pixmap: QPixmap, size: int) -> QPixmap:
         """
@@ -513,6 +608,7 @@ class VentanaConfiguracion(QWidget):
 
             QMessageBox.information(self, "Configuración", "Configuración agregada correctamente.")
             self.cargar_configuracion_activa()
+            self.cargar_configuracion_inactiva()
             self.limpiar_formulario()
 
         except Exception as e:
@@ -583,6 +679,7 @@ class VentanaConfiguracion(QWidget):
 
             QMessageBox.information(self, "Configuración", "Configuración modificada correctamente.")
             self.cargar_configuracion_activa()
+            self.cargar_configuracion_inactiva()
             self.limpiar_formulario()
 
         except Exception as e:
@@ -661,116 +758,142 @@ class VentanaConfiguracion(QWidget):
         self.btnReactivarConfiguracion.setEnabled(False)
 
     # ------------------ Imagenes -------------------
+    
+    def seleccionar_imagen(self, titulo_dialogo):
+        ruta, _ = QFileDialog.getOpenFileName(
+            self,
+            titulo_dialogo,
+            "",
+            "Imágenes (*.jpg *.jpeg *.png *.webp *.bmp *.gif)"
+        )
+        return ruta if ruta else None
+
+
 
     def seleccionar_logo(self):
-        ruta_absoluta, _ = QFileDialog.getOpenFileName(
-            self, "Seleccionar logo", "", "Imágenes (*.png *.jpg *.jpeg *.bmp *.gif)"
-        )
-        
-        if not ruta_absoluta:
+        ruta = self.seleccionar_imagen("Seleccionar logo")
+        if not ruta:
             return
 
-        # ✅ CORREGIDO: Convertir a ruta relativa para producción
-        ruta_relativa = convertir_ruta_produccion(ruta_absoluta)
-        
-        # Mostrar en el formulario
-        self.lineEdit_logo_app.setText(ruta_absoluta)
-        self.mostrar_imagen_config(ruta_absoluta, self.label_logo_app, 50)
+        ruta_relativa = convertir_ruta_produccion(ruta)
 
-        # ✅ CORREGIDO: Actualizar en BD si hay configuración seleccionada
-        if hasattr(self, 'config_seleccionada_id') and self.config_seleccionada_id:
+        self.lineEdit_logo_app.setText(ruta)
+        self.mostrar_imagen_config(ruta, self.label_logo_app, 50)
+
+        if self.config_seleccionada_id:
             try:
                 conexion = conectar_base_datos()
                 cursor = conexion.cursor()
                 cursor.execute("""
                     UPDATE configuracion_app
-                    SET logo_app=%s, logo_app_ruta_relativa=%s, logo_base64=%s
+                    SET logo_app=%s,
+                        logo_app_ruta_relativa=%s,
+                        logo_base64=%s
                     WHERE id_config=%s
-                """, (ruta_absoluta, ruta_relativa, imagen_a_base64(ruta_absoluta), self.config_seleccionada_id))
+                """, (
+                    ruta,
+                    ruta_relativa,
+                    imagen_a_base64(ruta),
+                    self.config_seleccionada_id
+                ))
                 conexion.commit()
                 conexion.close()
-                # Recargar la configuración para reflejar cambios
                 self.cargar_configuracion_activa()
             except Exception as e:
                 QMessageBox.warning(self, "Error BD", f"No se pudo actualizar el logo:\n{e}")
 
+
+
     def seleccionar_icono_abrir(self):
-        ruta_absoluta, _ = QFileDialog.getOpenFileName(
-            self, "Seleccionar icono abrir", "", "Imágenes (*.png *.jpg *.jpeg *.bmp *.gif)"
-        )
-        if not ruta_absoluta:
+        ruta = self.seleccionar_imagen("Seleccionar icono abrir")
+        if not ruta:
             return
 
-        ruta_relativa = convertir_ruta_produccion(ruta_absoluta)
+        ruta_relativa = convertir_ruta_produccion(ruta)
 
-        self.lineEdit_icono_abrir.setText(ruta_absoluta)
-        self.mostrar_imagen_config(ruta_absoluta, self.label_icono_abrir, 50)
+        self.lineEdit_icono_abrir.setText(ruta)
+        self.mostrar_imagen_config(ruta, self.label_icono_abrir, 50)
 
-        if hasattr(self, 'config_seleccionada_id') and self.config_seleccionada_id:
-            try:
-                conexion = conectar_base_datos()
-                cursor = conexion.cursor()
-                cursor.execute("""
-                    UPDATE configuracion_app
-                    SET icono_hamburguesa=%s, icono_hamburguesa_ruta_relativa=%s, icono_hamburguesa_base64=%s
-                    WHERE id_config=%s
-                """, (ruta_absoluta, ruta_relativa, imagen_a_base64(ruta_absoluta), self.config_seleccionada_id))
-                conexion.commit()
-                conexion.close()
-                self.cargar_configuracion_activa()
-            except Exception as e:
-                QMessageBox.warning(self, "Error BD", f"No se pudo actualizar el icono:\n{e}")
+        if self.config_seleccionada_id:
+            conexion = conectar_base_datos()
+            cursor = conexion.cursor()
+            cursor.execute("""
+                UPDATE configuracion_app
+                SET icono_hamburguesa=%s,
+                    icono_hamburguesa_ruta_relativa=%s,
+                    icono_hamburguesa_base64=%s
+                WHERE id_config=%s
+            """, (
+                ruta,
+                ruta_relativa,
+                imagen_a_base64(ruta),
+                self.config_seleccionada_id
+            ))
+            conexion.commit()
+            conexion.close()
+            self.cargar_configuracion_activa()
+
+
 
     def seleccionar_icono_cerrar(self):
-        ruta_absoluta, _ = QFileDialog.getOpenFileName(
-            self, "Seleccionar icono cerrar", "", "Imágenes (*.png *.jpg *.jpeg *.bmp *.gif)"
-        )
-        if not ruta_absoluta:
+        ruta = self.seleccionar_imagen("Seleccionar icono cerrar")
+        if not ruta:
             return
 
-        ruta_relativa = convertir_ruta_produccion(ruta_absoluta)
+        ruta_relativa = convertir_ruta_produccion(ruta)
 
-        self.lineEdit_icono_cerrar.setText(ruta_absoluta)
-        self.mostrar_imagen_config(ruta_absoluta, self.label_icono_cerrar, 50)
+        self.lineEdit_icono_cerrar.setText(ruta)
+        self.mostrar_imagen_config(ruta, self.label_icono_cerrar, 50)
 
-        if hasattr(self, 'config_seleccionada_id') and self.config_seleccionada_id:
+        if self.config_seleccionada_id:
             try:
                 conexion = conectar_base_datos()
                 cursor = conexion.cursor()
                 cursor.execute("""
                     UPDATE configuracion_app
-                    SET icono_cerrar=%s, icono_cerrar_ruta_relativa=%s, icono_cerrar_base64=%s
+                    SET icono_cerrar=%s,
+                        icono_cerrar_ruta_relativa=%s,
+                        icono_cerrar_base64=%s
                     WHERE id_config=%s
-                """, (ruta_absoluta, ruta_relativa, imagen_a_base64(ruta_absoluta), self.config_seleccionada_id))
+                """, (
+                    ruta,
+                    ruta_relativa,
+                    imagen_a_base64(ruta),
+                    self.config_seleccionada_id
+                ))
                 conexion.commit()
                 conexion.close()
                 self.cargar_configuracion_activa()
             except Exception as e:
                 QMessageBox.warning(self, "Error BD", f"No se pudo actualizar el icono:\n{e}")
 
+
+
     def seleccionar_hero_imagen(self):
-        ruta_absoluta, _ = QFileDialog.getOpenFileName(
-            self, "Seleccionar imagen principal", "", "Imágenes (*.png *.jpg *.jpeg *.bmp *.gif)"
-        )
-        if not ruta_absoluta:
+        ruta = self.seleccionar_imagen("Seleccionar imagen principal")
+        if not ruta:
             return
 
-        ruta_relativa = convertir_ruta_produccion(ruta_absoluta)
+        ruta_relativa = convertir_ruta_produccion(ruta)
 
-        self.lineEdit_hero_imagen.setText(ruta_absoluta)
-        self.mostrar_imagen_config(ruta_absoluta, self.label_imagen_central, 100)
+        self.lineEdit_hero_imagen.setText(ruta)
+        self.mostrar_imagen_config(ruta, self.label_imagen_central, 100)
 
-        if hasattr(self, 'config_seleccionada_id') and self.config_seleccionada_id:
-            try:
-                conexion = conectar_base_datos()
-                cursor = conexion.cursor()
-                cursor.execute("""
-                    UPDATE configuracion_app
-                    SET hero_imagen=%s, hero_imagen_ruta_relativa=%s, hero_imagen_base64=%s
-                    WHERE id_config=%s
-                """, (ruta_absoluta, ruta_relativa, imagen_a_base64(ruta_absoluta), self.config_seleccionada_id))
-                conexion.commit()
-                conexion.close()
-                self.cargar_configuracion_activa()
-            except Exception as e:
-                QMessageBox.warning(self, "Error BD", f"No se pudo actualizar la imagen hero:\n{e}")
+        if self.config_seleccionada_id:
+            conexion = conectar_base_datos()
+            cursor = conexion.cursor()
+            cursor.execute("""
+                UPDATE configuracion_app
+                SET hero_imagen=%s,
+                    hero_imagen_ruta_relativa=%s,
+                    hero_imagen_base64=%s
+                WHERE id_config=%s
+            """, (
+                ruta,
+                ruta_relativa,
+                imagen_a_base64(ruta),
+                self.config_seleccionada_id
+            ))
+            conexion.commit()
+            conexion.close()
+            self.cargar_configuracion_activa()
