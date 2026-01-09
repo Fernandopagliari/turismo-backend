@@ -110,6 +110,29 @@ def health():
         "index": os.path.exists(INDEX_FILE)
     })
 
+@app.route("/api/configuracion")
+def configuracion():
+    try:
+        db = conectar_db()
+        cur = db.cursor(dictionary=True)
+        cur.execute("""
+            SELECT * FROM configuracion_app
+            WHERE habilitar = 1
+            ORDER BY id_config DESC
+            LIMIT 1
+        """)
+        row = cur.fetchone()
+        db.close()
+
+        if not row:
+            return jsonify({"error": "No hay configuración activa"}), 404
+
+        return jsonify(normalizar_filas(row))
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 
 @app.route("/api/regiones")
 def regiones():
