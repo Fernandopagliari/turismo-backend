@@ -145,6 +145,23 @@ def regiones():
         return jsonify(data)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    
+@app.route("/api/regiones_zonas")
+def regiones_zonas():
+    try:
+        db = conectar_db()
+        cur = db.cursor(dictionary=True)
+        cur.execute("""
+            SELECT * FROM regiones_zonas
+            WHERE habilitar = 1
+            ORDER BY orden
+        """)
+        data = [normalizar_filas(r) for r in cur.fetchall()]
+        db.close()
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 
 @app.route("/api/secciones")
