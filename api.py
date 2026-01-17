@@ -24,23 +24,21 @@ app = Flask(
 CORS(app)
 
 # =====================================================
-# LOG DE ARRANQUE (CLAVE PARA RENDER)
+# LOG DE ARRANQUE (RENDER)
 # =====================================================
 print("===================================")
 print("🚀 FLASK INICIADO")
 print(f"📂 DIST_DIR: {DIST_DIR}")
 print(f"📄 index.html existe: {os.path.exists(INDEX_FILE)}")
 if os.path.exists(DIST_DIR):
-   print("📁 Contenido dist/:", os.listdir(DIST_DIR))
+    print("📁 Contenido dist/:", os.listdir(DIST_DIR))
 print("===================================")
-
 
 # =====================================================
 # BASE URL DINÁMICA (IMÁGENES)
 # =====================================================
 def base_url():
     return request.url_root.rstrip("/")
-
 
 def url_completa(ruta):
     if not ruta:
@@ -50,10 +48,7 @@ def url_completa(ruta):
         ruta = f"assets/{ruta}"
     return f"{base_url()}/{ruta}"
 
-
 def normalizar_filas(row):
-    if not row:
-        return {}
     salida = {}
     for k, v in row.items():
         if v and any(x in k.lower() for x in ["imagen", "foto", "icono", "logo", "ruta"]):
@@ -62,23 +57,18 @@ def normalizar_filas(row):
             salida[k] = v
     return salida
 
-
 # =====================================================
-# CONEXIÓN BD (RENDER)
+# CONEXIÓN BD
 # =====================================================
 def conectar_db():
-    try:
-        return mysql.connector.connect(
-            host=os.environ.get("MYSQLHOST"),
-            user=os.environ.get("MYSQLUSER"),
-            password=os.environ.get("MYSQLPASSWORD"),
-            database=os.environ.get("MYSQLDATABASE"),
-            port=int(os.environ.get("MYSQLPORT", 3306)),
-            connect_timeout=10
-        )
-    except Error as e:
-        raise Exception(str(e))
-
+    return mysql.connector.connect(
+        host=os.environ.get("MYSQLHOST"),
+        user=os.environ.get("MYSQLUSER"),
+        password=os.environ.get("MYSQLPASSWORD"),
+        database=os.environ.get("MYSQLDATABASE"),
+        port=int(os.environ.get("MYSQLPORT", 3306)),
+        connect_timeout=10
+    )
 
 # =====================================================
 # FRONTEND (REACT)
@@ -87,18 +77,12 @@ def conectar_db():
 def index():
     return send_from_directory(DIST_DIR, "index.html")
 
-
 @app.route("/<path:path>")
 def static_proxy(path):
     archivo = os.path.join(DIST_DIR, path)
-
-    # Archivos reales (assets, css, js, imágenes)
     if os.path.exists(archivo):
         return send_from_directory(DIST_DIR, path)
-
-    # Fallback React Router
     return send_from_directory(DIST_DIR, "index.html")
-
 
 # =====================================================
 # API
@@ -115,23 +99,47 @@ def configuracion():
     try:
         db = conectar_db()
         cur = db.cursor(dictionary=True)
+
         cur.execute("""
-            SELECT * FROM configuracion_app
+            SELECT
+                id_config,
+                titulo_app,
+                logo_app_ruta_relativa,
+                icono_hamburguesa_ruta_relativa,
+                icono_cerrar_ruta_relativa,
+                hero_titulo,
+                hero_subtitulo,
+                hero_imagen_ruta_relativa,
+                footer_texto,
+                direccion_facebook,
+                direccion_instagram,
+                direccion_twitter,
+                direccion_youtube,
+                correo_electronico,
+                habilitar
+            FROM configuracion_app
             WHERE habilitar = 1
             ORDER BY id_config DESC
             LIMIT 1
         """)
+
         row = cur.fetchone()
         db.close()
 
         if not row:
-            return jsonify({"error": "No hay configuración activa"}), 404
+            return jsonify({
+                "status": "error",
+                "message": "No hay configuración activa"
+            }), 404
 
+        # 🔥 DEVUELVE UN OBJETO, NO ARRAY
         return jsonify(normalizar_filas(row))
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
 
 
 @app.route("/api/regiones")
@@ -139,20 +147,9 @@ def regiones():
     try:
         db = conectar_db()
         cur = db.cursor(dictionary=True)
-        cur.execute("SELECT * FROM regiones_zonas WHERE habilitar = 1 ORDER BY orden")
-        data = [normalizar_filas(r) for r in cur.fetchall()]
-        db.close()
-        return jsonify(data)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-    
-@app.route("/api/regiones_zonas")
-def regiones_zonas():
-    try:
-        db = conectar_db()
-        cur = db.cursor(dictionary=True)
         cur.execute("""
-            SELECT * FROM regiones_zonas
+            SELECT *
+            FROM regiones_zonas
             WHERE habilitar = 1
             ORDER BY orden
         """)
@@ -162,31 +159,37 @@ def regiones_zonas():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
-
 @app.route("/api/secciones")
 def secciones():
     try:
         db = conectar_db()
         cur = db.cursor(dictionary=True)
 
-        cur.execute("SELECT * FROM secciones WHERE habilitar = 1 ORDER BY orden")
+        cur.execute("""
+            SELECT *
+            FROM secciones
+            WHERE habilitar = 1
+            ORDER BY orden
+        """)
         secciones = cur.fetchall()
 
         for s in secciones:
-            cur.execute(
-                "SELECT * FROM sub_secciones WHERE id_seccion = %s AND habilitar = 1 ORDER BY orden",
-                (s["id_seccion"],)
-            )
+            cur.execute("""
+                SELECT *
+                FROM sub_secciones
+                WHERE id_seccion = %s
+                  AND habilitar = 1
+                ORDER BY orden
+            """, (s["id_seccion"],))
             s["subsecciones"] = [
                 normalizar_filas(x) for x in cur.fetchall()
             ]
 
         db.close()
         return jsonify([normalizar_filas(s) for s in secciones])
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
 
 # =====================================================
 # ERRORES
@@ -196,7 +199,6 @@ def not_found(e):
     if request.path.startswith("/api"):
         return jsonify({"error": "API no encontrada"}), 404
     return send_from_directory(DIST_DIR, "index.html")
-
 
 # =====================================================
 # MAIN
