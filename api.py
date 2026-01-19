@@ -108,7 +108,6 @@ def configuracion():
                 icono_hamburguesa_ruta_relativa,
                 icono_cerrar_ruta_relativa,
                 hero_titulo,
-                hero_subtitulo,
                 hero_imagen_ruta_relativa,
                 footer_texto,
                 direccion_facebook,
@@ -122,6 +121,7 @@ def configuracion():
             ORDER BY id_config DESC
             LIMIT 1
         """)
+
 
         row = cur.fetchone()
         db.close()
