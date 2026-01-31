@@ -1,8 +1,7 @@
 # api.py - PRODUCCIÓN FINAL RENDER + REACT (VITE) + FLASK
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, request, send_from_directory, session
 from flask_cors import CORS
 import mysql.connector
-from mysql.connector import Error
 import os
 
 # =====================================================
@@ -21,7 +20,28 @@ app = Flask(
     static_url_path=""
 )
 
-CORS(app)
+# 🔐 SECRET KEY (SESIONES)
+app.secret_key = os.environ.get(
+    "FLASK_SECRET_KEY",
+    "turismo_secret_key"
+)
+
+# 🔐 CONFIG COOKIE PARA HTTPS (RENDER)
+app.config.update(
+    SESSION_COOKIE_SAMESITE="None",
+    SESSION_COOKIE_SECURE=True
+)
+
+# 🌍 CORS CON CREDENCIALES
+CORS(
+    app,
+    supports_credentials=True,
+    origins=[
+        "http://localhost:5173",   # desarrollo Vite
+        # 👉 agregá acá tu dominio Render si querés restringir
+        # "https://tu-app.onrender.com"
+    ]
+)
 
 # =====================================================
 # LOG DE ARRANQUE (RENDER)
@@ -35,7 +55,7 @@ if os.path.exists(DIST_DIR):
 print("===================================")
 
 # =====================================================
-# BASE URL DINÁMICA (IMÁGENES)
+# UTILIDADES
 # =====================================================
 def base_url():
     return request.url_root.rstrip("/")
@@ -94,6 +114,7 @@ def health():
         "index": os.path.exists(INDEX_FILE)
     })
 
+# ---------------- CONFIGURACIÓN APP ------------------
 @app.route("/api/configuracion")
 def configuracion():
     try:
@@ -115,13 +136,13 @@ def configuracion():
                 direccion_twitter,
                 direccion_youtube,
                 correo_electronico,
+                visitas_app,
                 habilitar
             FROM configuracion_app
             WHERE habilitar = 1
             ORDER BY id_config DESC
             LIMIT 1
         """)
-
 
         row = cur.fetchone()
         db.close()
@@ -132,33 +153,33 @@ def configuracion():
                 "message": "No hay configuración activa"
             }), 404
 
-        # 🔥 DEVUELVE UN OBJETO, NO ARRAY
         return jsonify(normalizar_filas(row))
 
     except Exception as e:
-        return jsonify({
-            "status": "error",
-            "message": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
-
+# ---------------- REGIONES ------------------
 @app.route("/api/regiones")
 def regiones():
     try:
         db = conectar_db()
         cur = db.cursor(dictionary=True)
+
         cur.execute("""
             SELECT *
             FROM regiones_zonas
             WHERE habilitar = 1
             ORDER BY orden
         """)
+
         data = [normalizar_filas(r) for r in cur.fetchall()]
         db.close()
         return jsonify(data)
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# ---------------- SECCIONES ------------------
 @app.route("/api/secciones")
 def secciones():
     try:
@@ -187,6 +208,40 @@ def secciones():
 
         db.close()
         return jsonify([normalizar_filas(s) for s in secciones])
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# ---------------- VISITAS APP ------------------
+@app.route("/api/visita-app", methods=["POST"])
+def registrar_visita_app():
+    try:
+        if session.get("visita_app_contada"):
+            return jsonify({"status": "ok", "mensaje": "Visita ya contada"})
+
+        db = conectar_db()
+        cur = db.cursor()
+
+        cur.execute("""
+            UPDATE configuracion_app
+            SET visitas_app = visitas_app + 1
+            WHERE id_config = (
+                SELECT id_config FROM (
+                    SELECT id_config
+                    FROM configuracion_app
+                    WHERE habilitar = 1
+                    ORDER BY id_config DESC
+                    LIMIT 1
+                ) t
+            )
+        """)
+
+        db.commit()
+        db.close()
+
+        session["visita_app_contada"] = True
+
+        return jsonify({"status": "ok", "mensaje": "Visita registrada"})
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
