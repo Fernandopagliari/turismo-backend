@@ -36,12 +36,9 @@ app.config.update(
 CORS(
     app,
     supports_credentials=True,
-    origins=[
-        "http://localhost:5173",   # desarrollo Vite
-        # 👉 agregá acá tu dominio Render si querés restringir
-        # "https://tu-app.onrender.com"
-    ]
+    origins="*"
 )
+
 
 # =====================================================
 # LOG DE ARRANQUE (RENDER)
@@ -117,42 +114,42 @@ def health():
 # ---------------- ADMIN - MANTENIMIENTO ------------------
 # ⚠️ TEMPORAL — ejecutar una sola vez y luego eliminar
 
-@app.route("/admin/alter_visitas_app", methods=["POST"])
-def admin_alter_visitas_app():
-    try:
-        db = conectar_db()
-        cur = db.cursor()
+#@app.route("/admin/alter_visitas_app", methods=["POST"])
+#def admin_alter_visitas_app():
+#    try:
+#        db = conectar_db()
+#        cur = db.cursor()
 
-        # Verificar si ya existe la columna
-        cur.execute("""
-            SELECT COUNT(*)
-            FROM INFORMATION_SCHEMA.COLUMNS
-            WHERE TABLE_SCHEMA = DATABASE()
-              AND TABLE_NAME = 'configuracion_app'
-              AND COLUMN_NAME = 'visitas_app'
-        """)
+#        # Verificar si ya existe la columna
+#        cur.execute("""
+#            SELECT COUNT(*)
+#            FROM INFORMATION_SCHEMA.COLUMNS
+#            WHERE TABLE_SCHEMA = DATABASE()
+#              AND TABLE_NAME = 'configuracion_app'
+#              AND COLUMN_NAME = 'visitas_app'
+#        """)
 
-        existe = cur.fetchone()[0]
+#        existe = cur.fetchone()[0]
 
-        if existe == 0:
-            cur.execute("""
-                ALTER TABLE configuracion_app
-                ADD COLUMN visitas_app INT NOT NULL DEFAULT 0
-            """)
-            db.commit()
-            mensaje = "Columna visitas_app creada"
-        else:
-            mensaje = "La columna ya existe"
+#        if existe == 0:
+#            cur.execute("""
+#                ALTER TABLE configuracion_app
+#                ADD COLUMN visitas_app INT NOT NULL DEFAULT 0
+#            """)
+#            db.commit()
+#            mensaje = "Columna visitas_app creada"
+#        else:
+#            mensaje = "La columna ya existe"
 
-        db.close()
+#        db.close()
 
-        return jsonify({
-            "ok": True,
-            "mensaje": mensaje
-        })
+#        return jsonify({
+#            "ok": True,
+#            "mensaje": mensaje
+#        })
 
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+#    except Exception as e:
+#        return jsonify({"error": str(e)}), 500
 
 
 
