@@ -114,7 +114,51 @@ def health():
         "index": os.path.exists(INDEX_FILE)
     })
 
+# ---------------- ADMIN - MANTENIMIENTO ------------------
+# ⚠️ TEMPORAL — ejecutar una sola vez y luego eliminar
+
+@app.route("/admin/alter_visitas_app", methods=["POST"])
+def admin_alter_visitas_app():
+    try:
+        db = conectar_db()
+        cur = db.cursor()
+
+        # Verificar si ya existe la columna
+        cur.execute("""
+            SELECT COUNT(*)
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = 'configuracion_app'
+              AND COLUMN_NAME = 'visitas_app'
+        """)
+
+        existe = cur.fetchone()[0]
+
+        if existe == 0:
+            cur.execute("""
+                ALTER TABLE configuracion_app
+                ADD COLUMN visitas_app INT NOT NULL DEFAULT 0
+            """)
+            db.commit()
+            mensaje = "Columna visitas_app creada"
+        else:
+            mensaje = "La columna ya existe"
+
+        db.close()
+
+        return jsonify({
+            "ok": True,
+            "mensaje": mensaje
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+
+
 # ---------------- CONFIGURACIÓN APP ------------------
+
 @app.route("/api/configuracion")
 def configuracion():
     try:
