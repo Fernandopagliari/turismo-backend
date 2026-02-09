@@ -183,13 +183,29 @@ class BuildDeployThread(QThread):
             return True
 
         self.log("📦 Sincronizando backend (dist)")
-        self.run_subprocess("git add dist api.py requirements.txt", cwd=self.backend_path)
-        self.run_subprocess(
+
+        ok, out, err = self.run_subprocess(
+            "git add dist api.py requirements.txt",
+            cwd=self.backend_path
+        )
+
+        ok, out, err = self.run_subprocess(
             f'git commit -m "DEPLOY backend {platform.node()} {time.strftime("%Y-%m-%d %H:%M")}"',
             cwd=self.backend_path
         )
-        self.run_subprocess("git push", cwd=self.backend_path)
+
+        if not ok:
+            self.log("⚠️ No hubo cambios para commitear")
+            self.log(err)
+
+        ok, out, err = self.run_subprocess("git push", cwd=self.backend_path)
+
+        if not ok:
+            self.log(f"❌ Error en git push: {err}")
+            return False
+
         return True
+
 
     # --------------------------------------------------------
     # FLUJO PRINCIPAL
