@@ -1,4 +1,4 @@
-# build_deploy.py - VERSIÓN COORDINADA PARA MÚLTIPLES MÁQUINAS
+# build_deploy.py - VERSIÓN COORDINADA PARA RENDER + MULTI-MÁQUINA
 # -*- coding: utf-8 -*-
 
 import os
@@ -8,19 +8,17 @@ import time
 import platform
 
 from PyQt5.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel,
-    QPushButton, QTextEdit, QProgressBar, QMessageBox,
-    QGroupBox, QCheckBox
+    QDialog, QVBoxLayout, QLabel,
+    QPushButton, QTextEdit, QMessageBox
 )
-from PyQt5.QtCore import Qt, QThread, pyqtSignal
+from PyQt5.QtCore import QThread, pyqtSignal
 
 
 # ============================================================
-# THREAD PRINCIPAL DE BUILD + DEPLOY
+# THREAD PRINCIPAL
 # ============================================================
 class BuildDeployThread(QThread):
     log_signal = pyqtSignal(str)
-    progress_signal = pyqtSignal(int)
     finished_signal = pyqtSignal(bool, str)
 
     def __init__(self, project_path, deploy_config=None, hacer_git=True):
@@ -32,85 +30,64 @@ class BuildDeployThread(QThread):
         self.frontend_path = self.find_frontend_path()
         self.backend_path = self.find_backend_path()
         self.npm_path = self.find_npm()
-
-        self.git_disponible = self.verificar_git_disponible()
+        self.git_disponible = self.verificar_git()
 
     # --------------------------------------------------------
-    # UTILIDADES
-    # --------------------------------------------------------
-    def log(self, mensaje):
+    def log(self, msg):
         ts = time.strftime("%H:%M:%S")
-        self.log_signal.emit(f"[{ts}] {mensaje}")
+        self.log_signal.emit(f"[{ts}] {msg}")
 
-    def run_subprocess(self, cmd, cwd=None, timeout=300):
-        try:
-            result = subprocess.run(
-                cmd,
-                cwd=cwd,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-                shell=platform.system() == "Windows"
-            )
-            return result.returncode == 0, result.stdout or "", result.stderr or ""
-        except Exception as e:
-            return False, "", str(e)
+    def run_cmd(self, cmd, cwd=None):
+        r = subprocess.run(
+            cmd,
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            shell=platform.system() == "Windows"
+        )
+        return r.returncode == 0, r.stdout, r.stderr
 
-    def verificar_git_disponible(self):
-        try:
-            r = subprocess.run(["git", "--version"], capture_output=True, text=True)
-            return r.returncode == 0
-        except:
-            return False
+    def verificar_git(self):
+        ok, _, _ = self.run_cmd(["git", "--version"])
+        return ok
 
     # --------------------------------------------------------
-    # DETECCIÓN DE ENTORNOS
+    # DETECCIÓN
     # --------------------------------------------------------
     def find_npm(self):
-        comandos = ["npm"]
-        if platform.system() == "Windows":
-            comandos += ["npm.cmd", "npm.exe"]
-
-        for cmd in comandos:
-            try:
-                r = subprocess.run([cmd, "--version"], capture_output=True, text=True)
-                if r.returncode == 0:
-                    return cmd
-            except:
-                pass
+        for cmd in ["npm", "npm.cmd", "npm.exe"]:
+            ok, _, _ = self.run_cmd([cmd, "--version"])
+            if ok:
+                return cmd
         return None
 
     def find_frontend_path(self):
-        rutas = [
+        for r in [
             os.path.join(self.project_path, "turismo-frontend"),
             os.path.join(self.project_path, "frontend"),
             self.project_path
-        ]
-
-        for r in rutas:
+        ]:
             if os.path.exists(os.path.join(r, "package.json")):
                 return os.path.abspath(r)
         return None
 
     def find_backend_path(self):
-        rutas = [
+        for r in [
             os.path.join(self.project_path, "turismo-backend"),
             os.path.join(self.project_path, "backend"),
             self.project_path
-        ]
-
-        for r in rutas:
+        ]:
             if os.path.exists(os.path.join(r, "api.py")):
                 self.log(f"📍 Backend detectado en {r}")
                 return os.path.abspath(r)
         return None
 
     # --------------------------------------------------------
-    # BUILD DE REACT
+    # BUILD REACT
     # --------------------------------------------------------
-    def ejecutar_build_react(self):
-        if not self.npm_path or not self.frontend_path:
-            self.log("❌ npm o frontend no disponible")
+    def build_react(self):
+        if not self.frontend_path or not self.npm_path:
+            self.log("❌ Frontend o npm no encontrado")
             return False
 
         dist = os.path.join(self.frontend_path, "dist")
@@ -119,148 +96,116 @@ class BuildDeployThread(QThread):
             self.log("🧹 Limpiando dist anterior")
             shutil.rmtree(dist)
 
-        self.log("⚙️ Ejecutando npm run build")
-        ok, out, err = self.run_subprocess(
+        self.log("⚙️ npm run build")
+        ok, out, err = self.run_cmd(
             [self.npm_path, "run", "build"],
-            cwd=self.frontend_path,
-            timeout=600
+            cwd=self.frontend_path
         )
 
         if not ok:
-            self.log(f"❌ Error build React: {err}")
-            return False
-
-        if not os.path.exists(os.path.join(dist, "index.html")):
-            self.log("❌ dist/index.html NO encontrado")
+            self.log(err)
             return False
 
         self.log("✅ Build React OK")
         return True
 
     # --------------------------------------------------------
-    # COPIA FRONTEND → BACKEND (CLAVE PARA FLASK)
+    # COPIAR DIST → BACKEND
     # --------------------------------------------------------
-    def copiar_archivos_correctamente(self):
+    def copy_dist_to_backend(self):
         if not self.backend_path:
-            self.log("⚠️ Backend no encontrado, solo build local")
             return True
 
         src = os.path.join(self.frontend_path, "dist")
         dst = os.path.join(self.backend_path, "dist")
 
-        if not os.path.exists(os.path.join(src, "index.html")):
-            self.log("❌ index.html no existe en frontend/dist")
-            return False
-
         if os.path.exists(dst):
-            self.log("🧹 Eliminando dist anterior en backend")
             shutil.rmtree(dst)
 
         shutil.copytree(src, dst)
-        self.log("📦 dist copiado a backend correctamente")
-        self.log("🌐 Flask servirá este dist como static root")
-
+        self.log("📦 dist copiado a backend")
         return True
 
     # --------------------------------------------------------
-    # GIT (SIN TOCAR LÓGICA ORIGINAL)
+    # GIT ROBUSTO (CLAVE PARA RENDER)
     # --------------------------------------------------------
-    def ejecutar_git_seguro(self):
+    def git_backend_safe(self):
         if not self.git_disponible or not self.hacer_git:
             return True
 
-        self.log("📦 Sincronizando frontend (dist)")
-        self.run_subprocess("git add dist", cwd=self.frontend_path)
-        self.run_subprocess(
-            f'git commit -m "BUILD frontend {platform.node()} {time.strftime("%Y-%m-%d %H:%M")}"',
-            cwd=self.frontend_path
-        )
-        self.run_subprocess("git push", cwd=self.frontend_path)
-        return True
+        self.log("🔄 Git pull --rebase")
+        self.run_cmd("git pull --rebase origin main", cwd=self.backend_path)
 
-    def ejecutar_git_backend_seguro(self):
-        if not self.git_disponible or not self.hacer_git:
-            return True
+        self.log("📦 git add")
+        self.run_cmd("git add .", cwd=self.backend_path)
 
-        self.log("📦 Sincronizando backend (dist)")
-
-        ok, out, err = self.run_subprocess(
-            "git add dist api.py requirements.txt",
-            cwd=self.backend_path
-        )
-
-        ok, out, err = self.run_subprocess(
-            f'git commit -m "DEPLOY backend {platform.node()} {time.strftime("%Y-%m-%d %H:%M")}"',
+        self.log("📝 git commit")
+        ok, out, err = self.run_cmd(
+            f'git commit -m "AUTO DEPLOY {platform.node()} {time.strftime("%Y-%m-%d %H:%M")}"',
             cwd=self.backend_path
         )
 
         if not ok:
-            self.log("⚠️ No hubo cambios para commitear")
+            self.log("⚠️ Sin cambios para commit")
+
+        self.log("🚀 git push")
+        ok, out, err = self.run_cmd("git push origin main", cwd=self.backend_path)
+
+        if not ok:
             self.log(err)
-
-        ok, out, err = self.run_subprocess("git push", cwd=self.backend_path)
-
-        if not ok:
-            self.log(f"❌ Error en git push: {err}")
             return False
 
+        self.log("✅ Push OK → Render detectará cambios")
         return True
 
-
-    # --------------------------------------------------------
-    # FLUJO PRINCIPAL
     # --------------------------------------------------------
     def run(self):
         self.log("🚀 Iniciando Build + Deploy")
 
-        if not self.ejecutar_build_react():
-            self.finished_signal.emit(False, "Falló el build de React")
+        if not self.build_react():
+            self.finished_signal.emit(False, "Falló build React")
             return
 
-        self.ejecutar_git_seguro()
-
-        if not self.copiar_archivos_correctamente():
-            self.finished_signal.emit(False, "Falló la copia a backend")
+        if not self.copy_dist_to_backend():
+            self.finished_signal.emit(False, "Falló copia dist")
             return
 
-        self.ejecutar_git_backend_seguro()
+        if not self.git_backend_safe():
+            self.finished_signal.emit(False, "Falló git push")
+            return
 
-        self.log("✅ Deploy finalizado correctamente")
-        self.finished_signal.emit(True, "Deploy completado con éxito")
+        self.finished_signal.emit(True, "Deploy OK")
 
 
 # ============================================================
-# DIÁLOGO UI
+# UI
 # ============================================================
 class DialogoBuildDeploy(QDialog):
     def __init__(self, parent=None, project_path=None):
         super().__init__(parent)
         self.project_path = project_path or os.getcwd()
-        self.build_thread = None
-        self.setup_ui()
-
-    def setup_ui(self):
-        self.setWindowTitle("🚀 Build & Deploy Coordinado")
-        self.setFixedSize(650, 520)
+        self.thread = None
+        self.setWindowTitle("🚀 Build Deploy Render")
+        self.setFixedSize(600, 500)
 
         layout = QVBoxLayout(self)
 
-        self.log_output = QTextEdit(readOnly=True)
-        layout.addWidget(self.log_output)
+        self.log = QTextEdit(readOnly=True)
+        layout.addWidget(self.log)
 
         btn = QPushButton("🚀 Ejecutar Deploy")
-        btn.clicked.connect(self.iniciar)
+        btn.clicked.connect(self.start)
         layout.addWidget(btn)
 
-    def iniciar(self):
-        self.log_output.clear()
-        self.build_thread = BuildDeployThread(self.project_path)
-        self.build_thread.log_signal.connect(self.log_output.append)
-        self.build_thread.finished_signal.connect(self.finalizado)
-        self.build_thread.start()
+    def start(self):
+        self.log.clear()
+        self.thread = BuildDeployThread(self.project_path)
+        self.thread.log_signal.connect(self.log.append)
+        self.thread.finished_signal.connect(self.done)
+        self.thread.start()
 
-    def finalizado(self, ok, msg):
-        QMessageBox.information(self, "Deploy", msg)
+    def done(self, ok, msg):
+        QMessageBox.information(self, "Resultado", msg)
 
 
 def mostrar_dialogo_build_deploy(parent=None):
