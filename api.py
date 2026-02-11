@@ -197,21 +197,29 @@ def like_sub(id_sub):
     db = conectar_db()
     cur = db.cursor()
 
+    # incrementar
     cur.execute("""
         UPDATE sub_secciones
         SET likes = likes + 1
-        WHERE id_subseccion=%s
+        WHERE id_sub_seccion=%s
     """, (id_sub,))
     db.commit()
 
+    # leer valor nuevo
     cur.execute("""
-        SELECT likes FROM sub_secciones
-        WHERE id_subseccion=%s
+        SELECT likes
+        FROM sub_secciones
+        WHERE id_sub_seccion=%s
     """, (id_sub,))
-    likes = cur.fetchone()[0]
+    row = cur.fetchone()
 
     db.close()
-    return jsonify({"likes": likes})
+
+    if not row:
+        return jsonify({"error": "Subsección no encontrada"}), 404
+
+    return jsonify({"likes": row[0]})
+
 
 
 # =====================================================
