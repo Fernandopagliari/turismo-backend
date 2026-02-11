@@ -1,8 +1,9 @@
-# api.py — PRODUCCIÓN FINAL RENDER + VITE + FLASK
+# api.py — PRODUCCIÓN OPTIMIZADO RENDER + VITE + FLASK
 
 from flask import Flask, jsonify, request, send_from_directory, session
 from flask_cors import CORS
 import mysql.connector
+from mysql.connector import pooling
 import os
 
 # =====================================================
@@ -24,16 +25,12 @@ app.config.update(
     SESSION_COOKIE_SECURE=True
 )
 
-# ⚠️ IMPORTANTE — NO usar "*" con cookies
 CORS(
     app,
     supports_credentials=True,
     origins=["https://turismo-backend-av60.onrender.com"]
 )
 
-# =====================================================
-# LOG START
-# =====================================================
 print("===================================")
 print("🚀 FLASK INICIADO")
 print("DIST:", DIST_DIR)
@@ -41,10 +38,31 @@ print("INDEX existe:", os.path.exists(INDEX_FILE))
 print("===================================")
 
 # =====================================================
+# DB POOL (🔥 mejora fuerte de rendimiento)
+# =====================================================
+db_pool = pooling.MySQLConnectionPool(
+    pool_name="turismo_pool",
+    pool_size=5,
+    host=os.environ.get("MYSQLHOST"),
+    user=os.environ.get("MYSQLUSER"),
+    password=os.environ.get("MYSQLPASSWORD"),
+    database=os.environ.get("MYSQLDATABASE"),
+    port=int(os.environ.get("MYSQLPORT", 3306)),
+    connect_timeout=10
+)
+
+def conectar_db():
+    return db_pool.get_connection()
+
+# =====================================================
 # UTIL
 # =====================================================
 def base_url():
-    return request.url_root.rstrip("/")
+    # fuerza https en render
+    root = request.url_root.rstrip("/")
+    if root.startswith("http://"):
+        root = root.replace("http://", "https://")
+    return root
 
 def url_completa(ruta):
     if not ruta:
@@ -55,38 +73,25 @@ def url_completa(ruta):
     return f"{base_url()}/{ruta}"
 
 def normalizar_filas(row):
-    salida = {}
+    out = {}
     for k, v in row.items():
         if v and any(x in k.lower() for x in ["imagen","foto","icono","logo","ruta"]):
-            salida[k] = url_completa(v)
+            out[k] = url_completa(v)
         else:
-            salida[k] = v
-    return salida
+            out[k] = v
+    return out
 
 # =====================================================
-# DB
+# HEALTH
 # =====================================================
-def conectar_db():
-    return mysql.connector.connect(
-        host=os.environ.get("MYSQLHOST"),
-        user=os.environ.get("MYSQLUSER"),
-        password=os.environ.get("MYSQLPASSWORD"),
-        database=os.environ.get("MYSQLDATABASE"),
-        port=int(os.environ.get("MYSQLPORT", 3306)),
-        connect_timeout=10
-    )
-
-# =====================================================
-# API
-# =====================================================
-
 @app.route("/api/health")
 def health():
     return jsonify({"status": "ok"})
 
 
-# ---------------- CONFIG ----------------
-
+# =====================================================
+# CONFIGURACION (cacheable)
+# =====================================================
 @app.route("/api/configuracion")
 def configuracion():
     db = conectar_db()
@@ -106,11 +111,14 @@ def configuracion():
     if not row:
         return jsonify({"error": "Sin configuración"}), 404
 
-    return jsonify(normalizar_filas(row))
+    resp = jsonify(normalizar_filas(row))
+    resp.headers["Cache-Control"] = "public, max-age=30"
+    return resp
 
 
-# ---------------- REGIONES ----------------
-
+# =====================================================
+# REGIONES
+# =====================================================
 @app.route("/api/regiones")
 def regiones():
     db = conectar_db()
@@ -128,8 +136,9 @@ def regiones():
     return jsonify(data)
 
 
-# ---------------- SECCIONES ----------------
-
+# =====================================================
+# SECCIONES + SUBSECCIONES (🔥 sin N+1 queries)
+# =====================================================
 @app.route("/api/secciones")
 def secciones():
     db = conectar_db()
@@ -141,28 +150,35 @@ def secciones():
         WHERE habilitar = 1
         ORDER BY orden
     """)
-
     secciones = cur.fetchall()
 
-    for s in secciones:
-        cur.execute("""
-            SELECT *
-            FROM sub_secciones
-            WHERE id_seccion=%s AND habilitar=1
-            ORDER BY orden
-        """, (s["id_seccion"],))
-        s["subsecciones"] = [
-            normalizar_filas(x) for x in cur.fetchall()
-        ]
-
+    cur.execute("""
+        SELECT *
+        FROM sub_secciones
+        WHERE habilitar = 1
+        ORDER BY orden
+    """)
+    subs = cur.fetchall()
     db.close()
+
+    # agrupar en memoria (🔥 evita query por sección)
+    subs_por_seccion = {}
+    for s in subs:
+        sid = s["id_seccion"]
+        subs_por_seccion.setdefault(sid, []).append(normalizar_filas(s))
+
+    for s in secciones:
+        s["subsecciones"] = subs_por_seccion.get(s["id_seccion"], [])
+
     return jsonify([normalizar_filas(s) for s in secciones])
 
 
-# ---------------- VISITA APP ----------------
-
+# =====================================================
+# VISITA APP (ultra rápido)
+# =====================================================
 @app.route("/api/visita-app", methods=["POST"])
 def visita_app():
+
     if session.get("visita_app_contada"):
         return jsonify({"ok": True})
 
@@ -172,15 +188,9 @@ def visita_app():
     cur.execute("""
         UPDATE configuracion_app
         SET visitas_app = visitas_app + 1
-        WHERE id_config = (
-            SELECT id_config FROM (
-                SELECT id_config
-                FROM configuracion_app
-                WHERE habilitar = 1
-                ORDER BY id_config DESC
-                LIMIT 1
-            ) t
-        )
+        WHERE habilitar = 1
+        ORDER BY id_config DESC
+        LIMIT 1
     """)
 
     db.commit()
@@ -190,14 +200,37 @@ def visita_app():
     return jsonify({"ok": True})
 
 
-# ---------------- LIKES ----------------
-
-@app.route("/api/subsecciones/<int:id_sub>/like", methods=["POST"])
-def like_sub(id_sub):
+# =====================================================
+# SOLO CONTADOR VISITAS (🔥 endpoint liviano live)
+# =====================================================
+@app.route("/api/visitas")
+def visitas_live():
     db = conectar_db()
     cur = db.cursor()
 
-    # incrementar
+    cur.execute("""
+        SELECT visitas_app
+        FROM configuracion_app
+        WHERE habilitar = 1
+        ORDER BY id_config DESC
+        LIMIT 1
+    """)
+
+    row = cur.fetchone()
+    db.close()
+
+    return jsonify({"visitas": row[0] if row else 0})
+
+
+# =====================================================
+# LIKES
+# =====================================================
+@app.route("/api/subsecciones/<int:id_sub>/like", methods=["POST"])
+def like_sub(id_sub):
+
+    db = conectar_db()
+    cur = db.cursor()
+
     cur.execute("""
         UPDATE sub_secciones
         SET likes = likes + 1
@@ -205,7 +238,6 @@ def like_sub(id_sub):
     """, (id_sub,))
     db.commit()
 
-    # leer valor nuevo
     cur.execute("""
         SELECT likes
         FROM sub_secciones
@@ -216,19 +248,23 @@ def like_sub(id_sub):
     db.close()
 
     if not row:
-        return jsonify({"error": "Subsección no encontrada"}), 404
+        return jsonify({"error": "No encontrada"}), 404
 
     return jsonify({"likes": row[0]})
 
 
-
 # =====================================================
-# FRONTEND STATIC — AL FINAL
+# STATIC (cache fuerte)
 # =====================================================
-
 @app.route("/")
 def index():
     return send_from_directory(DIST_DIR, "index.html")
+
+@app.route("/assets/<path:filename>")
+def assets(filename):
+    resp = send_from_directory(os.path.join(DIST_DIR, "assets"), filename)
+    resp.headers["Cache-Control"] = "public, max-age=31536000"
+    return resp
 
 @app.route("/<path:path>")
 def static_proxy(path):
@@ -241,7 +277,6 @@ def static_proxy(path):
 # =====================================================
 # API 404
 # =====================================================
-
 @app.errorhandler(404)
 def not_found(e):
     if request.path.startswith("/api"):
@@ -252,7 +287,6 @@ def not_found(e):
 # =====================================================
 # MAIN
 # =====================================================
-
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
