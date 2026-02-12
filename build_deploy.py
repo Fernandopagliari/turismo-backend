@@ -201,11 +201,14 @@ class DialogoBuildDeploy(QDialog):
         self.log.clear()
         self.thread = BuildDeployThread(self.project_path)
         self.thread.log_signal.connect(self.log.append)
-        self.thread.finished_signal.connect(self.done)
+        self.thread.finished_signal.connect(self.on_finished)
         self.thread.start()
 
-    def done(self, ok, msg):
+    
+
+    def on_finished(self, ok, msg):
         QMessageBox.information(self, "Resultado", msg)
+
 
 
 def mostrar_dialogo_build_deploy(parent=None):
