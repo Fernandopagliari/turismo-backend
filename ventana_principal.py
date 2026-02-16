@@ -478,7 +478,7 @@ class VentanaPrincipal(QMainWindow):
         self.cargar_icono_menu()
         
         try:
-            self.btnBackendDeploy.setVisible(False)
+            #self.btnBackendDeploy.setVisible(False)
             self.btnBuildDeploy.setVisible(False)
             self.btnConfiguracion.setVisible(False)
             self.btnUsuarios.setVisible(False)
@@ -502,7 +502,7 @@ class VentanaPrincipal(QMainWindow):
             self.btnSubSecciones.clicked.connect(self.abrir_gestion_sub_secciones)
             self.btnConfiguracion.clicked.connect(self.abrir_gestion_configuracion)
             self.btnBuildDeploy.clicked.connect(self.abrir_gestion_buildDeploy)
-            self.btnBackendDeploy.clicked.connect(self.abrir_gestion_backendDeploy)
+            #self.btnBackendDeploy.clicked.connect(self.abrir_gestion_backendDeploy)
         except Exception as e:
             print("Error conectando botones:", e)
             pass
@@ -890,7 +890,7 @@ class VentanaPrincipal(QMainWindow):
         self.btnSubSecciones.setVisible(mostrar)
         self.btnConfiguracion.setVisible(mostrar)
         self.btnBuildDeploy.setVisible(mostrar)
-        self.btnBackendDeploy.setVisible(mostrar)
+        #self.btnBackendDeploy.setVisible(mostrar)
 
     def cerrar_menu_lateral(self):
         try:

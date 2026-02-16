@@ -159,6 +159,9 @@
      </item>
      <item>
       <widget class="QPushButton" name="btnBackendDeploy">
+       <property name="enabled">
+        <bool>false</bool>
+       </property>
        <property name="minimumSize">
         <size>
          <width>0</width>
