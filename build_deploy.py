@@ -13,6 +13,16 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import QThread, pyqtSignal
 
+# ============================================================
+# CONFIGURACIÓN GLOBAL
+# ============================================================
+
+# ------------------------------------------------------------
+# Control de build del frontend React
+# Activar SOLO cuando se modifiquen archivos .tsx/.js
+# En entorno cliente debe permanecer en False
+# ------------------------------------------------------------
+EJECUTAR_BUILD_FRONTEND = False
 
 # ============================================================
 # THREAD PRINCIPAL
@@ -162,14 +172,30 @@ class BuildDeployThread(QThread):
     def run(self):
         self.log("🚀 Iniciando Build + Deploy")
 
-        if not self.build_react():
-            self.finished_signal.emit(False, "Falló build React")
-            return
+        # --------------------------------------------------------
+        # BUILD FRONTEND (OPCIONAL)
+        # --------------------------------------------------------
+        if EJECUTAR_BUILD_FRONTEND:
+            self.log("🛠 Modo build frontend ACTIVADO")
 
-        if not self.copy_dist_to_backend():
-            self.finished_signal.emit(False, "Falló copia dist")
-            return
+            if not self.npm_path:
+                self.finished_signal.emit(False, "npm no encontrado y build activado")
+                return
 
+            if not self.build_react():
+                self.finished_signal.emit(False, "Falló build React")
+                return
+
+            if not self.copy_dist_to_backend():
+                self.finished_signal.emit(False, "Falló copia dist")
+                return
+
+        else:
+            self.log("⏭ Build frontend omitido (modo distribución cliente)")
+
+        # --------------------------------------------------------
+        # GIT DEPLOY
+        # --------------------------------------------------------
         if not self.git_backend_safe():
             self.finished_signal.emit(False, "Falló git push")
             return
