@@ -85,6 +85,12 @@ def _is_url(path):
     """Verifica si una ruta es una URL"""
     return isinstance(path, str) and (path.startswith("http://") or path.startswith("https://"))
 
+def es_video(ruta):
+    if not ruta:
+        return False
+    ruta = ruta.lower()
+    return ruta.endswith(".webm") or ruta.endswith(".mp4")
+
 def obtener_url_base_hosting():
     """Obtiene la URL base desde la base de datos - NUEVA FUNCIÓN"""
     try:
@@ -759,12 +765,12 @@ class VentanaConfiguracion(QWidget):
 
     # ------------------ Imagenes -------------------
     
-    def seleccionar_imagen(self, titulo_dialogo):
+    def seleccionar_media(self, titulo_dialogo):
         ruta, _ = QFileDialog.getOpenFileName(
             self,
             titulo_dialogo,
             "",
-            "Imágenes (*.jpg *.jpeg *.png *.webp *.bmp *.gif)"
+            "Archivos Multimedia (*.jpg *.jpeg *.png *.webp *.bmp *.gif *.webm *.mp4)"
         )
         return ruta if ruta else None
 
@@ -870,14 +876,24 @@ class VentanaConfiguracion(QWidget):
 
 
     def seleccionar_hero_imagen(self):
-        ruta = self.seleccionar_imagen("Seleccionar imagen principal")
+        ruta = self.seleccionar_media("Seleccionar imagen o video principal")
         if not ruta:
             return
 
         ruta_relativa = convertir_ruta_produccion(ruta)
 
         self.lineEdit_hero_imagen.setText(ruta)
-        self.mostrar_imagen_config(ruta, self.label_imagen_central, 100)
+
+        # 🔥 SI ES VIDEO → no intentar mostrar como imagen
+        if es_video(ruta):
+            self.label_imagen_central.clear()
+            self.label_imagen_central.setText("🎥 Video seleccionado")
+        else:
+            self.mostrar_imagen_config(ruta, self.label_imagen_central, 100)
+
+        hero_base64 = None
+        if not es_video(ruta) and os.path.exists(ruta):
+            hero_base64 = imagen_a_base64(ruta)
 
         if self.config_seleccionada_id:
             conexion = conectar_base_datos()
@@ -891,7 +907,7 @@ class VentanaConfiguracion(QWidget):
             """, (
                 ruta,
                 ruta_relativa,
-                imagen_a_base64(ruta),
+                hero_base64,
                 self.config_seleccionada_id
             ))
             conexion.commit()

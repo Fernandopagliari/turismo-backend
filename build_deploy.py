@@ -22,7 +22,7 @@ from PyQt5.QtCore import QThread, pyqtSignal
 # Activar SOLO cuando se modifiquen archivos .tsx/.js
 # En entorno cliente debe permanecer en False
 # ------------------------------------------------------------
-EJECUTAR_BUILD_FRONTEND = False
+EJECUTAR_BUILD_FRONTEND = True
 
 # ============================================================
 # THREAD PRINCIPAL
