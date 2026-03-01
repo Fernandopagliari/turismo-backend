@@ -9,6 +9,9 @@ from PyQt5.QtWidgets import QMainWindow, QApplication, QMessageBox
 from PyQt5 import uic
 from PyQt5.QtGui import QIcon, QPixmap, QPainter, QBrush
 from PyQt5.QtCore import Qt, QPropertyAnimation, QEasingCurve, QPoint, QSize
+from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent
+from PyQt5.QtMultimediaWidgets import QVideoWidget
+from PyQt5.QtCore import QUrl
 
 # ✅ CAMBIADO: Importar la función correcta
 #from database_local import conectar_local as conectar_base_datos
@@ -215,6 +218,34 @@ class VentanaPrincipal(QMainWindow):
             print(f"URL no accesible {url}: {e}")
             return False
 
+    def reproducir_video_hero(self, ruta_video):
+        try:
+            # Ocultar imagen si existe
+            self.label_imagen_central.hide()
+
+            # Crear widget de video si no existe
+            if not hasattr(self, "video_widget"):
+                self.video_widget = QVideoWidget(self)
+                self.video_widget.setGeometry(self.label_imagen_central.geometry())
+                self.video_widget.show()
+
+            # Crear reproductor si no existe
+            if not hasattr(self, "media_player"):
+                self.media_player = QMediaPlayer(None, QMediaPlayer.VideoSurface)
+                self.media_player.setVideoOutput(self.video_widget)
+
+            # Cargar video
+            if ruta_video.startswith("http"):
+                url = QUrl(ruta_video)
+            else:
+                url = QUrl.fromLocalFile(ruta_video)
+
+            self.media_player.setMedia(QMediaContent(url))
+            self.media_player.setMuted(True)  # sin sonido
+            self.media_player.play()
+
+        except Exception as e:
+            print("Error reproduciendo video hero:", e)
     def mostrar_imagen_desde_url(self, url: str):
         """
         Carga y muestra imagen desde URL remota - CON CACHE
@@ -571,7 +602,11 @@ class VentanaPrincipal(QMainWindow):
             # ✅ MODIFICADO: Usar el mismo método robusto que para los iconos
             ruta_resuelta = self.find_asset_or_fallback(ruta_relativa, "assets/imagenes/hongo_ischigualasto.jpg")
             print(f"[HERO] Intentando cargar imagen central desde: {ruta_resuelta}")
-
+            # 🎥 NUEVO: Detectar si es video
+            if ruta_resuelta.lower().endswith(".webm"):
+                print("[HERO] Detectado video webm")
+                self.reproducir_video_hero(ruta_resuelta)
+                return
             if ruta_resuelta:
                 # ✅ MANEJAR URL REMOTA CON CACHE
                 if self._is_url(ruta_resuelta):
