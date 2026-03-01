@@ -777,7 +777,7 @@ class VentanaConfiguracion(QWidget):
 
 
     def seleccionar_logo(self):
-        ruta = self.seleccionar_imagen("Seleccionar logo")
+        ruta = self.seleccionar_media("Seleccionar logo")
         if not ruta:
             return
 
@@ -811,7 +811,7 @@ class VentanaConfiguracion(QWidget):
 
 
     def seleccionar_icono_abrir(self):
-        ruta = self.seleccionar_imagen("Seleccionar icono abrir")
+        ruta = self.seleccionar_media("Seleccionar icono abrir")
         if not ruta:
             return
 
@@ -842,7 +842,7 @@ class VentanaConfiguracion(QWidget):
 
 
     def seleccionar_icono_cerrar(self):
-        ruta = self.seleccionar_imagen("Seleccionar icono cerrar")
+        ruta = self.seleccionar_media("Seleccionar icono cerrar")
         if not ruta:
             return
 

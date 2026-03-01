@@ -120,6 +120,21 @@ class VentanaPrincipal(QMainWindow):
             raise FileNotFoundError(f"No se encontró el archivo UI en: {ruta_ui}")
 
         uic.loadUi(ruta_ui, self)
+        
+        # 🎬 HERO VIDEO PROFESIONAL FULLSCREEN
+        self.video_widget = QVideoWidget(self)
+
+        # Que quede exactamente encima del label
+        self.video_widget.setGeometry(self.label_imagen_central.geometry())
+        self.video_widget.setAspectRatioMode(Qt.KeepAspectRatioByExpanding)
+
+        self.video_widget.hide()
+
+        self.media_player = QMediaPlayer(self)
+        self.media_player.setVideoOutput(self.video_widget)
+
+        # 🔁 LOOP AUTOMÁTICO
+        self.media_player.mediaStatusChanged.connect(self._loop_video)
 
         # Inicializo variable para configuración
         self.config = None
@@ -147,7 +162,24 @@ class VentanaPrincipal(QMainWindow):
 
         # Cargar imagen central (hero)
         self.cargar_imagen_central()
-        
+    
+    # 🔁 LOOP AUTOMÁTICO DEL VIDEO
+    def _loop_video(self, status):
+        """
+        Hace loop automático cuando termina el video
+        """
+        if status == QMediaPlayer.EndOfMedia:
+            self.media_player.setPosition(0)
+            self.media_player.play()
+            
+    # 🔁 LOOP AUTOMÁTICO DEL VIDEO
+    def _loop_video(self, status):
+        """
+        Hace loop automático cuando termina el video
+        """
+        if status == QMediaPlayer.EndOfMedia:
+            self.media_player.setPosition(0)
+            self.media_player.play() 
     # -------------------------
     # NUEVO MÉTODO: Obtener URL base del hosting
     # -------------------------
@@ -218,34 +250,6 @@ class VentanaPrincipal(QMainWindow):
             print(f"URL no accesible {url}: {e}")
             return False
 
-    def reproducir_video_hero(self, ruta_video):
-        try:
-            # Ocultar imagen si existe
-            self.label_imagen_central.hide()
-
-            # Crear widget de video si no existe
-            if not hasattr(self, "video_widget"):
-                self.video_widget = QVideoWidget(self)
-                self.video_widget.setGeometry(self.label_imagen_central.geometry())
-                self.video_widget.show()
-
-            # Crear reproductor si no existe
-            if not hasattr(self, "media_player"):
-                self.media_player = QMediaPlayer(None, QMediaPlayer.VideoSurface)
-                self.media_player.setVideoOutput(self.video_widget)
-
-            # Cargar video
-            if ruta_video.startswith("http"):
-                url = QUrl(ruta_video)
-            else:
-                url = QUrl.fromLocalFile(ruta_video)
-
-            self.media_player.setMedia(QMediaContent(url))
-            self.media_player.setMuted(True)  # sin sonido
-            self.media_player.play()
-
-        except Exception as e:
-            print("Error reproduciendo video hero:", e)
     def mostrar_imagen_desde_url(self, url: str):
         """
         Carga y muestra imagen desde URL remota - CON CACHE
@@ -578,66 +582,94 @@ class VentanaPrincipal(QMainWindow):
     # -------------------------
     def cargar_imagen_central(self):
         """
-        Carga la imagen hero - AHORA maneja URLs remotas CON CACHE
+        Carga la imagen hero - soporta imágenes y videos (.mp4 / .webm)
+        Versión mejorada profesional
         """
         try:
             ruta_relativa = None
+
             if self.config and self.config.get("hero_imagen"):
                 ruta_relativa = self.config.get("hero_imagen")
-            else:
-                conn = conectar_base_datos()
-                cursor = conn.cursor(dictionary=True)
-                cursor.execute("SELECT hero_imagen FROM configuracion_app WHERE habilitar=1 LIMIT 1")
-                res = cursor.fetchone()
-                cursor.close()
-                conn.close()
-                if res:
-                    ruta_relativa = res.get("hero_imagen")
 
             if not ruta_relativa:
-                print("No hay imagen configurada en la base de datos")
                 self.mostrar_imagen_alternativa()
                 return
 
-            # ✅ MODIFICADO: Usar el mismo método robusto que para los iconos
-            ruta_resuelta = self.find_asset_or_fallback(ruta_relativa, "assets/imagenes/hongo_ischigualasto.jpg")
-            print(f"[HERO] Intentando cargar imagen central desde: {ruta_resuelta}")
-            # 🎥 NUEVO: Detectar si es video
-            if ruta_resuelta.lower().endswith(".webm"):
-                print("[HERO] Detectado video webm")
-                self.reproducir_video_hero(ruta_resuelta)
+            ruta_resuelta = self.find_asset_or_fallback(
+                ruta_relativa,
+                "assets/imagenes/hongo_ischigualasto.jpg"
+            )
+
+            print(f"[HERO] Intentando cargar desde: {ruta_resuelta}")
+
+            if not ruta_resuelta:
+                self.mostrar_imagen_alternativa()
                 return
-            if ruta_resuelta:
-                # ✅ MANEJAR URL REMOTA CON CACHE
+
+            extension = str(ruta_resuelta).lower()
+
+            # ==================================================
+            # 🎬 SI ES VIDEO
+            # ==================================================
+            if extension.endswith((".mp4", ".webm")):
+
+                print("[HERO] Detectado VIDEO")
+
+                # Ocultar imagen y mostrar video
+                self.label_imagen_central.hide()
+                self.video_widget.show()
+
+                # Ajustar tamaño al área del hero
+                self.video_widget.setGeometry(self.label_imagen_central.geometry())
+
+                # Construir URL
                 if self._is_url(ruta_resuelta):
-                    print(f"[HERO] Cargando desde URL remota: {ruta_resuelta}")
-                    self.mostrar_imagen_desde_url(ruta_resuelta)
-                    return
-
-                # ✅ MANEJAR ARCHIVO LOCAL CON CACHE
-                if os.path.exists(ruta_resuelta):
-                    # ✅ OPTIMIZADO: Usar sistema de cache
-                    pixmap = cargar_imagen_desde_ruta_con_cache(ruta_resuelta, 
-                        (self.label_imagen_central.width(), self.label_imagen_central.height()))
-                    
-                    if pixmap and not pixmap.isNull():
-                        self.label_imagen_central.setPixmap(pixmap)
-                        self.label_imagen_central.setAlignment(Qt.AlignCenter)
-                        self.label_imagen_central.setStyleSheet("")
-                        print(f"✅ Imagen central cargada: {ruta_resuelta}")
-                    else:
-                        print("Error: la imagen no se pudo cargar (pixmap inválido).")
-                        self.mostrar_imagen_alternativa()
+                    url = QUrl(ruta_resuelta)
                 else:
-                    print(f"Error: No existe la ruta: {ruta_resuelta}")
-                    self.mostrar_imagen_alternativa()
-            else:
-                print("[HERO] No se resolvió ninguna ruta válida para hero.")
-                self.mostrar_imagen_alternativa()
-        except Exception as e:
-            print(f"Error al cargar imagen central: {e}")
-            self.mostrar_imagen_alternativa()
+                    url = QUrl.fromLocalFile(ruta_resuelta)
 
+                # Cargar y reproducir
+                self.media_player.stop()
+                self.media_player.setMedia(QMediaContent(url))
+                self.media_player.setMuted(True)
+                self.media_player.play()
+
+                return
+
+            # ==================================================
+            # 🖼️ SI ES IMAGEN
+            # ==================================================
+            print("[HERO] Detectada IMAGEN")
+
+            # Detener video si estaba activo
+            self.media_player.stop()
+            self.video_widget.hide()
+            self.label_imagen_central.show()
+
+            # Si es URL
+            if self._is_url(ruta_resuelta):
+                self.mostrar_imagen_desde_url(ruta_resuelta)
+                return
+
+            # Si es local
+            pixmap = cargar_imagen_desde_ruta_con_cache(
+                ruta_resuelta,
+                (
+                    self.label_imagen_central.width(),
+                    self.label_imagen_central.height()
+                )
+            )
+
+            if pixmap and not pixmap.isNull():
+                self.label_imagen_central.setPixmap(pixmap)
+                self.label_imagen_central.setAlignment(Qt.AlignCenter)
+            else:
+                self.mostrar_imagen_alternativa()
+
+        except Exception as e:
+            print("❌ Error cargando hero:", e)
+            self.mostrar_imagen_alternativa()
+    
     def mostrar_imagen_alternativa(self):
         """Muestra una imagen alternativa o texto si no se puede cargar la imagen principal"""
         try:
