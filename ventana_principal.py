@@ -9,8 +9,7 @@ from PyQt5.QtWidgets import QMainWindow, QApplication, QMessageBox
 from PyQt5 import uic
 from PyQt5.QtGui import QIcon, QPixmap, QPainter, QBrush
 from PyQt5.QtCore import Qt, QPropertyAnimation, QEasingCurve, QPoint, QSize
-from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent
-from PyQt5.QtMultimediaWidgets import QVideoWidget
+from PyQt5.QtWebEngineWidgets import QWebEngineView
 from PyQt5.QtCore import QUrl
 
 # ✅ CAMBIADO: Importar la función correcta
@@ -120,22 +119,18 @@ class VentanaPrincipal(QMainWindow):
             raise FileNotFoundError(f"No se encontró el archivo UI en: {ruta_ui}")
 
         uic.loadUi(ruta_ui, self)
-        
         # 🎬 HERO VIDEO PROFESIONAL FULLSCREEN
-        self.video_widget = QVideoWidget(self)
-
-        # Que quede exactamente encima del label
-        self.video_widget.setGeometry(self.label_imagen_central.geometry())
-        self.video_widget.setAspectRatioMode(Qt.KeepAspectRatioByExpanding)
-
-        self.video_widget.hide()
-
-        self.media_player = QMediaPlayer(self)
-        self.media_player.setVideoOutput(self.video_widget)
-
-        # 🔁 LOOP AUTOMÁTICO
-        self.media_player.mediaStatusChanged.connect(self._loop_video)
-
+        # 🎬 HERO CON MOTOR WEB (ULTRA ESTABLE)
+        from PyQt5.QtWebEngineWidgets import QWebEngineView, QWebEngineSettings
+        self.web_view = QWebEngineView(self)
+        self.web_view.setGeometry(self.label_imagen_central.geometry())
+        self.web_view.hide()
+        self.web_view.settings().setAttribute(
+            QWebEngineSettings.LocalContentCanAccessRemoteUrls, True
+        )
+        self.web_view.settings().setAttribute(
+            QWebEngineSettings.PlaybackRequiresUserGesture, False
+        )
         # Inicializo variable para configuración
         self.config = None
         self.menu_icon_path = None
@@ -150,6 +145,7 @@ class VentanaPrincipal(QMainWindow):
 
         # Maximizar ventana
         self.showMaximized()
+        self.web_view.setGeometry(self.label_imagen_central.geometry())
 
         # ✅ PRIMERO: Obtener URL base del hosting para imágenes remotas
         self.obtener_url_base_hosting()
@@ -162,24 +158,7 @@ class VentanaPrincipal(QMainWindow):
 
         # Cargar imagen central (hero)
         self.cargar_imagen_central()
-    
-    # 🔁 LOOP AUTOMÁTICO DEL VIDEO
-    def _loop_video(self, status):
-        """
-        Hace loop automático cuando termina el video
-        """
-        if status == QMediaPlayer.EndOfMedia:
-            self.media_player.setPosition(0)
-            self.media_player.play()
-            
-    # 🔁 LOOP AUTOMÁTICO DEL VIDEO
-    def _loop_video(self, status):
-        """
-        Hace loop automático cuando termina el video
-        """
-        if status == QMediaPlayer.EndOfMedia:
-            self.media_player.setPosition(0)
-            self.media_player.play() 
+     
     # -------------------------
     # NUEVO MÉTODO: Obtener URL base del hosting
     # -------------------------
@@ -613,34 +592,65 @@ class VentanaPrincipal(QMainWindow):
             # ==================================================
             if extension.endswith((".mp4", ".webm")):
 
-                print("[HERO] Detectado VIDEO")
+                print("[HERO] Detectado VIDEO (modo WebEngine)")
 
-                # Ocultar imagen y mostrar video
                 self.label_imagen_central.hide()
-                self.video_widget.show()
+                self.web_view.show()
+                self.web_view.setGeometry(self.label_imagen_central.geometry())
 
-                # Ajustar tamaño al área del hero
-                self.video_widget.setGeometry(self.label_imagen_central.geometry())
-
-                # Construir URL
                 if self._is_url(ruta_resuelta):
-                    url = QUrl(ruta_resuelta)
+                    video_url = ruta_resuelta
                 else:
-                    url = QUrl.fromLocalFile(ruta_resuelta)
+                    video_url = QUrl.fromLocalFile(ruta_resuelta).toString()
 
-                # Cargar y reproducir
-                self.media_player.stop()
-                self.media_player.setMedia(QMediaContent(url))
-                self.media_player.setMuted(True)
-                self.media_player.play()
+                html = f"""
+                <html>
+                <head>
+                <style>
+                body {{
+                    margin: 0;
+                    background-color: black;
+                    overflow: hidden;
+                }}
+                video {{
+                    width: 100%;
+                    height: 100vh;
+                    object-fit: cover;
+                }}
+                </style>
+                </head>
+                <body>
+                <video autoplay muted loop>
+                    <source src="{video_url}">
+                </video>
+                </body>
+                </html>
+                """
 
+                base_url = QUrl(self.base_url) if self.base_url else QUrl(video_url)
+                # Ruta al archivo HTML local
+                html_path = os.path.join(os.path.dirname(__file__), "hero_video.html")
+
+                self.web_view.load(QUrl.fromLocalFile(html_path))
+
+                def cargar_video():
+                    if self._is_url(ruta_resuelta):
+                        video_url = ruta_resuelta
+                    else:
+                        video_url = QUrl.fromLocalFile(ruta_resuelta).toString()
+
+                    js = f'setVideoSource("{video_url}");'
+                    self.web_view.page().runJavaScript(js)
+
+                # Esperar a que cargue la página antes de inyectar el video
+                self.web_view.loadFinished.connect(lambda ok: cargar_video())
                 return
 
             # ==================================================
             # 🖼️ SI ES IMAGEN
             # ==================================================
             print("[HERO] Detectada IMAGEN")
-
+            self.web_view.hide()
             # Detener video si estaba activo
             self.media_player.stop()
             self.video_widget.hide()
@@ -711,6 +721,10 @@ class VentanaPrincipal(QMainWindow):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
+
+        if hasattr(self, "web_view"):
+            self.web_view.setGeometry(self.label_imagen_central.geometry())
+
         self.ajustar_imagen()
 
     def ajustar_imagen(self):
@@ -1006,6 +1020,9 @@ class VentanaPrincipal(QMainWindow):
         self.ventana_backendDeploy.show()
         
 if __name__ == "__main__":
+    from PyQt5.QtCore import Qt
+    QApplication.setAttribute(Qt.AA_ShareOpenGLContexts)
+    
     app = QApplication(sys.argv)
     ventana = VentanaPrincipal()
     ventana.show()
