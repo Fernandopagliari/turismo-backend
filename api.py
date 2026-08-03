@@ -37,6 +37,13 @@ print("DIST:", DIST_DIR)
 print("INDEX existe:", os.path.exists(INDEX_FILE))
 print("===================================")
 
+print("============== VARIABLES ==============")
+print("HOST =", repr(os.environ.get("MYSQLHOST")))
+print("USER =", repr(os.environ.get("MYSQLUSER")))
+print("DATABASE =", repr(os.environ.get("MYSQLDATABASE")))
+print("PORT =", repr(os.environ.get("MYSQLPORT")))
+print("PASSWORD =", "***" if os.environ.get("MYSQLPASSWORD") else None)
+print("=======================================")
 # =====================================================
 # DB POOL (🔥 mejora fuerte de rendimiento)
 # =====================================================
