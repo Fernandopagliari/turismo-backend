@@ -58,6 +58,7 @@ db_pool = pooling.MySQLConnectionPool(
     connect_timeout=10
 )
 
+
 def conectar_db():
     return db_pool.get_connection()
 
