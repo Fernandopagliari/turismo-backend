@@ -13,6 +13,11 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DIST_DIR = os.path.join(BASE_DIR, "dist")
 INDEX_FILE = os.path.join(DIST_DIR, "index.html")
 
+print("########################################")
+print("API VERSION 04-08-2026 17:15")
+print("########################################")
+
+
 # =====================================================
 # APP
 # =====================================================
