@@ -37,6 +37,8 @@ print("DIST:", DIST_DIR)
 print("INDEX existe:", os.path.exists(INDEX_FILE))
 print("===================================")
 
+import socket
+
 print("============== VARIABLES ==============")
 print("HOST =", repr(os.environ.get("MYSQLHOST")))
 print("USER =", repr(os.environ.get("MYSQLUSER")))
@@ -44,6 +46,15 @@ print("DATABASE =", repr(os.environ.get("MYSQLDATABASE")))
 print("PORT =", repr(os.environ.get("MYSQLPORT")))
 print("PASSWORD =", "***" if os.environ.get("MYSQLPASSWORD") else None)
 print("=======================================")
+
+print("mysql.connector =", mysql.connector.__version__)
+
+try:
+    print("Resolviendo DNS...")
+    ip = socket.gethostbyname(os.environ.get("MYSQLHOST"))
+    print("IP =", ip)
+except Exception as e:
+    print("ERROR DNS =", repr(e))
 # =====================================================
 # DB POOL (🔥 mejora fuerte de rendimiento)
 # =====================================================
