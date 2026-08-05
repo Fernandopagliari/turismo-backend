@@ -89,20 +89,53 @@ def base_url():
     return root
 
 def url_completa(ruta):
+
     if not ruta:
         return None
-    ruta = ruta.replace("\\", "/").lstrip("/")
-    if not ruta.startswith("assets/"):
-        ruta = f"assets/{ruta}"
+
+    ruta = str(ruta).replace("\\", "/")
+
+    # Ya es una URL
+    if ruta.startswith("http://") or ruta.startswith("https://"):
+        return ruta
+
+    # Base64
+    if ruta.startswith("data:"):
+        return ruta
+
+    # Ruta absoluta Windows
+    if ":/" in ruta:
+        return ruta
+
+    # Ruta relativa
+    ruta = ruta.lstrip("/")
+
     return f"{base_url()}/{ruta}"
 
 def normalizar_filas(row):
+
     out = {}
+
     for k, v in row.items():
-        if v and any(x in k.lower() for x in ["imagen","foto","icono","logo","ruta"]):
+
+        if v is None:
+            out[k] = None
+            continue
+
+        nombre = k.lower()
+
+        # Base64 nunca se toca
+        if nombre.endswith("_base64"):
+            out[k] = v
+
+        # Solo convertir rutas relativas
+        elif nombre.endswith("_ruta_relativa"):
             out[k] = url_completa(v)
+
+        # El resto queda igual
         else:
             out[k] = v
+
     return out
 
 # =====================================================
