@@ -14,28 +14,31 @@ _CONEXION_HOSTING_CACHE = None
 _ULTIMA_CONEXION_HOSTING = 0
 _CACHE_TIMEOUT_HOSTING = 60  # 60 segundos para hosting (más largo)
 
+
 def obtener_conexion_hosting_cached(config, parent=None):
     """
     Obtener conexión a hosting con cache - OPTIMIZADA
     """
     global _CONEXION_HOSTING_CACHE, _ULTIMA_CONEXION_HOSTING
-    
+
     current_time = time.time()
-    
+
     # Verificar si tenemos una conexión en cache y sigue válida
-    if (_CONEXION_HOSTING_CACHE and 
-        _CONEXION_HOSTING_CACHE.is_connected() and 
+    if (_CONEXION_HOSTING_CACHE and
+        _CONEXION_HOSTING_CACHE.is_connected() and
         (current_time - _ULTIMA_CONEXION_HOSTING) < _CACHE_TIMEOUT_HOSTING):
+
         try:
             # Verificar que la conexión sigue activa
             cursor = _CONEXION_HOSTING_CACHE.cursor()
             cursor.execute("SELECT 1")
             cursor.close()
             return _CONEXION_HOSTING_CACHE
+
         except:
             # Conexión en cache no funciona, limpiar
             _CONEXION_HOSTING_CACHE = None
-    
+
     # Crear nueva conexión
     try:
         conexion = mysql.connector.connect(
@@ -43,40 +46,54 @@ def obtener_conexion_hosting_cached(config, parent=None):
             user=config['user'],
             password=config['password'],
             database=config['database'],
-            port=config['port'],
-            connect_timeout=15,  # Timeout reducido
-            connection_timeout=15
+            port=int(config['port']),
+            connect_timeout=15,
+            connection_timeout=15,
+            use_pure=True,
+            ssl_disabled=False
         )
-        
+
         if conexion.is_connected():
             _CONEXION_HOSTING_CACHE = conexion
             _ULTIMA_CONEXION_HOSTING = current_time
             return conexion
-            
+
     except Error as e:
+
+        print("========================================")
+        print("ERROR REAL DE CONEXION A HOSTING")
+        print("TIPO:", type(e))
+        print("ERROR:", repr(e))
+        print("MENSAJE:", str(e))
+        print("========================================")
+
         if parent is None:
             from PyQt5.QtWidgets import QApplication
             parent = QApplication.activeWindow()
-        
-        QMessageBox.warning(parent, "Conexión Fallida",
-                           f"No se pudo conectar al servidor hosting:\n{e}\n\n"
-                           f"Verifique que:\n"
-                           f"- La configuración en 'datos_hosting' sea correcta\n"
-                           f"- Su conexión a internet esté activa\n"
-                           f"- El servidor hosting esté disponible")
-    
+
+        QMessageBox.critical(
+            parent,
+            "ERROR REAL DE CONEXIÓN",
+            f"Error MySQL:\n\n{repr(e)}"
+        )
+
     return None
+
 
 def conectar_hosting(parent=None):
     """
-    Conectar a la base de datos del hosting usando configuración de la tabla local - OPTIMIZADA
+    Conectar a la base de datos del hosting usando configuración
+    de la tabla local - OPTIMIZADA
     """
+
     # Obtener configuración desde la DB local
     config = obtener_configuracion_hosting(parent)
+
     if not config:
         return None
-    
+
     return obtener_conexion_hosting_cached(config, parent)
+
 
 # =========================
 # FUNCIONES NUEVAS - SIN MODIFICAR LAS EXISTENTES
@@ -84,7 +101,9 @@ def conectar_hosting(parent=None):
 
 def crear_tabla_datos_hosting(conexion):
     """Crear tabla datos_hosting en el servidor remoto - NUEVA FUNCIÓN"""
+
     cursor = conexion.cursor()
+
     try:
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS datos_hosting (
@@ -99,63 +118,71 @@ def crear_tabla_datos_hosting(conexion):
                 fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             ) ENGINE=InnoDB;
         """)
-        
+
         conexion.commit()
-        
+
     except Exception as e:
         pass
+
     finally:
         cursor.close()
 
+
 def copiar_configuracion_a_hosting(conexion, parent=None):
     """COPIAR configuración desde BD local a BD remota - NUEVA FUNCIÓN"""
+
     try:
         # Obtener configuración desde BD local
         config_local = obtener_configuracion_hosting(parent)
-        
+
         if not config_local:
             return False
-        
+
         cursor = conexion.cursor()
-        
+
         # Limpiar configuraciones anteriores en hosting
         cursor.execute("UPDATE datos_hosting SET activo = 0")
-        
+
         # Insertar nueva configuración COPIADA desde local
         cursor.execute("""
-            INSERT INTO datos_hosting (host, usuario, password, base_datos, puerto, base_url, activo)
+            INSERT INTO datos_hosting
+            (host, usuario, password, base_datos, puerto, base_url, activo)
             VALUES (%s, %s, %s, %s, %s, %s, %s)
         """, (
             config_local['host'],
-            config_local['user'], 
+            config_local['user'],
             config_local['password'],
             config_local['database'],
             config_local['port'],
             config_local.get('base_url', ''),
             True
         ))
-        
+
         conexion.commit()
         cursor.close()
-        
+
         return True
-        
+
     except Exception as e:
         return False
+
 
 def inicializar_base_datos_hosting(parent=None):
     """
     Inicializar todas las tablas de la aplicación en el hosting - OPTIMIZADA
     """
+
     conexion = conectar_hosting(parent)
+
     if not conexion:
         return False
 
     try:
+
         # Lista de funciones para crear tablas en ORDEN OPTIMIZADO
         funciones = [
             crear_tabla_configuraciones,
-            crear_tabla_regiones_zona, 
+            crear_tabla_regiones_zona,
             crear_tabla_secciones,
             crear_tabla_usuarios,  # Mover antes para relaciones FK
             crear_tabla_sub_secciones,  # Después de usuarios por posibles FK
@@ -164,65 +191,96 @@ def inicializar_base_datos_hosting(parent=None):
             insert_initial_users,
             lambda conn: copiar_configuracion_a_hosting(conn, parent)
         ]
-        
+
         for funcion in funciones:
+
             try:
                 funcion(conexion)
+
             except Exception as e:
                 # Continuar con las siguientes tablas incluso si una falla
                 continue
-        
+
         return True
-        
+
     except Exception as e:
         return False
+
     finally:
         # NO cerrar la conexión aquí para mantener el cache
         pass
 
-# -----------------Verificacion campos base64-------------------------
+
+# -----------------
+# Verificación campos base64
+# -----------------
+
 def verificar_y_agregar_campos_base64(conexion):
     """Verifica y agrega campos Base64 faltantes a todas las tablas en HOSTING"""
+
     try:
+
         cursor = conexion.cursor()
-        
+
         # Lista de campos a verificar/agregar
         campos_por_tabla = {
+
             'configuracion_app': [
                 'logo_base64 LONGTEXT',
-                'icono_hamburguesa_base64 LONGTEXT', 
+                'icono_hamburguesa_base64 LONGTEXT',
                 'icono_cerrar_base64 LONGTEXT',
                 'hero_imagen_base64 LONGTEXT'
             ],
-            'regiones_zonas': ['imagen_region_zona_base64 LONGTEXT'],
-            'usuarios': ['foto_usuario_base64 LONGTEXT'],
-            'secciones': ['icono_seccion_base64 LONGTEXT'],
+
+            'regiones_zonas': [
+                'imagen_region_zona_base64 LONGTEXT'
+            ],
+
+            'usuarios': [
+                'foto_usuario_base64 LONGTEXT'
+            ],
+
+            'secciones': [
+                'icono_seccion_base64 LONGTEXT'
+            ],
+
             'sub_secciones': [
                 'imagen_base64 LONGTEXT',
-                'icono_base64 LONGTEXT', 
+                'icono_base64 LONGTEXT',
                 'foto1_base64 LONGTEXT',
                 'foto2_base64 LONGTEXT',
                 'foto3_base64 LONGTEXT',
                 'foto4_base64 LONGTEXT'
             ]
         }
-        
+
         for tabla, campos in campos_por_tabla.items():
+
             for campo in campos:
+
                 try:
-                    cursor.execute(f"ALTER TABLE {tabla} ADD COLUMN {campo}")
+                    cursor.execute(
+                        f"ALTER TABLE {tabla} ADD COLUMN {campo}"
+                    )
+
                 except Exception as e:
                     pass
-        
+
         conexion.commit()
         cursor.close()
-        
+
     except Exception as e:
         pass
 
-# ---------------- TABLAS (MANTENER IGUAL) ----------------
+
+# ----------------
+# TABLAS (MANTENER IGUAL)
+# ----------------
+
 def crear_tabla_usuarios(conexion):
+
     cursor = conexion.cursor()
+
     try:
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS usuarios (
@@ -240,15 +298,20 @@ def crear_tabla_usuarios(conexion):
                 foto_usuario_base64 LONGTEXT,
                 rol_usuario VARCHAR(200),
                 activo INT NOT NULL DEFAULT 0
-            )ENGINE=InnoDB;
+            ) ENGINE=InnoDB;
         """)
+
     except Exception as e:
         pass
+
     finally:
         cursor.close()
 
+
 def crear_tabla_configuraciones(conexion):
+
     cursor = conexion.cursor()
+
     try:
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS configuracion_app (
@@ -256,17 +319,17 @@ def crear_tabla_configuraciones(conexion):
                 titulo_app VARCHAR(100),
                 logo_app VARCHAR(255) NOT NULL,
                 logo_app_ruta_relativa VARCHAR(255) NOT NULL,
-                logo_base64 LONGTEXT,  
+                logo_base64 LONGTEXT,
                 icono_hamburguesa VARCHAR(255) DEFAULT NULL,
                 icono_hamburguesa_ruta_relativa VARCHAR(255) DEFAULT NULL,
                 icono_hamburguesa_base64 LONGTEXT,
                 icono_cerrar VARCHAR(255) DEFAULT NULL,
                 icono_cerrar_ruta_relativa VARCHAR(255) DEFAULT NULL,
-                icono_cerrar_base64 LONGTEXT,  
+                icono_cerrar_base64 LONGTEXT,
                 hero_titulo VARCHAR(255) NOT NULL,
                 hero_imagen VARCHAR(255),
                 hero_imagen_ruta_relativa VARCHAR(255),
-                hero_imagen_base64 LONGTEXT,  
+                hero_imagen_base64 LONGTEXT,
                 footer_texto VARCHAR(255) NOT NULL,
                 direccion_facebook VARCHAR(255),
                 direccion_instagram VARCHAR(255),
@@ -274,19 +337,25 @@ def crear_tabla_configuraciones(conexion):
                 direccion_youtube VARCHAR(255),
                 correo_electronico VARCHAR(255),
                 habilitar BOOLEAN NOT NULL DEFAULT TRUE
-            )ENGINE=InnoDB;
+            ) ENGINE=InnoDB;
         """)
+
         conexion.commit()
+
     except Exception as e:
         pass
+
     finally:
         cursor.close()
 
+
 def crear_tabla_regiones_zona(conexion):
+
     cursor = conexion.cursor()
+
     try:
         cursor.execute("""
-            CREATE TABLE IF NOT EXISTS regiones_zonas ( 
+            CREATE TABLE IF NOT EXISTS regiones_zonas (
                 id_region_zona INT(11) AUTO_INCREMENT PRIMARY KEY,
                 nombre_region_zona VARCHAR(100) NOT NULL,
                 imagen_region_zona_ruta_relativa VARCHAR(255),
@@ -295,14 +364,20 @@ def crear_tabla_regiones_zona(conexion):
                 orden INT NOT NULL DEFAULT 0
             ) ENGINE=InnoDB;
         """)
+
         conexion.commit()
+
     except Exception as e:
         pass
+
     finally:
         cursor.close()
 
+
 def crear_tabla_secciones(conexion):
+
     cursor = conexion.cursor()
+
     try:
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS secciones (
@@ -314,14 +389,20 @@ def crear_tabla_secciones(conexion):
                 orden INT NOT NULL DEFAULT 0
             ) ENGINE=InnoDB;
         """)
+
         conexion.commit()
+
     except Exception as e:
         pass
+
     finally:
         cursor.close()
 
+
 def crear_tabla_sub_secciones(conexion):
+
     cursor = conexion.cursor()
+
     try:
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS sub_secciones (
@@ -357,40 +438,91 @@ def crear_tabla_sub_secciones(conexion):
                 foto4_ruta_absoluta VARCHAR(255),
                 foto4_ruta_relativa VARCHAR(255),
                 foto4_base64 LONGTEXT,
-                FOREIGN KEY (id_seccion) REFERENCES secciones(id_seccion) ON DELETE CASCADE,
-                FOREIGN KEY (id_region_zona) REFERENCES regiones_zonas(id_region_zona) ON DELETE CASCADE
+                FOREIGN KEY (id_seccion)
+                    REFERENCES secciones(id_seccion)
+                    ON DELETE CASCADE,
+                FOREIGN KEY (id_region_zona)
+                    REFERENCES regiones_zonas(id_region_zona)
+                    ON DELETE CASCADE
             ) ENGINE=InnoDB;
         """)
+
         conexion.commit()
+
     except Exception as e:
         pass
+
     finally:
         cursor.close()
 
-# ---------------- INSERTAR USUARIOS ----------------
+
+# ----------------
+# INSERTAR USUARIOS
+# ----------------
+
 def insert_initial_users(conexion):
+
     cursor = conexion.cursor()
+
     cursor.execute("SELECT COUNT(*) FROM usuarios")
     count = cursor.fetchone()[0]
+
     if count == 0:
+
         cursor.executemany("""
-            INSERT INTO usuarios (apellido_nombres_usuario,nombre_usuario_acceso, email_usuario, password_usuario, rol_usuario, activo)
+            INSERT INTO usuarios
+            (
+                apellido_nombres_usuario,
+                nombre_usuario_acceso,
+                email_usuario,
+                password_usuario,
+                rol_usuario,
+                activo
+            )
             VALUES (%s, %s, %s, %s, %s, %s)
         """, [
-            ("Admin Principal","admin", "admin@turismo.com", "admin123", "admin", 1),
-            ("Editor Contenido", "editor", "editor@turismo.com", "editor123", "editor", 1),
-            ("Usuario Prueba", "visor", "usuario@turismo.com", "usuario123", "visor", 1),
+            (
+                "Admin Principal",
+                "admin",
+                "admin@turismo.com",
+                "admin123",
+                "admin",
+                1
+            ),
+            (
+                "Editor Contenido",
+                "editor",
+                "editor@turismo.com",
+                "editor123",
+                "editor",
+                1
+            ),
+            (
+                "Usuario Prueba",
+                "visor",
+                "usuario@turismo.com",
+                "usuario123",
+                "visor",
+                1
+            )
         ])
+
         conexion.commit()
+
     cursor.close()
+
 
 def cerrar_conexion(conexion):
     """
     Cerrar conexión de forma segura - OPTIMIZADA
     """
+
     global _CONEXION_HOSTING_CACHE
-    
+
     # Solo cerrar si no es la conexión en cache
-    if (conexion and conexion.is_connected() and 
-        conexion != _CONEXION_HOSTING_CACHE):
+    if (
+        conexion
+        and conexion.is_connected()
+        and conexion != _CONEXION_HOSTING_CACHE
+    ):
         conexion.close()

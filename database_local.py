@@ -715,6 +715,7 @@ def conectar_local(parent=None):
                     'port': config_automatica['port'],
                     'base_url': config_automatica.get('base_url', 'http://localhost:5000')
                 }
+                
                 return conexion
         except Error as e:
             pass
