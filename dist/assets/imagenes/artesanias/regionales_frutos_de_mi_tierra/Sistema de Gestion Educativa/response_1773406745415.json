@@ -1,0 +1,7 @@
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbkBlZHVzeXN0ZW0uY29tIiwicm9sIjoiYWRtaW4iLCJleHAiOjE3NzM0MzU1NDR9.yeX1lOtwJCgaikxmYDSYqSQO1qtTTo77S2YPQeoUoDA",
+  "token_type": "bearer",
+  "rol": "admin",
+  "nombre": "Fernando",
+  "apellido": "Admin"
+}
