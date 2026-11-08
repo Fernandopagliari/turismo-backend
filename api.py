@@ -32,7 +32,13 @@ app.config.update(
 CORS(
     app,
     supports_credentials=True,
-    origins=["https://turismo-backend-av60.onrender.com"]
+    origins=[
+        "https://turismo-backend-av60.onrender.com",
+        "http://127.0.0.1:4173",
+        "http://localhost:4173",
+        "http://127.0.0.1:5173",
+        "http://localhost:5173"
+    ]
 )
 
 print("===================================")
